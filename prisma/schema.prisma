@@ -1,0 +1,318 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  password  String   @default("changeme")
+  role      String   @default("cajero")
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sales      Sale[]
+  cashOpens  CashRegister[]
+  movements  CashMovement[]
+  adjustments InventoryAdjustment[]
+  expenses   Expense[]
+}
+
+model Client {
+  id        String   @id @default(cuid())
+  name      String
+  phone     String?
+  email     String?
+  address   String?
+  note      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sales       Sale[]
+  receivables AccountReceivable[]
+}
+
+model Supplier {
+  id        String   @id @default(cuid())
+  name      String
+  rif       String?  @unique
+  phone     String?
+  email     String?
+  address   String?
+  balance   Float    @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  purchases Purchase[]
+  payables  AccountPayable[]
+}
+
+model Currency {
+  id        String  @id @default(cuid())
+  code      String  @unique
+  name      String
+  symbol    String
+  isBase    Boolean @default(false)
+  createdAt DateTime @default(now())
+
+  exchangeRatesFrom ExchangeRate[] @relation("FromCurrency")
+  exchangeRatesTo   ExchangeRate[] @relation("ToCurrency")
+  products          Product[]
+  purchases         Purchase[]
+  salePayments      SalePayment[]
+  cashMovements     CashMovement[]
+  expenses          Expense[]
+}
+
+model ExchangeRate {
+  id             String   @id @default(cuid())
+  fromCurrencyId String
+  toCurrencyId   String
+  rate           Float
+  date           DateTime @default(now())
+
+  fromCurrency Currency @relation("FromCurrency", fields: [fromCurrencyId], references: [id])
+  toCurrency   Currency @relation("ToCurrency", fields: [toCurrencyId], references: [id])
+
+  @@unique([fromCurrencyId, toCurrencyId, date])
+}
+
+model Product {
+  id         String   @id @default(cuid())
+  name       String
+  sku        String?  @unique
+  type       String   @default("simple")
+  costAvg    Float    @default(0)
+  price      Float
+  currencyId String
+  categoryId String?
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  currency      Currency     @relation(fields: [currencyId], references: [id])
+  category      Category?    @relation(fields: [categoryId], references: [id])
+  inventories   Inventory[]
+  saleLines     SaleLine[]
+  purchaseLines PurchaseLine[]
+  adjustments   InventoryAdjustment[]
+  recipeAsParent   RecipeComponent[] @relation("ParentProduct")
+  recipeAsComponent RecipeComponent[] @relation("ComponentProduct")
+}
+
+model Category {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+
+  products Product[]
+}
+
+model RecipeComponent {
+  id          String  @id @default(cuid())
+  productId   String
+  componentId String
+  quantity    Float
+  unit        String  @default("unidad")
+
+  parentProduct   Product @relation("ParentProduct", fields: [productId], references: [id])
+  componentProduct Product @relation("ComponentProduct", fields: [componentId], references: [id])
+
+  @@unique([productId, componentId])
+}
+
+model Inventory {
+  id        String   @id @default(cuid())
+  productId String
+  branchId  String   @default("sucursal-1")
+  stock     Float    @default(0)
+  minStock  Float    @default(0)
+  updatedAt DateTime @updatedAt
+
+  product Product @relation(fields: [productId], references: [id])
+
+  @@unique([productId, branchId])
+}
+
+model Purchase {
+  id         String   @id @default(cuid())
+  supplierId String
+  branchId   String   @default("sucursal-1")
+  date       DateTime @default(now())
+  total      Float    @default(0)
+  status     String   @default("recibida")
+  currencyId String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  supplier Supplier @relation(fields: [supplierId], references: [id])
+  currency Currency @relation(fields: [currencyId], references: [id])
+
+  lines    PurchaseLine[]
+  payables AccountPayable[]
+}
+
+model PurchaseLine {
+  id         String  @id @default(cuid())
+  purchaseId String
+  productId  String
+  quantity   Float
+  unitCost   Float
+  subtotal   Float
+
+  purchase Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  product  Product  @relation(fields: [productId], references: [id])
+}
+
+model Sale {
+  id         String   @id @default(cuid())
+  clientId   String?
+  cashRegId  String?
+  userId     String
+  branchId   String   @default("sucursal-1")
+  date       DateTime @default(now())
+  total      Float    @default(0)
+  status     String   @default("completada")
+  syncStatus String   @default("synced")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  client  Client?       @relation(fields: [clientId], references: [id])
+  cashReg CashRegister? @relation(fields: [cashRegId], references: [id])
+  user    User          @relation(fields: [userId], references: [id])
+
+  lines       SaleLine[]
+  payments    SalePayment[]
+  receivables AccountReceivable[]
+}
+
+model SaleLine {
+  id         String  @id @default(cuid())
+  saleId     String
+  productId  String
+  quantity   Float
+  unitPrice  Float
+  unitCost   Float
+  lineTotal  Float
+  lineProfit Float
+
+  sale    Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+}
+
+model SalePayment {
+  id         String  @id @default(cuid())
+  saleId     String
+  method     String
+  amount     Float
+  currencyId String
+  reference  String?
+
+  sale     Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  currency Currency @relation(fields: [currencyId], references: [id])
+}
+
+model CashRegister {
+  id          String    @id @default(cuid())
+  userId      String
+  branchId    String    @default("sucursal-1")
+  openingDate DateTime  @default(now())
+  closingDate DateTime?
+  initialAmt  Float     @default(0)
+  currentAmt  Float     @default(0)
+  status      String    @default("abierta")
+
+  user      User           @relation(fields: [userId], references: [id])
+  sales     Sale[]
+  movements CashMovement[]
+  cuts      CashCut[]
+}
+
+model CashMovement {
+  id         String   @id @default(cuid())
+  cashRegId  String
+  userId     String
+  type       String
+  amount     Float
+  concept    String
+  currencyId String
+  createdAt  DateTime @default(now())
+
+  cashReg  CashRegister @relation(fields: [cashRegId], references: [id], onDelete: Cascade)
+  currency Currency     @relation(fields: [currencyId], references: [id])
+  user     User         @relation(fields: [userId], references: [id])
+}
+
+model CashCut {
+  id            String   @id @default(cuid())
+  cashRegId     String
+  totalSales    Float    @default(0)
+  totalExpenses Float    @default(0)
+  expected      Float    @default(0)
+  actual        Float    @default(0)
+  difference    Float    @default(0)
+  cutDate       DateTime @default(now())
+
+  cashReg CashRegister @relation(fields: [cashRegId], references: [id], onDelete: Cascade)
+}
+
+model InventoryAdjustment {
+  id        String   @id @default(cuid())
+  productId String
+  branchId  String   @default("sucursal-1")
+  type      String
+  quantity  Float
+  reason    String
+  userId    String
+  createdAt DateTime @default(now())
+
+  product Product @relation(fields: [productId], references: [id])
+  user    User    @relation(fields: [userId], references: [id])
+}
+
+model AccountReceivable {
+  id             String    @id @default(cuid())
+  clientId       String
+  saleId         String
+  amount         Float
+  pendingBalance Float
+  dueDate        DateTime?
+  status         String    @default("pendiente")
+
+  client Client @relation(fields: [clientId], references: [id])
+  sale   Sale   @relation(fields: [saleId], references: [id])
+}
+
+model AccountPayable {
+  id             String    @id @default(cuid())
+  supplierId     String
+  purchaseId     String?
+  amount         Float
+  pendingBalance Float
+  dueDate        DateTime?
+  status         String    @default("pendiente")
+
+  supplier Supplier? @relation(fields: [supplierId], references: [id])
+  purchase Purchase? @relation(fields: [purchaseId], references: [id])
+}
+
+model Expense {
+  id          String   @id @default(cuid())
+  branchId    String   @default("sucursal-1")
+  category    String
+  description String
+  amount      Float
+  currencyId  String
+  date        DateTime @default(now())
+  userId      String
+  createdAt   DateTime @default(now())
+
+  currency Currency @relation(fields: [currencyId], references: [id])
+  user     User     @relation(fields: [userId], references: [id])
+}
