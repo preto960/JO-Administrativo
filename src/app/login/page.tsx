@@ -10,26 +10,81 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Store, Loader2 } from 'lucide-react'
 
 // Direct color map for login page (no import of color-picker to avoid circular deps)
-const colorMap: Record<string, string> = {
-  emerald: 'oklch(0.508 0.163 160)',
-  blue: 'oklch(0.546 0.245 262.881)',
-  purple: 'oklch(0.541 0.281 293.009)',
-  red: 'oklch(0.577 0.245 27.325)',
-  orange: 'oklch(0.637 0.237 47.604)',
-  pink: 'oklch(0.592 0.249 342.258)',
-  cyan: 'oklch(0.522 0.135 218.811)',
-  slate: 'oklch(0.398 0.02 255)',
+// Each color includes light and dark variants with accent colors for complete coverage
+const colorMap: Record<string, { light: { primary: string; fg: string; accent: string; accentFg: string }; dark: { primary: string; fg: string; accent: string; accentFg: string } }> = {
+  emerald: {
+    light: { primary: 'oklch(0.508 0.163 160)', fg: 'oklch(0.995 0.002 155)', accent: 'oklch(0.943 0.04 160)', accentFg: 'oklch(0.292 0.06 160)' },
+    dark: { primary: 'oklch(0.627 0.163 160)', fg: 'oklch(0.145 0.015 155)', accent: 'oklch(0.269 0.04 160)', accentFg: 'oklch(0.985 0.002 155)' },
+  },
+  blue: {
+    light: { primary: 'oklch(0.546 0.245 262.881)', fg: 'oklch(0.995 0.002 155)', accent: 'oklch(0.943 0.04 262.881)', accentFg: 'oklch(0.292 0.06 262.881)' },
+    dark: { primary: 'oklch(0.685 0.196 262.881)', fg: 'oklch(0.145 0.015 155)', accent: 'oklch(0.269 0.04 262.881)', accentFg: 'oklch(0.985 0.002 155)' },
+  },
+  purple: {
+    light: { primary: 'oklch(0.541 0.281 293.009)', fg: 'oklch(0.995 0.002 155)', accent: 'oklch(0.943 0.04 293.009)', accentFg: 'oklch(0.292 0.06 293.009)' },
+    dark: { primary: 'oklch(0.685 0.222 293.009)', fg: 'oklch(0.145 0.015 155)', accent: 'oklch(0.269 0.04 293.009)', accentFg: 'oklch(0.985 0.002 155)' },
+  },
+  red: {
+    light: { primary: 'oklch(0.577 0.245 27.325)', fg: 'oklch(0.995 0.002 155)', accent: 'oklch(0.943 0.04 27.325)', accentFg: 'oklch(0.292 0.06 27.325)' },
+    dark: { primary: 'oklch(0.704 0.191 22.216)', fg: 'oklch(0.145 0.015 155)', accent: 'oklch(0.269 0.04 22.216)', accentFg: 'oklch(0.985 0.002 155)' },
+  },
+  orange: {
+    light: { primary: 'oklch(0.637 0.237 47.604)', fg: 'oklch(0.995 0.002 155)', accent: 'oklch(0.943 0.04 47.604)', accentFg: 'oklch(0.292 0.06 47.604)' },
+    dark: { primary: 'oklch(0.766 0.187 47.604)', fg: 'oklch(0.145 0.015 155)', accent: 'oklch(0.269 0.04 47.604)', accentFg: 'oklch(0.985 0.002 155)' },
+  },
+  pink: {
+    light: { primary: 'oklch(0.592 0.249 342.258)', fg: 'oklch(0.995 0.002 155)', accent: 'oklch(0.943 0.04 342.258)', accentFg: 'oklch(0.292 0.06 342.258)' },
+    dark: { primary: 'oklch(0.708 0.199 342.258)', fg: 'oklch(0.145 0.015 155)', accent: 'oklch(0.269 0.04 342.258)', accentFg: 'oklch(0.985 0.002 155)' },
+  },
+  cyan: {
+    light: { primary: 'oklch(0.522 0.135 218.811)', fg: 'oklch(0.995 0.002 155)', accent: 'oklch(0.943 0.04 218.811)', accentFg: 'oklch(0.292 0.06 218.811)' },
+    dark: { primary: 'oklch(0.685 0.149 218.811)', fg: 'oklch(0.145 0.015 155)', accent: 'oklch(0.269 0.04 218.811)', accentFg: 'oklch(0.985 0.002 155)' },
+  },
+  slate: {
+    light: { primary: 'oklch(0.398 0.02 255)', fg: 'oklch(0.995 0.002 155)', accent: 'oklch(0.943 0.02 255)', accentFg: 'oklch(0.292 0.03 255)' },
+    dark: { primary: 'oklch(0.568 0.025 255)', fg: 'oklch(0.145 0.015 155)', accent: 'oklch(0.269 0.02 255)', accentFg: 'oklch(0.985 0.002 155)' },
+  },
 }
 
-const colorMapDark: Record<string, string> = {
-  emerald: 'oklch(0.627 0.163 160)',
-  blue: 'oklch(0.685 0.196 262.881)',
-  purple: 'oklch(0.685 0.222 293.009)',
-  red: 'oklch(0.704 0.191 22.216)',
-  orange: 'oklch(0.766 0.187 47.604)',
-  pink: 'oklch(0.708 0.199 342.258)',
-  cyan: 'oklch(0.685 0.149 218.811)',
-  slate: 'oklch(0.568 0.025 255)',
+function applyLoginTheme(colorKey: string) {
+  const c = colorMap[colorKey]
+  if (!c) return
+
+  let styleEl = document.getElementById('dynamic-theme') as HTMLStyleElement | null
+  if (!styleEl) {
+    styleEl = document.createElement('style')
+    styleEl.id = 'dynamic-theme'
+    document.head.appendChild(styleEl)
+  }
+
+  styleEl.textContent = `
+:root {
+  --primary: ${c.light.primary};
+  --primary-foreground: ${c.light.fg};
+  --ring: ${c.light.primary};
+  --chart-1: ${c.light.primary};
+  --accent: ${c.light.accent};
+  --accent-foreground: ${c.light.accentFg};
+  --sidebar-primary: ${c.light.primary};
+  --sidebar-primary-foreground: ${c.light.fg};
+  --sidebar-ring: ${c.light.primary};
+  --sidebar-accent: ${c.light.accent};
+  --sidebar-accent-foreground: ${c.light.accentFg};
+}
+.dark {
+  --primary: ${c.dark.primary};
+  --primary-foreground: ${c.dark.fg};
+  --ring: ${c.dark.primary};
+  --chart-1: ${c.dark.primary};
+  --accent: ${c.dark.accent};
+  --accent-foreground: ${c.dark.accentFg};
+  --sidebar-primary: ${c.dark.primary};
+  --sidebar-primary-foreground: ${c.dark.fg};
+  --sidebar-ring: ${c.dark.primary};
+  --sidebar-accent: ${c.dark.accent};
+  --sidebar-accent-foreground: ${c.dark.accentFg};
+}
+  `
 }
 
 export default function LoginPage() {
@@ -46,20 +101,7 @@ export default function LoginPage() {
       .then(s => {
         if (s?.businessName) setBusinessName(s.businessName)
         if (s?.primaryColor) {
-          const light = colorMap[s.primaryColor]
-          const dark = colorMapDark[s.primaryColor]
-          if (light && dark) {
-            let styleEl = document.getElementById('dynamic-theme') as HTMLStyleElement | null
-            if (!styleEl) {
-              styleEl = document.createElement('style')
-              styleEl.id = 'dynamic-theme'
-              document.head.appendChild(styleEl)
-            }
-            styleEl.textContent = `
-:root { --primary: ${light}; --ring: ${light}; --chart-1: ${light}; --sidebar-primary: ${light}; --sidebar-ring: ${light}; }
-.dark { --primary: ${dark}; --ring: ${dark}; --chart-1: ${dark}; --sidebar-primary: ${dark}; --sidebar-ring: ${dark}; }
-            `
-          }
+          applyLoginTheme(s.primaryColor)
         }
       })
       .catch(() => {})
