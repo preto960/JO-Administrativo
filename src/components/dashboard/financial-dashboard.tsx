@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { api } from '@/lib/api'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { TrendingUp, TrendingDown, DollarSign, ShoppingCart, Target, PiggyBank } from 'lucide-react'
+import { TrendingUp, TrendingDown, DollarSign, ShoppingCart, Target, PiggyBank, Package, Users, Receipt } from 'lucide-react'
 import {
   AreaChart,
   Area,
@@ -105,9 +105,13 @@ export function FinancialDashboard() {
 
   if (!data) return null
 
+  // Derived KPIs for second row
+  const totalProducts = data.topProducts.length
+  const totalClients = new Set(data.recentSales.map(s => s.client?.name).filter(Boolean)).size
+
   return (
     <div className="space-y-6">
-      {/* KPI Cards */}
+      {/* KPI Cards - Row 1 */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KpiCard
           title="Ingresos Hoy"
@@ -134,6 +138,36 @@ export function FinancialDashboard() {
           value={`$${data.utilidadNetaMes.toFixed(2)}`}
           icon={PiggyBank}
           color="amber"
+        />
+      </div>
+
+      {/* KPI Cards - Row 2 */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <KpiCard
+          title="Ventas del Mes"
+          value={data.chartData.reduce((s, d) => s + d.count, 0).toString()}
+          icon={Receipt}
+          trend="up"
+          color="emerald"
+        />
+        <KpiCard
+          title="Productos Activos"
+          value={totalProducts.toString()}
+          icon={Package}
+          color="violet"
+        />
+        <KpiCard
+          title="Clientes"
+          value={totalClients.toString()}
+          icon={Users}
+          color="amber"
+        />
+        <KpiCard
+          title="Ingresos Mes"
+          value={`$${data.ingresosMes.toFixed(2)}`}
+          icon={DollarSign}
+          trend="up"
+          color="emerald"
         />
       </div>
 

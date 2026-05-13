@@ -18,7 +18,7 @@ export async function GET() {
           baseCurrencyId: '',
           sessionDuration: 28800,
           notificationsEnabled: true,
-          primaryColor: 'emerald',
+          primaryColor: 'blue',
           secondaryColor: 'slate',
           theme: 'light',
           referenceCurrency: 'USD',

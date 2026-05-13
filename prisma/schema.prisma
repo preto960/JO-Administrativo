@@ -335,7 +335,7 @@ model Settings {
   exchangeRate          Float    @default(36.50)
   sessionDuration       Int      @default(28800)
   notificationsEnabled  Boolean  @default(true)
-  primaryColor          String   @default("emerald")
+  primaryColor          String   @default("blue")
   secondaryColor        String   @default("slate")
   theme                 String   @default("light")
   rolePermissions       Json     @default("{}")

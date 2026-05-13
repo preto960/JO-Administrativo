@@ -53,7 +53,7 @@ const defaultSettings: AppSettings = {
   exchangeRate: 36.50,
   sessionDuration: 28800,
   notificationsEnabled: true,
-  primaryColor: 'emerald',
+  primaryColor: 'blue',
   secondaryColor: 'slate',
   theme: 'light',
 }

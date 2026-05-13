@@ -10,13 +10,13 @@ export async function GET() {
     // Sales today
     const salesToday = await db.sale.findMany({
       where: { date: { gte: today }, status: 'completada' },
-      include: { lines: true, payments: true },
+      include: { lines: { include: { product: { select: { name: true } } } }, payments: true },
     })
 
     // Sales this month
     const salesMonth = await db.sale.findMany({
       where: { date: { gte: monthStart }, status: 'completada' },
-      include: { lines: true, payments: true },
+      include: { lines: { include: { product: { select: { name: true } } } }, payments: true },
     })
 
     // Expenses today & month
