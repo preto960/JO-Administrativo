@@ -9,6 +9,7 @@ export default withAuth({
 export const config = {
   matcher: [
     '/',
-    '/((?!login|api/auth).*)',
+    // Protect all routes except login, api/auth, and public API endpoints
+    '/((?!login|api/auth|api/settings|api/exchange-rates|api/currencies).*)',
   ],
 }

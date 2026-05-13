@@ -48,7 +48,8 @@ export function PosTerminal() {
   const isMobile = useIsMobile()
   const currencySymbol = referenceCurrency === 'EUR' ? '€' : '$'
 
-  useEffect(() => {
+  const fetchProducts = useCallback(() => {
+    setLoading(true)
     Promise.all([
       api.get<ProductWithInventory[]>('/api/products?active=true'),
       api.get<Category[]>('/api/categories'),
@@ -61,6 +62,8 @@ export function PosTerminal() {
       setLoading(false)
     })
   }, [])
+
+  useEffect(() => { fetchProducts() }, [fetchProducts])
 
   const filteredProducts = useMemo(() => {
     let result = products
@@ -100,6 +103,12 @@ export function PosTerminal() {
       unitCost: product.costAvg,
       currencySymbol: product.currency.symbol,
     })
+  }
+
+  // After a successful sale, refresh products to show updated stock
+  const handlePaymentSuccess = () => {
+    setShowPayment(false)
+    fetchProducts()
   }
 
   const itemCount = getItemCount()
@@ -225,7 +234,7 @@ export function PosTerminal() {
       {!isMobile && cartContent}
 
       {/* Payment Modal */}
-      {showPayment && <PosPaymentModal onClose={() => setShowPayment(false)} />}
+      {showPayment && <PosPaymentModal onClose={handlePaymentSuccess} />}
     </div>
   )
 }
