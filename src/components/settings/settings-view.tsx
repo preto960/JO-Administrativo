@@ -356,13 +356,13 @@ export function SettingsView() {
         {/* ── Moneda Tab ─────────────────────────────────── */}
         <TabsContent value="moneda">
           <div className="space-y-4">
-            {/* Tasas de Referencia BCV */}
+            {/* Tasas del Día (BCV) */}
             <Card>
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <div>
-                    <CardTitle className="text-base">Tasas de Referencia (BCV)</CardTitle>
-                    <CardDescription>Tasas obtenidas del Banco Central de Venezuela</CardDescription>
+                    <CardTitle className="text-base">Tasas del Día (BCV)</CardTitle>
+                    <CardDescription>Tasas oficiales del Banco Central de Venezuela</CardDescription>
                   </div>
                   <Button
                     variant="outline"
@@ -400,9 +400,8 @@ export function SettingsView() {
                   </Button>
                 </div>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent>
                 <div className="grid gap-4 sm:grid-cols-2">
-                  {/* USD Rate */}
                   <div className="rounded-lg border p-4 space-y-1">
                     <div className="flex items-center gap-2 text-sm font-medium">
                       <span className="text-base">$</span>
@@ -413,8 +412,6 @@ export function SettingsView() {
                     </p>
                     <p className="text-xs text-muted-foreground">1 USD = {(settings.usdRate || 0).toFixed(2)} VES</p>
                   </div>
-
-                  {/* EUR Rate */}
                   <div className="rounded-lg border p-4 space-y-1">
                     <div className="flex items-center gap-2 text-sm font-medium">
                       <span className="text-base">€</span>
@@ -429,20 +426,20 @@ export function SettingsView() {
               </CardContent>
             </Card>
 
-            {/* Moneda de Referencia y Tasa Personalizada */}
+            {/* Moneda y Tasa de Referencia (consolidated) */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Moneda de Referencia para Precios</CardTitle>
-                <CardDescription>Selecciona la moneda base para registrar precios y una tasa personalizada (opcional)</CardDescription>
+                <CardTitle className="text-base">Moneda y Tasa de Referencia</CardTitle>
+                <CardDescription>Configura en qué moneda registras los precios y la tasa de conversión a Bs.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
+                {/* Moneda de referencia */}
                 <div className="space-y-2">
-                  <Label>Moneda de Referencia</Label>
+                  <Label>Moneda para Precios</Label>
                   <Select
                     value={settings.referenceCurrency || 'USD'}
                     onValueChange={(v) => {
                       const updated = { ...settings, referenceCurrency: v }
-                      // Recalculate effective rate
                       if (!updated.customRate) {
                         const refRate = v === 'EUR' ? updated.eurRate : updated.usdRate
                         updated.exchangeRate = refRate || 0
@@ -465,6 +462,7 @@ export function SettingsView() {
 
                 <Separator />
 
+                {/* Tasa personalizada */}
                 <div className="space-y-2">
                   <Label>Tasa Personalizada (opcional)</Label>
                   <Input
@@ -475,7 +473,6 @@ export function SettingsView() {
                     onChange={(e) => {
                       const customRate = parseFloat(e.target.value) || 0
                       const updated = { ...settings, customRate }
-                      // Recalculate effective rate
                       if (customRate > 0) {
                         updated.exchangeRate = customRate
                       } else {
@@ -494,6 +491,7 @@ export function SettingsView() {
 
                 <Separator />
 
+                {/* Resumen de tasa efectiva */}
                 <div className="rounded-lg border bg-muted/50 p-4 space-y-2">
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Tasa efectiva en uso:</span>
@@ -517,64 +515,12 @@ export function SettingsView() {
                   className="bg-primary hover:bg-primary/90 text-white"
                   onClick={() => saveSettings({
                     referenceCurrency: settings.referenceCurrency,
+                    baseCurrencyId: settings.baseCurrencyId,
                     usdRate: settings.usdRate,
                     eurRate: settings.eurRate,
                     customRate: settings.customRate,
                     exchangeRate: settings.exchangeRate,
                   })}
-                  disabled={saving}
-                >
-                  {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                  Guardar
-                </Button>
-              </CardContent>
-            </Card>
-
-            {/* Moneda Base */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Moneda Base</CardTitle>
-                <CardDescription>Moneda principal del sistema para reportes</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Moneda Base</Label>
-                  <Select
-                    value={settings.baseCurrencyId || currencies.find(c => c.isBase)?.id || ''}
-                    onValueChange={(v) => setSettings({ ...settings, baseCurrencyId: v })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Seleccionar moneda" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {currencies.map((c) => (
-                        <SelectItem key={c.id} value={c.id}>
-                          {c.code} ({c.symbol}) - {c.name}
-                          {c.isBase && ' ★'}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <Separator />
-                <div className="rounded-lg bg-muted p-4">
-                  <h4 className="font-medium mb-2">Monedas Disponibles</h4>
-                  <div className="space-y-2">
-                    {currencies.map((c) => (
-                      <div key={c.id} className="flex items-center justify-between text-sm">
-                        <span>{c.name}</span>
-                        <div className="flex items-center gap-2">
-                          <Badge variant="outline">{c.code}</Badge>
-                          <span className="font-medium">{c.symbol}</span>
-                          {c.isBase && <Badge className="bg-primary">Base</Badge>}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <Button
-                  className="bg-primary hover:bg-primary/90 text-white"
-                  onClick={() => saveSettings({ baseCurrencyId: settings.baseCurrencyId })}
                   disabled={saving}
                 >
                   {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
