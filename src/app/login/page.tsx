@@ -9,6 +9,29 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Store, Loader2 } from 'lucide-react'
 
+// Direct color map for login page (no import of color-picker to avoid circular deps)
+const colorMap: Record<string, string> = {
+  emerald: 'oklch(0.508 0.163 160)',
+  blue: 'oklch(0.546 0.245 262.881)',
+  purple: 'oklch(0.541 0.281 293.009)',
+  red: 'oklch(0.577 0.245 27.325)',
+  orange: 'oklch(0.637 0.237 47.604)',
+  pink: 'oklch(0.592 0.249 342.258)',
+  cyan: 'oklch(0.522 0.135 218.811)',
+  slate: 'oklch(0.398 0.02 255)',
+}
+
+const colorMapDark: Record<string, string> = {
+  emerald: 'oklch(0.627 0.163 160)',
+  blue: 'oklch(0.685 0.196 262.881)',
+  purple: 'oklch(0.685 0.222 293.009)',
+  red: 'oklch(0.704 0.191 22.216)',
+  orange: 'oklch(0.766 0.187 47.604)',
+  pink: 'oklch(0.708 0.199 342.258)',
+  cyan: 'oklch(0.685 0.149 218.811)',
+  slate: 'oklch(0.568 0.025 255)',
+}
+
 export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -17,30 +40,25 @@ export default function LoginPage() {
   const [businessName, setBusinessName] = useState('JO-Administrativo')
   const router = useRouter()
 
-  // Load business name from settings API
   useEffect(() => {
     fetch('/api/settings')
       .then(r => r.json())
       .then(s => {
         if (s?.businessName) setBusinessName(s.businessName)
-        // Apply saved primary color on login page too
         if (s?.primaryColor) {
-          const root = document.documentElement
-          const colorMap: Record<string, string> = {
-            emerald: 'oklch(0.508 0.163 160)',
-            blue: 'oklch(0.546 0.245 262.881)',
-            purple: 'oklch(0.541 0.281 293.009)',
-            red: 'oklch(0.577 0.245 27.325)',
-            orange: 'oklch(0.637 0.237 47.604)',
-            pink: 'oklch(0.592 0.249 342.258)',
-            cyan: 'oklch(0.522 0.135 218.811)',
-            slate: 'oklch(0.398 0.02 255)',
-          }
-          const c = colorMap[s.primaryColor]
-          if (c) {
-            root.style.setProperty('--primary', c)
-            root.style.setProperty('--ring', c)
-            root.style.setProperty('--chart-1', c)
+          const light = colorMap[s.primaryColor]
+          const dark = colorMapDark[s.primaryColor]
+          if (light && dark) {
+            let styleEl = document.getElementById('dynamic-theme') as HTMLStyleElement | null
+            if (!styleEl) {
+              styleEl = document.createElement('style')
+              styleEl.id = 'dynamic-theme'
+              document.head.appendChild(styleEl)
+            }
+            styleEl.textContent = `
+:root { --primary: ${light}; --ring: ${light}; --chart-1: ${light}; --sidebar-primary: ${light}; --sidebar-ring: ${light}; }
+.dark { --primary: ${dark}; --ring: ${dark}; --chart-1: ${dark}; --sidebar-primary: ${dark}; --sidebar-ring: ${dark}; }
+            `
           }
         }
       })
@@ -75,7 +93,6 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 to-white dark:from-gray-950 dark:to-gray-900 p-4">
       <div className="w-full max-w-sm">
-        {/* Logo / Brand */}
         <div className="flex flex-col items-center mb-8">
           <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-white mb-4 shadow-lg">
             <Store className="h-8 w-8" />
@@ -88,7 +105,6 @@ export default function LoginPage() {
           </p>
         </div>
 
-        {/* Login Card */}
         <Card className="shadow-xl border-primary/10 dark:border-primary/10">
           <CardHeader className="space-y-1 text-center">
             <CardTitle className="text-xl">Iniciar Sesión</CardTitle>

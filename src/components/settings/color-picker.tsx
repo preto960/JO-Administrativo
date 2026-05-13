@@ -10,88 +10,120 @@ const colorOptions = [
     name: 'Esmeralda',
     value: 'emerald',
     color: '#059669',
-    oklch: { light: 'oklch(0.508 0.163 160)', dark: 'oklch(0.627 0.163 160)', fg_light: 'oklch(0.995 0.002 155)', fg_dark: 'oklch(0.145 0.015 155)' },
+    light: { primary: 'oklch(0.508 0.163 160)', fg: 'oklch(0.995 0.002 155)' },
+    dark: { primary: 'oklch(0.627 0.163 160)', fg: 'oklch(0.145 0.015 155)' },
   },
   {
     name: 'Azul',
     value: 'blue',
     color: '#2563eb',
-    oklch: { light: 'oklch(0.546 0.245 262.881)', dark: 'oklch(0.685 0.196 262.881)', fg_light: 'oklch(0.995 0.002 155)', fg_dark: 'oklch(0.145 0.015 155)' },
+    light: { primary: 'oklch(0.546 0.245 262.881)', fg: 'oklch(0.995 0.002 155)' },
+    dark: { primary: 'oklch(0.685 0.196 262.881)', fg: 'oklch(0.145 0.015 155)' },
   },
   {
     name: 'Violeta',
     value: 'purple',
     color: '#7c3aed',
-    oklch: { light: 'oklch(0.541 0.281 293.009)', dark: 'oklch(0.685 0.222 293.009)', fg_light: 'oklch(0.995 0.002 155)', fg_dark: 'oklch(0.145 0.015 155)' },
+    light: { primary: 'oklch(0.541 0.281 293.009)', fg: 'oklch(0.995 0.002 155)' },
+    dark: { primary: 'oklch(0.685 0.222 293.009)', fg: 'oklch(0.145 0.015 155)' },
   },
   {
     name: 'Rojo',
     value: 'red',
     color: '#dc2626',
-    oklch: { light: 'oklch(0.577 0.245 27.325)', dark: 'oklch(0.704 0.191 22.216)', fg_light: 'oklch(0.995 0.002 155)', fg_dark: 'oklch(0.145 0.015 155)' },
+    light: { primary: 'oklch(0.577 0.245 27.325)', fg: 'oklch(0.995 0.002 155)' },
+    dark: { primary: 'oklch(0.704 0.191 22.216)', fg: 'oklch(0.145 0.015 155)' },
   },
   {
     name: 'Naranja',
     value: 'orange',
     color: '#ea580c',
-    oklch: { light: 'oklch(0.637 0.237 47.604)', dark: 'oklch(0.766 0.187 47.604)', fg_light: 'oklch(0.995 0.002 155)', fg_dark: 'oklch(0.145 0.015 155)' },
+    light: { primary: 'oklch(0.637 0.237 47.604)', fg: 'oklch(0.995 0.002 155)' },
+    dark: { primary: 'oklch(0.766 0.187 47.604)', fg: 'oklch(0.145 0.015 155)' },
   },
   {
     name: 'Rosa',
     value: 'pink',
     color: '#db2777',
-    oklch: { light: 'oklch(0.592 0.249 342.258)', dark: 'oklch(0.708 0.199 342.258)', fg_light: 'oklch(0.995 0.002 155)', fg_dark: 'oklch(0.145 0.015 155)' },
+    light: { primary: 'oklch(0.592 0.249 342.258)', fg: 'oklch(0.995 0.002 155)' },
+    dark: { primary: 'oklch(0.708 0.199 342.258)', fg: 'oklch(0.145 0.015 155)' },
   },
   {
     name: 'Cyan',
     value: 'cyan',
     color: '#0891b2',
-    oklch: { light: 'oklch(0.522 0.135 218.811)', dark: 'oklch(0.685 0.149 218.811)', fg_light: 'oklch(0.995 0.002 155)', fg_dark: 'oklch(0.145 0.015 155)' },
+    light: { primary: 'oklch(0.522 0.135 218.811)', fg: 'oklch(0.995 0.002 155)' },
+    dark: { primary: 'oklch(0.685 0.149 218.811)', fg: 'oklch(0.145 0.015 155)' },
   },
   {
     name: 'Slate',
     value: 'slate',
     color: '#475569',
-    oklch: { light: 'oklch(0.398 0.02 255)', dark: 'oklch(0.568 0.025 255)', fg_light: 'oklch(0.995 0.002 155)', fg_dark: 'oklch(0.145 0.015 155)' },
+    light: { primary: 'oklch(0.398 0.02 255)', fg: 'oklch(0.995 0.002 155)' },
+    dark: { primary: 'oklch(0.568 0.025 255)', fg: 'oklch(0.145 0.015 155)' },
   },
 ]
 
-// Exported so SettingsInitializer can use it
 export function getColorDef(value: string) {
   return colorOptions.find(c => c.value === value) || colorOptions[0]
 }
 
-/** Apply a primary color to the document CSS variables (for primary color) */
-export function applyPrimaryColor(colorValue: string) {
-  const color = getColorDef(colorValue)
-  const root = document.documentElement
-  const isDark = root.classList.contains('dark')
+/**
+ * Injects a <style> tag that overrides CSS variables in :root and .dark
+ * This is more reliable than root.style.setProperty because it uses
+ * proper CSS cascade with :root selectors that match globals.css exactly.
+ */
+function injectThemeStyle(primary: typeof colorOptions[0], secondary: typeof colorOptions[0]) {
+  let styleEl = document.getElementById('dynamic-theme') as HTMLStyleElement | null
+  if (!styleEl) {
+    styleEl = document.createElement('style')
+    styleEl.id = 'dynamic-theme'
+    document.head.appendChild(styleEl)
+  }
 
-  const primary = isDark ? color.oklch.dark : color.oklch.light
-  const fg = isDark ? color.oklch.fg_dark : color.oklch.fg_light
-
-  root.style.setProperty('--primary', primary)
-  root.style.setProperty('--primary-foreground', fg)
-  root.style.setProperty('--ring', primary)
-  root.style.setProperty('--chart-1', primary)
-  root.style.setProperty('--sidebar-primary', primary)
-  root.style.setProperty('--sidebar-primary-foreground', fg)
-  root.style.setProperty('--sidebar-ring', primary)
+  styleEl.textContent = `
+:root {
+  --primary: ${primary.light.primary};
+  --primary-foreground: ${primary.light.fg};
+  --ring: ${primary.light.primary};
+  --chart-1: ${primary.light.primary};
+  --sidebar-primary: ${primary.light.primary};
+  --sidebar-primary-foreground: ${primary.light.fg};
+  --sidebar-ring: ${primary.light.primary};
+  --secondary: ${secondary.light.primary};
+  --secondary-foreground: ${secondary.light.fg};
+}
+.dark {
+  --primary: ${primary.dark.primary};
+  --primary-foreground: ${primary.dark.fg};
+  --ring: ${primary.dark.primary};
+  --chart-1: ${primary.dark.primary};
+  --sidebar-primary: ${primary.dark.primary};
+  --sidebar-primary-foreground: ${primary.dark.fg};
+  --sidebar-ring: ${primary.dark.primary};
+  --secondary: ${secondary.dark.primary};
+  --secondary-foreground: ${secondary.dark.fg};
+}
+  `
 }
 
-/** Apply a secondary color to the document CSS variables */
+export function applyPrimaryColor(colorValue: string) {
+  const primary = getColorDef(colorValue)
+  // Get current secondary from the <style> tag or default to slate
+  const secondary = getColorDef('slate')
+  injectThemeStyle(primary, secondary)
+}
+
 export function applySecondaryColor(colorValue: string) {
-  const color = getColorDef(colorValue)
-  const root = document.documentElement
-  const isDark = root.classList.contains('dark')
+  const secondary = getColorDef(colorValue)
+  const primary = getColorDef('emerald')
+  injectThemeStyle(primary, secondary)
+}
 
-  // Secondary colors are typically more muted versions
-  const secondary = isDark ? color.oklch.dark : color.oklch.light
-  const fg = isDark ? color.oklch.fg_dark : color.oklch.fg_light
-
-  // Use a lighter/more transparent version for secondary
-  root.style.setProperty('--secondary', secondary)
-  root.style.setProperty('--secondary-foreground', fg)
+export function applyBothColors(primaryValue: string, secondaryValue: string) {
+  const primary = getColorDef(primaryValue)
+  const secondary = getColorDef(secondaryValue)
+  injectThemeStyle(primary, secondary)
 }
 
 interface ColorPickerProps {

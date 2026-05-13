@@ -3,7 +3,7 @@
 import { useEffect } from 'react'
 import { api } from '@/lib/api'
 import { useAppStore } from '@/stores/use-app-store'
-import { applyPrimaryColor, applySecondaryColor } from '@/components/settings/color-picker'
+import { applyBothColors } from '@/components/settings/color-picker'
 import type { AppSettings } from '@/stores/use-app-store'
 
 interface SettingsData {
@@ -33,12 +33,10 @@ export function SettingsInitializer() {
       try {
         const s = await api.get<SettingsData>('/api/settings')
         if (s) {
-          // Store in Zustand for reactive access across the app
           setSettings(s as AppSettings)
 
-          // Apply colors to CSS variables
-          applyPrimaryColor(s.primaryColor || 'emerald')
-          applySecondaryColor(s.secondaryColor || 'slate')
+          // Apply both colors at once via <style> injection (reliable method)
+          applyBothColors(s.primaryColor || 'emerald', s.secondaryColor || 'slate')
 
           // Apply theme (light/dark) if saved
           if (s.theme === 'dark') {
@@ -53,18 +51,17 @@ export function SettingsInitializer() {
           }
         }
       } catch {
-        // Silently fail — use defaults
+        // Silently fail — use defaults from globals.css
       }
     }
 
     loadAndApplySettings()
 
-    // Re-apply colors when theme changes (dark ↔ light) because oklch values differ
+    // Re-apply colors when theme changes (dark ↔ light)
     const observer = new MutationObserver(() => {
       const settings = useAppStore.getState().settings
       if (settings) {
-        applyPrimaryColor(settings.primaryColor || 'emerald')
-        applySecondaryColor(settings.secondaryColor || 'slate')
+        applyBothColors(settings.primaryColor || 'emerald', settings.secondaryColor || 'slate')
       }
     })
 

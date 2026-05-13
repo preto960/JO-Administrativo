@@ -47,7 +47,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { ALL_ROLES, getRoleLabel } from '@/lib/permissions'
-import { ColorPicker, applyPrimaryColor, applySecondaryColor } from './color-picker'
+import { ColorPicker, applyBothColors } from './color-picker'
 
 interface Settings {
   id: string
@@ -124,6 +124,8 @@ export function SettingsView() {
     try {
       const updated = await api.put<Settings>('/api/settings', updates)
       setSettings(updated)
+      // Re-apply colors after save to ensure they persist
+      applyBothColors(updated.primaryColor || 'emerald', updated.secondaryColor || 'slate')
       toast.success('Configuración guardada')
     } catch {
       toast.error('Error al guardar configuración')
@@ -514,8 +516,9 @@ export function SettingsView() {
                 <ColorPicker
                   value={settings.primaryColor}
                   onChange={(v) => {
-                    setSettings({ ...settings, primaryColor: v })
-                    applyPrimaryColor(v) // live preview
+                    const updated = { ...settings, primaryColor: v }
+                    setSettings(updated)
+                    applyBothColors(v, updated.secondaryColor)
                   }}
                 />
               </div>
@@ -525,8 +528,9 @@ export function SettingsView() {
                 <ColorPicker
                   value={settings.secondaryColor}
                   onChange={(v) => {
-                    setSettings({ ...settings, secondaryColor: v })
-                    applySecondaryColor(v) // live preview
+                    const updated = { ...settings, secondaryColor: v }
+                    setSettings(updated)
+                    applyBothColors(updated.primaryColor, v)
                   }}
                 />
               </div>
