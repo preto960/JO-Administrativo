@@ -145,7 +145,7 @@ const colorOptions = [
 ]
 
 export function getColorDef(value: string) {
-  return colorOptions.find(c => c.value === value) || colorOptions[0]
+  return colorOptions.find(c => c.value === value) || colorOptions[1]
 }
 
 /**

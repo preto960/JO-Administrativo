@@ -96,6 +96,22 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      // Update supplier balance and create AccountPayable
+      await tx.supplier.update({
+        where: { id: supplierId },
+        data: { balance: { increment: total } },
+      })
+      await tx.accountPayable.create({
+        data: {
+          supplierId,
+          purchaseId: newPurchase.id,
+          amount: total,
+          pendingBalance: total,
+          status: 'pendiente',
+          dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        },
+      })
+
       return newPurchase
     })
 

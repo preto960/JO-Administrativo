@@ -42,7 +42,7 @@ export function SettingsInitializer() {
           setSettings(s as AppSettings)
 
           // Apply both colors at once via <style> injection (reliable method)
-          applyBothColors(s.primaryColor || 'emerald', s.secondaryColor || 'slate')
+          applyBothColors(s.primaryColor || 'blue', s.secondaryColor || 'slate')
 
           // Apply theme (light/dark) if saved
           if (s.theme === 'dark') {
@@ -104,7 +104,7 @@ export function SettingsInitializer() {
     const observer = new MutationObserver(() => {
       const settings = useAppStore.getState().settings
       if (settings) {
-        applyBothColors(settings.primaryColor || 'emerald', settings.secondaryColor || 'slate')
+        applyBothColors(settings.primaryColor || 'blue', settings.secondaryColor || 'slate')
       }
     })
 

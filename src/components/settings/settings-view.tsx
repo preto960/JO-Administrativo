@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { api } from '@/lib/api'
+import { useAppStore, type AppSettings } from '@/stores/use-app-store'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -93,6 +94,7 @@ interface CurrencyItem {
 
 export function SettingsView() {
   const [settings, setSettings] = useState<Settings | null>(null)
+  const setAppSettings = useAppStore((s) => s.setSettings)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [fetchingRate, setFetchingRate] = useState(false)
@@ -114,6 +116,8 @@ export function SettingsView() {
     try {
       const s = await api.get<Settings>('/api/settings')
       setSettings(s)
+      // Sync to app store so POS/dashboard picks up changes immediately
+      setAppSettings(s as AppSettings)
     } catch {
       toast.error('Error al cargar configuración')
     } finally {
@@ -159,8 +163,10 @@ export function SettingsView() {
     try {
       const updated = await api.put<Settings>('/api/settings', updates)
       setSettings(updated)
+      // Sync to app store so POS/dashboard picks up changes immediately
+      setAppSettings(updated as AppSettings)
       // Re-apply colors after save to ensure they persist
-      applyBothColors(updated.primaryColor || 'emerald', updated.secondaryColor || 'slate')
+      applyBothColors(updated.primaryColor || 'blue', updated.secondaryColor || 'slate')
       toast.success('Configuración guardada')
     } catch {
       toast.error('Error al guardar configuración')
