@@ -20,7 +20,7 @@ import { toast } from 'sonner'
 const typeStyles: Record<string, string> = {
   info: 'bg-blue-100 text-blue-700 dark:bg-blue-950/30 dark:text-blue-400',
   warning: 'bg-amber-100 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400',
-  success: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400',
+  success: 'bg-primary/10 text-primary dark:bg-primary/10 dark:text-primary',
   error: 'bg-red-100 text-red-700 dark:bg-red-950/30 dark:text-red-400',
 }
 
@@ -68,7 +68,7 @@ export function NotificationBell() {
             <Button
               variant="ghost"
               size="sm"
-              className="h-6 text-xs text-emerald-600 hover:text-emerald-700"
+              className="h-6 text-xs text-primary hover:text-primary/80"
               onClick={() => markAllAsRead()}
             >
               <CheckCheck className="mr-1 h-3 w-3" />

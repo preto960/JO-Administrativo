@@ -47,7 +47,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { ALL_ROLES, getRoleLabel } from '@/lib/permissions'
-import { ColorPicker } from './color-picker'
+import { ColorPicker, applyPrimaryColor, applySecondaryColor } from './color-picker'
 
 interface Settings {
   id: string
@@ -294,7 +294,7 @@ export function SettingsView() {
                 />
               </div>
               <Button
-                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                className="bg-primary hover:bg-primary/90 text-white"
                 onClick={() => saveSettings({
                   businessName: settings.businessName,
                   rif: settings.rif,
@@ -349,14 +349,14 @@ export function SettingsView() {
                       <div className="flex items-center gap-2">
                         <Badge variant="outline">{c.code}</Badge>
                         <span className="font-medium">{c.symbol}</span>
-                        {c.isBase && <Badge className="bg-emerald-600">Base</Badge>}
+                        {c.isBase && <Badge className="bg-primary">Base</Badge>}
                       </div>
                     </div>
                   ))}
                 </div>
               </div>
               <Button
-                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                className="bg-primary hover:bg-primary/90 text-white"
                 onClick={() => saveSettings({ baseCurrencyId: settings.baseCurrencyId })}
                 disabled={saving}
               >
@@ -377,12 +377,12 @@ export function SettingsView() {
             <CardContent>
               <div className="rounded-lg border p-4">
                 <div className="flex items-center gap-3">
-                  <GitBranch className="h-5 w-5 text-emerald-600" />
+                  <GitBranch className="h-5 w-5 text-primary" />
                   <div>
                     <p className="font-medium">Sucursal Principal</p>
                     <p className="text-sm text-muted-foreground">ID: sucursal-1</p>
                   </div>
-                  <Badge className="bg-emerald-600 ml-auto">Activa</Badge>
+                  <Badge className="bg-primary ml-auto">Activa</Badge>
                 </div>
               </div>
               <p className="text-sm text-muted-foreground mt-4">
@@ -402,7 +402,7 @@ export function SettingsView() {
                   <CardTitle className="text-base">Usuarios del Sistema</CardTitle>
                   <CardDescription>Administra usuarios y permisos</CardDescription>
                 </div>
-                <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={openCreateUser}>
+                <Button size="sm" className="bg-primary hover:bg-primary/90 text-white" onClick={openCreateUser}>
                   <Plus className="mr-1 h-3.5 w-3.5" /> Nuevo
                 </Button>
               </div>
@@ -487,7 +487,7 @@ export function SettingsView() {
                 />
               </div>
               <Button
-                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                className="bg-primary hover:bg-primary/90 text-white"
                 onClick={() => saveSettings({
                   sessionDuration: settings.sessionDuration,
                   notificationsEnabled: settings.notificationsEnabled,
@@ -513,7 +513,10 @@ export function SettingsView() {
                 <Label>Color Principal</Label>
                 <ColorPicker
                   value={settings.primaryColor}
-                  onChange={(v) => setSettings({ ...settings, primaryColor: v })}
+                  onChange={(v) => {
+                    setSettings({ ...settings, primaryColor: v })
+                    applyPrimaryColor(v) // live preview
+                  }}
                 />
               </div>
               <Separator />
@@ -521,11 +524,14 @@ export function SettingsView() {
                 <Label>Color Secundario</Label>
                 <ColorPicker
                   value={settings.secondaryColor}
-                  onChange={(v) => setSettings({ ...settings, secondaryColor: v })}
+                  onChange={(v) => {
+                    setSettings({ ...settings, secondaryColor: v })
+                    applySecondaryColor(v) // live preview
+                  }}
                 />
               </div>
               <Button
-                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                className="bg-primary hover:bg-primary/90 text-white"
                 onClick={() => saveSettings({
                   primaryColor: settings.primaryColor,
                   secondaryColor: settings.secondaryColor,
@@ -581,7 +587,7 @@ export function SettingsView() {
                 <Label className="cursor-pointer">Usuario activo</Label>
               </div>
             )}
-            <Button className="w-full bg-emerald-600 hover:bg-emerald-700 text-white" onClick={saveUser} disabled={userSaving}>
+            <Button className="w-full bg-primary hover:bg-primary/90 text-white" onClick={saveUser} disabled={userSaving}>
               {userSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               {userSaving ? 'Guardando...' : editingUser ? 'Actualizar' : 'Crear Usuario'}
             </Button>

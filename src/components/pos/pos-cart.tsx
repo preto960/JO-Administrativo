@@ -72,7 +72,7 @@ export function PosCart({ onPayment }: PosCartProps) {
                       <Plus className="h-3 w-3" />
                     </Button>
                   </div>
-                  <span className="text-sm font-bold text-emerald-700 dark:text-emerald-400">
+                  <span className="text-sm font-bold text-primary dark:text-primary">
                     {item.currencySymbol}{item.lineTotal.toFixed(2)}
                   </span>
                 </div>
@@ -86,13 +86,13 @@ export function PosCart({ onPayment }: PosCartProps) {
       <div className="border-t p-3 space-y-3">
         <div className="flex items-center justify-between">
           <span className="text-sm text-muted-foreground">Total</span>
-          <span className="text-2xl font-bold text-emerald-700 dark:text-emerald-400">
+          <span className="text-2xl font-bold text-primary dark:text-primary">
             ${total.toFixed(2)}
           </span>
         </div>
         <Separator />
         <Button
-          className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
+          className="w-full bg-primary hover:bg-primary/90 text-white"
           size="lg"
           disabled={items.length === 0}
           onClick={onPayment}

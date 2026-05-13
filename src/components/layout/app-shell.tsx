@@ -16,6 +16,7 @@ import { ExpensesTable } from '@/components/expenses/expenses-table'
 import { SettingsView } from '@/components/settings/settings-view'
 import { SessionProvider } from 'next-auth/react'
 import { OnboardingTutorial } from '@/components/tutorial/onboarding-tutorial'
+import { SettingsInitializer } from '@/components/settings/settings-initializer'
 import type { AppView } from '@/stores/use-app-store'
 
 const viewComponents: Record<AppView, React.ComponentType> = {
@@ -47,6 +48,7 @@ export function AppShell() {
           </SidebarInset>
         </SidebarProvider>
         <OnboardingTutorial />
+        <SettingsInitializer />
       </ThemeProvider>
     </SessionProvider>
   )

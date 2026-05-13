@@ -131,7 +131,7 @@ export function OnboardingTutorial({ onComplete }: OnboardingTutorialProps) {
               className={cn(
                 'h-2 rounded-full transition-all',
                 i === currentStep
-                  ? 'w-6 bg-emerald-600'
+                  ? 'w-6 bg-primary'
                   : 'w-2 bg-muted-foreground/30 hover:bg-muted-foreground/50'
               )}
             />
@@ -148,7 +148,7 @@ export function OnboardingTutorial({ onComplete }: OnboardingTutorialProps) {
               Omitir
             </Button>
             <Button
-              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              className="bg-primary hover:bg-primary/90 text-white"
               onClick={handleNext}
             >
               {currentStep === steps.length - 1 ? 'Finalizar' : 'Siguiente'}

@@ -98,10 +98,10 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
 
         {success ? (
           <div className="flex flex-col items-center justify-center gap-4 py-8">
-            <div className="rounded-full bg-emerald-100 p-4 dark:bg-emerald-900/30">
-              <CheckCircle2 className="h-12 w-12 text-emerald-600" />
+            <div className="rounded-full bg-primary/10 p-4 dark:bg-primary/10">
+              <CheckCircle2 className="h-12 w-12 text-primary" />
             </div>
-            <h3 className="text-xl font-bold text-emerald-700 dark:text-emerald-400">¡Venta Exitosa!</h3>
+            <h3 className="text-xl font-bold text-primary dark:text-primary">¡Venta Exitosa!</h3>
             <p className="text-sm text-muted-foreground">Cerrando automáticamente...</p>
           </div>
         ) : (
@@ -113,13 +113,13 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
                   key={pm.value}
                   className={`flex cursor-pointer flex-col items-center gap-2 rounded-lg border-2 p-3 transition-colors ${
                     method === pm.value
-                      ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/30'
+                      ? 'border-primary bg-primary/5 dark:bg-primary/10'
                       : 'border-muted hover:border-muted-foreground/30'
                   }`}
                 >
                   <RadioGroupItem value={pm.value} className="sr-only" />
-                  <pm.icon className={`h-5 w-5 ${method === pm.value ? 'text-emerald-600' : 'text-muted-foreground'}`} />
-                  <span className={`text-xs font-medium ${method === pm.value ? 'text-emerald-700 dark:text-emerald-400' : ''}`}>
+                  <pm.icon className={`h-5 w-5 ${method === pm.value ? 'text-primary' : 'text-muted-foreground'}`} />
+                  <span className={`text-xs font-medium ${method === pm.value ? 'text-primary dark:text-primary' : ''}`}>
                     {pm.label}
                   </span>
                 </label>
@@ -139,7 +139,7 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
                 onChange={(e) => setAmount(e.target.value)}
               />
               {method === 'efectivo' && parseFloat(amount) > total && (
-                <p className="text-sm text-emerald-600 font-medium">
+                <p className="text-sm text-primary font-medium">
                   Cambio: ${(parseFloat(amount) - total).toFixed(2)}
                 </p>
               )}
@@ -160,7 +160,7 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
 
             {/* Action */}
             <Button
-              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
+              className="w-full bg-primary hover:bg-primary/90 text-white"
               size="lg"
               onClick={handlePay}
               disabled={loading}

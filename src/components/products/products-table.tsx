@@ -320,7 +320,7 @@ export function ProductsTable() {
           </div>
           <Button
             onClick={openCreate}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white"
+            className="bg-primary hover:bg-primary/90 text-white"
           >
             <Plus className="mr-2 h-4 w-4" /> Nuevo
           </Button>
@@ -330,7 +330,7 @@ export function ProductsTable() {
       {/* Summary badges */}
       <div className="flex items-center gap-3 text-sm text-muted-foreground">
         <Badge variant="secondary">{filteredProducts.length} producto{filteredProducts.length !== 1 ? 's' : ''}</Badge>
-        <Badge variant="outline" className="text-emerald-700">{activeCount} activo{activeCount !== 1 ? 's' : ''}</Badge>
+        <Badge variant="outline" className="text-primary">{activeCount} activo{activeCount !== 1 ? 's' : ''}</Badge>
         {inactiveCount > 0 && (
           <Badge variant="outline" className="text-muted-foreground">{inactiveCount} inactivo{inactiveCount !== 1 ? 's' : ''}</Badge>
         )}
@@ -417,7 +417,7 @@ export function ProductsTable() {
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-8 w-8 text-emerald-600"
+                              className="h-8 w-8 text-primary"
                               onClick={() => handleToggleActive(product)}
                               title="Reactivar"
                             >
@@ -549,7 +549,7 @@ export function ProductsTable() {
               </Select>
             </div>
             <Button
-              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
+              className="w-full bg-primary hover:bg-primary/90 text-white"
               onClick={handleSave}
               disabled={saving || !formName.trim() || !formPrice}
             >

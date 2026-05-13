@@ -101,7 +101,7 @@ export function ClientsTable() {
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input placeholder="Buscar cliente..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" />
         </div>
-        <Button onClick={openCreate} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+        <Button onClick={openCreate} className="bg-primary hover:bg-primary/90 text-white">
           <Plus className="mr-2 h-4 w-4" /> Nuevo Cliente
         </Button>
       </div>
@@ -170,7 +170,7 @@ export function ClientsTable() {
               <Label htmlFor="caddress">Dirección</Label>
               <Input id="caddress" value={formAddress} onChange={(e) => setFormAddress(e.target.value)} placeholder="Dirección" />
             </div>
-            <Button className="w-full bg-emerald-600 hover:bg-emerald-700 text-white" onClick={handleSave} disabled={saving}>
+            <Button className="w-full bg-primary hover:bg-primary/90 text-white" onClick={handleSave} disabled={saving}>
               {saving ? 'Guardando...' : 'Crear Cliente'}
             </Button>
           </div>

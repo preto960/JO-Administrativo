@@ -1,6 +1,6 @@
 'use client'
 
-import { useAppStore, type AppView } from '@/stores/use-app-store'
+import { useAppStore, type AppView, useSetting } from '@/stores/use-app-store'
 import {
   LayoutDashboard,
   ShoppingCart,
@@ -45,6 +45,8 @@ export function AppSidebar() {
   const isMobile = useIsMobile()
   const { user } = useAuth()
   const userRole = user?.role || 'cajero'
+  const businessName = useSetting('businessName')
+  const logoUrl = useSetting('logoUrl')
 
   const visibleItems = navItems.filter(item => item.roles.includes(userRole))
 
@@ -52,11 +54,15 @@ export function AppSidebar() {
     <Sidebar collapsible={isMobile ? 'offcanvas' : 'icon'}>
       <SidebarHeader className="p-4">
         <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600 text-white">
-            <Store className="h-5 w-5" />
-          </div>
+          {logoUrl ? (
+            <img src={logoUrl} alt={businessName} className="h-8 w-8 rounded-lg object-cover" />
+          ) : (
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-white">
+              <Store className="h-5 w-5" />
+            </div>
+          )}
           <div className="group-data-[collapsible=icon]:hidden">
-            <h1 className="text-lg font-bold tracking-tight text-emerald-700">JO-Administrativo</h1>
+            <h1 className="text-lg font-bold tracking-tight text-primary">{businessName}</h1>
             <p className="text-xs text-muted-foreground">ERP / Punto de Venta</p>
           </div>
         </div>

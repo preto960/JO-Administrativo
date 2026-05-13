@@ -52,7 +52,7 @@ function KpiCard({
   color?: string
 }) {
   const colorMap: Record<string, string> = {
-    emerald: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-800',
+    emerald: 'bg-primary/5 text-primary border-primary/20 dark:bg-primary/10 dark:text-primary dark:border-primary/30',
     red: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950/30 dark:text-red-400 dark:border-red-800',
     amber: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-800',
     violet: 'bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-950/30 dark:text-violet-400 dark:border-violet-800',
@@ -70,7 +70,7 @@ function KpiCard({
             <Icon className="h-5 w-5" />
             {trend && (
               trend === 'up' ? (
-                <TrendingUp className="h-3.5 w-3.5 text-emerald-600" />
+                <TrendingUp className="h-3.5 w-3.5 text-primary" />
               ) : (
                 <TrendingDown className="h-3.5 w-3.5 text-red-500" />
               )
@@ -152,8 +152,8 @@ export function FinancialDashboard() {
                   <YAxis className="text-xs" />
                   <Tooltip
                     contentStyle={{
-                      backgroundColor: 'hsl(var(--card))',
-                      border: '1px solid hsl(var(--border))',
+                      backgroundColor: 'var(--card)',
+                      border: '1px solid var(--border)',
                       borderRadius: '8px',
                       fontSize: '12px',
                     }}
@@ -184,14 +184,14 @@ export function FinancialDashboard() {
             ) : (
               data.topProducts.map((product, i) => (
                 <div key={i} className="flex items-center gap-3">
-                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-100 text-xs font-bold text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary dark:bg-primary/10 dark:text-primary">
                     {i + 1}
                   </span>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">{product.name}</p>
                     <p className="text-xs text-muted-foreground">{product.qty} uds</p>
                   </div>
-                  <span className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">
+                  <span className="text-sm font-semibold text-primary dark:text-primary">
                     ${product.revenue.toFixed(2)}
                   </span>
                 </div>
@@ -228,7 +228,7 @@ export function FinancialDashboard() {
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className="text-sm font-bold text-emerald-700 dark:text-emerald-400">
+                      <p className="text-sm font-bold text-primary dark:text-primary">
                         ${sale.total.toFixed(2)}
                       </p>
                       <Badge variant="outline" className="text-[10px]">

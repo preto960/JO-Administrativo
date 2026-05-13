@@ -171,12 +171,12 @@ export function CashRegisterView() {
       <div className="grid gap-3 grid-cols-1 sm:grid-cols-3">
         <Card>
           <CardContent className="p-4 flex items-center gap-3">
-            <div className="rounded-full bg-emerald-100 p-2 dark:bg-emerald-900/30">
-              <Wallet className="h-5 w-5 text-emerald-700 dark:text-emerald-400" />
+            <div className="rounded-full bg-primary/10 p-2 dark:bg-primary/10">
+              <Wallet className="h-5 w-5 text-primary dark:text-primary" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Caja Actual</p>
-              <p className="text-2xl font-bold text-emerald-700 dark:text-emerald-400">
+              <p className="text-2xl font-bold text-primary dark:text-primary">
                 ${currentRegister ? currentRegister.currentAmt.toFixed(2) : '0.00'}
               </p>
             </div>
@@ -191,7 +191,7 @@ export function CashRegisterView() {
               <p className="text-xs text-muted-foreground">Estado</p>
               <p className="text-lg font-bold">
                 {currentRegister ? (
-                  <Badge className="bg-emerald-600">Abierta</Badge>
+                  <Badge className="bg-primary">Abierta</Badge>
                 ) : (
                   <Badge variant="secondary">Cerrada</Badge>
                 )}
@@ -213,7 +213,7 @@ export function CashRegisterView() {
                   </Button>
                 </div>
               ) : (
-                <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white mt-1" onClick={() => setShowOpen(true)}>
+                <Button size="sm" className="bg-primary hover:bg-primary/90 text-white mt-1" onClick={() => setShowOpen(true)}>
                   <Plus className="mr-1 h-3 w-3" /> Abrir Caja
                 </Button>
               )}
@@ -284,7 +284,7 @@ export function CashRegisterView() {
               <Label htmlFor="initial">Monto Inicial</Label>
               <Input id="initial" type="number" step="0.01" value={initialAmt} onChange={(e) => setInitialAmt(e.target.value)} />
             </div>
-            <Button className="w-full bg-emerald-600 hover:bg-emerald-700 text-white" onClick={openRegister} disabled={saving}>
+            <Button className="w-full bg-primary hover:bg-primary/90 text-white" onClick={openRegister} disabled={saving}>
               {saving ? 'Abriendo...' : 'Abrir Caja'}
             </Button>
           </div>
@@ -317,7 +317,7 @@ export function CashRegisterView() {
               <Label htmlFor="mconcept">Concepto *</Label>
               <Input id="mconcept" value={moveConcept} onChange={(e) => setMoveConcept(e.target.value)} placeholder="Descripción del movimiento" />
             </div>
-            <Button className="w-full bg-emerald-600 hover:bg-emerald-700 text-white" onClick={addMovement} disabled={saving}>
+            <Button className="w-full bg-primary hover:bg-primary/90 text-white" onClick={addMovement} disabled={saving}>
               {saving ? 'Registrando...' : 'Registrar'}
             </Button>
           </div>

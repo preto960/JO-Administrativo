@@ -63,7 +63,7 @@ export function AppHeader() {
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="relative h-8 w-8 rounded-full">
               <Avatar className="h-8 w-8">
-                <AvatarFallback className="bg-emerald-100 text-emerald-700 text-xs">
+                <AvatarFallback className="bg-primary/10 text-primary text-xs">
                   {initials}
                 </AvatarFallback>
               </Avatar>
@@ -74,7 +74,7 @@ export function AppHeader() {
               <div className="flex flex-col space-y-1">
                 <p className="text-sm font-medium">{user?.name || 'Usuario'}</p>
                 <p className="text-xs text-muted-foreground">{user?.email || 'usuario@erp.com'}</p>
-                <p className="text-xs text-emerald-600 capitalize">{user?.role || 'cajero'}</p>
+                <p className="text-xs text-primary capitalize">{user?.role || 'cajero'}</p>
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />

@@ -105,7 +105,7 @@ export function ExpensesTable() {
             Total gastos: <span className="font-bold text-red-600">${totalGastos.toFixed(2)}</span>
           </p>
         </div>
-        <Button onClick={() => setShowCreate(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+        <Button onClick={() => setShowCreate(true)} className="bg-primary hover:bg-primary/90 text-white">
           <Plus className="mr-2 h-4 w-4" /> Nuevo Gasto
         </Button>
       </div>
@@ -184,7 +184,7 @@ export function ExpensesTable() {
               <Label htmlFor="eamt">Monto *</Label>
               <Input id="eamt" type="number" step="0.01" value={formAmount} onChange={(e) => setFormAmount(e.target.value)} />
             </div>
-            <Button className="w-full bg-emerald-600 hover:bg-emerald-700 text-white" onClick={handleCreate} disabled={saving}>
+            <Button className="w-full bg-primary hover:bg-primary/90 text-white" onClick={handleCreate} disabled={saving}>
               {saving ? 'Registrando...' : 'Registrar Gasto'}
             </Button>
           </div>

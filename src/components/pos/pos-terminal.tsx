@@ -130,7 +130,7 @@ export function PosTerminal() {
                 <Button variant="outline" size="icon" className="relative h-10 w-10 shrink-0">
                   <ShoppingCart className="h-4 w-4" />
                   {itemCount > 0 && (
-                    <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-600 text-[10px] font-bold text-white">
+                    <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-white">
                       {itemCount}
                     </span>
                   )}
@@ -153,7 +153,7 @@ export function PosTerminal() {
         <div className="flex gap-2 flex-wrap">
           <Badge
             variant={categoryFilter === '' ? 'default' : 'outline'}
-            className="cursor-pointer hover:bg-emerald-50 hover:text-emerald-700"
+            className="cursor-pointer hover:bg-primary/5 hover:text-primary"
             onClick={() => setCategoryFilter('')}
           >
             Todos
@@ -162,7 +162,7 @@ export function PosTerminal() {
             <Badge
               key={cat.id}
               variant={categoryFilter === cat.name ? 'default' : 'outline'}
-              className="cursor-pointer hover:bg-emerald-50 hover:text-emerald-700"
+              className="cursor-pointer hover:bg-primary/5 hover:text-primary"
               onClick={() => setCategoryFilter(categoryFilter === cat.name ? '' : cat.name)}
             >
               {cat.name}
@@ -184,10 +184,10 @@ export function PosTerminal() {
                 <button
                   key={product.id}
                   onClick={() => handleAddProduct(product)}
-                  className="group relative flex flex-col items-start gap-1 rounded-lg border bg-card p-3 text-left transition-all hover:border-emerald-300 hover:shadow-md hover:bg-emerald-50/50 dark:hover:bg-emerald-950/20"
+                  className="group relative flex flex-col items-start gap-1 rounded-lg border bg-card p-3 text-left transition-all hover:border-primary/30 hover:shadow-md hover:bg-primary/5 dark:hover:bg-primary/10"
                 >
                   <div className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-600 text-white text-xs">+</span>
+                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary text-white text-xs">+</span>
                   </div>
                   <span className="text-sm font-medium leading-tight line-clamp-2">
                     {product.name}
@@ -196,7 +196,7 @@ export function PosTerminal() {
                     {product.sku || 'Sin SKU'}
                   </span>
                   <div className="mt-auto flex items-center justify-between w-full">
-                    <span className="text-base font-bold text-emerald-700 dark:text-emerald-400">
+                    <span className="text-base font-bold text-primary dark:text-primary">
                       {product.currency.symbol}{product.price.toFixed(2)}
                     </span>
                     <span className="text-[10px] text-muted-foreground">
