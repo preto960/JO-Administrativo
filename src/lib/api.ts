@@ -2,12 +2,13 @@ const BASE = ''
 
 export async function fetcher<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${url}`, {
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     ...options,
   })
   if (!res.ok) {
     const error = await res.json().catch(() => ({ message: 'Error de servidor' }))
-    throw new Error(error.message || `Error ${res.status}`)
+    throw new Error(error.error || error.message || `Error ${res.status}`)
   }
   return res.json()
 }

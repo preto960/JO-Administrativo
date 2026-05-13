@@ -110,20 +110,19 @@ export function SettingsView() {
   const [userActive, setUserActive] = useState(true)
 
   const fetchSettings = useCallback(async () => {
+    // Fetch settings independently — this is the critical load
     try {
-      const [s, u, c] = await Promise.all([
-        api.get<Settings>('/api/settings'),
-        api.get<UserItem[]>('/api/users'),
-        api.get<CurrencyItem[]>('/api/currencies'),
-      ])
+      const s = await api.get<Settings>('/api/settings')
       setSettings(s)
-      setUsers(u)
-      setCurrencies(c)
     } catch {
       toast.error('Error al cargar configuración')
     } finally {
       setLoading(false)
     }
+
+    // Fetch users and currencies in background (non-blocking)
+    api.get<UserItem[]>('/api/users').then(setUsers).catch(() => {})
+    api.get<CurrencyItem[]>('/api/currencies').then(setCurrencies).catch(() => {})
   }, [])
 
   // Auto-fetch BCV rates on page load
