@@ -9,6 +9,7 @@ export type AppView =
   | 'suppliers'
   | 'cash'
   | 'expenses'
+  | 'settings'
 
 interface AppState {
   activeView: AppView

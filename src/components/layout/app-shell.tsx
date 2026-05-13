@@ -13,6 +13,9 @@ import { ClientsTable } from '@/components/clients/clients-table'
 import { SuppliersView } from '@/components/clients/suppliers-view'
 import { CashRegisterView } from '@/components/cash/cash-register-view'
 import { ExpensesTable } from '@/components/expenses/expenses-table'
+import { SettingsView } from '@/components/settings/settings-view'
+import { SessionProvider } from 'next-auth/react'
+import { OnboardingTutorial } from '@/components/tutorial/onboarding-tutorial'
 import type { AppView } from '@/stores/use-app-store'
 
 const viewComponents: Record<AppView, React.ComponentType> = {
@@ -24,6 +27,7 @@ const viewComponents: Record<AppView, React.ComponentType> = {
   suppliers: SuppliersView,
   cash: CashRegisterView,
   expenses: ExpensesTable,
+  settings: SettingsView,
 }
 
 export function AppShell() {
@@ -31,16 +35,19 @@ export function AppShell() {
   const ActiveComponent = viewComponents[activeView] || FinancialDashboard
 
   return (
-    <ThemeProvider attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange>
-      <SidebarProvider>
-        <AppSidebar />
-        <SidebarInset>
-          <AppHeader />
-          <main className="flex-1 overflow-auto p-4 md:p-6">
-            <ActiveComponent />
-          </main>
-        </SidebarInset>
-      </SidebarProvider>
-    </ThemeProvider>
+    <SessionProvider>
+      <ThemeProvider attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange>
+        <SidebarProvider>
+          <AppSidebar />
+          <SidebarInset>
+            <AppHeader />
+            <main className="flex-1 overflow-auto p-3 md:p-4 lg:p-6">
+              <ActiveComponent />
+            </main>
+          </SidebarInset>
+        </SidebarProvider>
+        <OnboardingTutorial />
+      </ThemeProvider>
+    </SessionProvider>
   )
 }

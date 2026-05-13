@@ -6,15 +6,16 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const branchId = searchParams.get('branchId') || 'sucursal-1'
 
-    const openRegister = await db.cashRegister.findFirst({
-      where: { branchId, status: 'abierta' },
+    const registers = await db.cashRegister.findMany({
+      where: { branchId },
+      orderBy: { openingDate: 'desc' },
       include: {
         user: { select: { id: true, name: true } },
         _count: { select: { sales: true, movements: true } },
       },
     })
 
-    return NextResponse.json(openRegister || null)
+    return NextResponse.json(registers)
   } catch (error) {
     return NextResponse.json({ error: 'Error al obtener caja' }, { status: 500 })
   }

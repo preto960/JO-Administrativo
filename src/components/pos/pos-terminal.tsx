@@ -6,9 +6,12 @@ import { PosCart } from './pos-cart'
 import { PosPaymentModal } from './pos-payment-modal'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Search, Plus } from 'lucide-react'
+import { Drawer, DrawerTrigger, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription } from '@/components/ui/drawer'
+import { Search, ShoppingCart } from 'lucide-react'
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { toast } from 'sonner'
 
 interface ProductWithInventory {
@@ -32,11 +35,14 @@ interface Category {
 
 export function PosTerminal() {
   const { addItem, searchQuery, setSearchQuery, categoryFilter, setCategoryFilter } = usePosStore()
+  const { items, getTotal, getItemCount } = usePosStore()
   const [products, setProducts] = useState<ProductWithInventory[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [showPayment, setShowPayment] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [cartOpen, setCartOpen] = useState(false)
   const searchRef = useRef<HTMLInputElement>(null)
+  const isMobile = useIsMobile()
 
   useEffect(() => {
     Promise.all([
@@ -92,20 +98,55 @@ export function PosTerminal() {
     })
   }
 
+  const itemCount = getItemCount()
+  const total = getTotal()
+
+  const cartContent = (
+    <PosCart onPayment={() => {
+      setCartOpen(false)
+      setShowPayment(true)
+    }} />
+  )
+
   return (
-    <div className="flex h-[calc(100vh-8rem)] gap-4">
+    <div className="flex flex-col md:flex-row h-[calc(100vh-7rem)] md:h-[calc(100vh-8rem)] gap-3 md:gap-4">
       {/* Product Grid */}
-      <div className="flex flex-1 flex-col gap-3">
-        {/* Search */}
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            ref={searchRef}
-            placeholder="Buscar producto (F2)... "
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
-          />
+      <div className="flex flex-1 flex-col gap-3 min-h-0">
+        {/* Search + Mobile Cart Toggle */}
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              ref={searchRef}
+              placeholder="Buscar producto (F2)... "
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+          {isMobile && (
+            <Drawer open={cartOpen} onOpenChange={setCartOpen}>
+              <DrawerTrigger asChild>
+                <Button variant="outline" size="icon" className="relative h-10 w-10 shrink-0">
+                  <ShoppingCart className="h-4 w-4" />
+                  {itemCount > 0 && (
+                    <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-600 text-[10px] font-bold text-white">
+                      {itemCount}
+                    </span>
+                  )}
+                </Button>
+              </DrawerTrigger>
+              <DrawerContent>
+                <DrawerHeader>
+                  <DrawerTitle>Carrito</DrawerTitle>
+                  <DrawerDescription>{itemCount} productos · Total: ${total.toFixed(2)}</DrawerDescription>
+                </DrawerHeader>
+                <div className="px-4 pb-4 overflow-auto max-h-[60vh]">
+                  {cartContent}
+                </div>
+              </DrawerContent>
+            </Drawer>
+          )}
         </div>
 
         {/* Category Pills */}
@@ -146,7 +187,7 @@ export function PosTerminal() {
                   className="group relative flex flex-col items-start gap-1 rounded-lg border bg-card p-3 text-left transition-all hover:border-emerald-300 hover:shadow-md hover:bg-emerald-50/50 dark:hover:bg-emerald-950/20"
                 >
                   <div className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Plus className="h-4 w-4 text-emerald-600" />
+                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-600 text-white text-xs">+</span>
                   </div>
                   <span className="text-sm font-medium leading-tight line-clamp-2">
                     {product.name}
@@ -169,8 +210,8 @@ export function PosTerminal() {
         </ScrollArea>
       </div>
 
-      {/* Cart */}
-      <PosCart onPayment={() => setShowPayment(true)} />
+      {/* Desktop Cart - hidden on mobile */}
+      {!isMobile && cartContent}
 
       {/* Payment Modal */}
       {showPayment && <PosPaymentModal onClose={() => setShowPayment(false)} />}

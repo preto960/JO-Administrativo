@@ -168,7 +168,7 @@ export function CashRegisterView() {
   return (
     <div className="space-y-4">
       {/* Summary Cards */}
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-3 grid-cols-1 sm:grid-cols-3">
         <Card>
           <CardContent className="p-4 flex items-center gap-3">
             <div className="rounded-full bg-emerald-100 p-2 dark:bg-emerald-900/30">
@@ -235,7 +235,7 @@ export function CashRegisterView() {
                   <TableHead>Apertura</TableHead>
                   <TableHead>Cajero</TableHead>
                   <TableHead className="text-right">Inicial</TableHead>
-                  <TableHead className="text-right">Actual</TableHead>
+                  <TableHead className="text-right hidden sm:table-cell">Actual</TableHead>
                   <TableHead className="text-right">Ventas</TableHead>
                   <TableHead>Estado</TableHead>
                 </TableRow>
@@ -248,7 +248,7 @@ export function CashRegisterView() {
                     </TableCell>
                     <TableCell className="font-medium">{reg.user.name}</TableCell>
                     <TableCell className="text-right">${reg.initialAmt.toFixed(2)}</TableCell>
-                    <TableCell className="text-right font-semibold">${reg.currentAmt.toFixed(2)}</TableCell>
+                    <TableCell className="text-right font-semibold hidden sm:table-cell">${reg.currentAmt.toFixed(2)}</TableCell>
                     <TableCell className="text-right">
                       <Badge variant="outline">{reg._count.sales}</Badge>
                     </TableCell>
@@ -274,7 +274,7 @@ export function CashRegisterView() {
 
       {/* Open Dialog */}
       <Dialog open={showOpen} onOpenChange={setShowOpen}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-[90vw]">
           <DialogHeader>
             <DialogTitle>Abrir Caja</DialogTitle>
             <DialogDescription>Ingresa el monto inicial para abrir la caja</DialogDescription>
@@ -293,7 +293,7 @@ export function CashRegisterView() {
 
       {/* Movement Dialog */}
       <Dialog open={showMovement} onOpenChange={setShowMovement}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-[90vw]">
           <DialogHeader>
             <DialogTitle>Registrar Movimiento</DialogTitle>
             <DialogDescription>Registra una entrada o salida de caja</DialogDescription>
@@ -326,7 +326,7 @@ export function CashRegisterView() {
 
       {/* Close Dialog */}
       <Dialog open={showClose} onOpenChange={setShowClose}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-[90vw]">
           <DialogHeader>
             <DialogTitle>Cerrar Caja</DialogTitle>
             <DialogDescription>Confirma el monto real en caja para cerrar</DialogDescription>

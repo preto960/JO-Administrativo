@@ -26,23 +26,30 @@ import {
   SidebarRail,
   SidebarFooter,
 } from '@/components/ui/sidebar'
+import { useIsMobile } from '@/hooks/use-mobile'
+import { useAuth } from '@/hooks/use-auth'
 
-const navItems: { view: AppView; label: string; icon: React.ElementType }[] = [
-  { view: 'pos', label: 'Punto de Venta', icon: ShoppingCart },
-  { view: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { view: 'products', label: 'Productos', icon: Package },
-  { view: 'purchases', label: 'Compras', icon: Truck },
-  { view: 'clients', label: 'Clientes', icon: Users },
-  { view: 'suppliers', label: 'Proveedores', icon: Building2 },
-  { view: 'cash', label: 'Caja', icon: Wallet },
-  { view: 'expenses', label: 'Gastos', icon: Receipt },
+const navItems: { view: AppView; label: string; icon: React.ElementType; roles: string[] }[] = [
+  { view: 'pos', label: 'Punto de Venta', icon: ShoppingCart, roles: ['admin', 'gerente', 'cajero', 'vendedor'] },
+  { view: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['admin', 'gerente'] },
+  { view: 'products', label: 'Productos', icon: Package, roles: ['admin', 'gerente', 'vendedor'] },
+  { view: 'purchases', label: 'Compras', icon: Truck, roles: ['admin', 'gerente'] },
+  { view: 'clients', label: 'Clientes', icon: Users, roles: ['admin', 'gerente', 'vendedor'] },
+  { view: 'suppliers', label: 'Proveedores', icon: Building2, roles: ['admin', 'gerente'] },
+  { view: 'cash', label: 'Caja', icon: Wallet, roles: ['admin', 'gerente', 'cajero'] },
+  { view: 'expenses', label: 'Gastos', icon: Receipt, roles: ['admin', 'gerente'] },
 ]
 
 export function AppSidebar() {
   const { activeView, setActiveView } = useAppStore()
+  const isMobile = useIsMobile()
+  const { user } = useAuth()
+  const userRole = user?.role || 'cajero'
+
+  const visibleItems = navItems.filter(item => item.roles.includes(userRole))
 
   return (
-    <Sidebar collapsible="icon">
+    <Sidebar collapsible={isMobile ? 'offcanvas' : 'icon'}>
       <SidebarHeader className="p-4">
         <div className="flex items-center gap-2">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600 text-white">
@@ -59,7 +66,7 @@ export function AppSidebar() {
           <SidebarGroupLabel>Menú Principal</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {navItems.map((item) => (
+              {visibleItems.map((item) => (
                 <SidebarMenuItem key={item.view}>
                   <SidebarMenuButton
                     isActive={activeView === item.view}
@@ -76,14 +83,20 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
       <SidebarFooter>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton tooltip="Configuración">
-              <Settings className="h-4 w-4" />
-              <span>Configuración</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
+        {(userRole === 'admin') && (
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                tooltip="Configuración"
+                isActive={activeView === 'settings'}
+                onClick={() => setActiveView('settings')}
+              >
+                <Settings className="h-4 w-4" />
+                <span>Configuración</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        )}
         <div className="px-4 pb-2 group-data-[collapsible=icon]:hidden">
           <p className="text-[10px] text-muted-foreground">v1.0.0</p>
         </div>
