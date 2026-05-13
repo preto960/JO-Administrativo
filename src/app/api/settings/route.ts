@@ -21,6 +21,11 @@ export async function GET() {
           primaryColor: 'emerald',
           secondaryColor: 'slate',
           theme: 'light',
+          referenceCurrency: 'USD',
+          usdRate: 0,
+          eurRate: 0,
+          customRate: 0,
+          exchangeRate: 36.50,
         },
       })
     }

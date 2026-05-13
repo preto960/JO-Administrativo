@@ -20,6 +20,9 @@ export interface AppSettings {
   address: string
   baseCurrencyId: string
   referenceCurrency: string
+  usdRate: number
+  eurRate: number
+  customRate: number
   exchangeRate: number
   sessionDuration: number
   notificationsEnabled: boolean
@@ -44,6 +47,9 @@ const defaultSettings: AppSettings = {
   address: '',
   baseCurrencyId: '',
   referenceCurrency: 'USD',
+  usdRate: 0,
+  eurRate: 0,
+  customRate: 0,
   exchangeRate: 36.50,
   sessionDuration: 28800,
   notificationsEnabled: true,

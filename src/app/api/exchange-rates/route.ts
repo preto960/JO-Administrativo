@@ -386,15 +386,25 @@ export async function GET() {
       await upsertRate(eurCurrency.id, vesCurrency.id, eurRate.rate)
     }
 
-    // Update Settings with the reference currency rate
+    // Update Settings with both USD and EUR reference rates
     const settings = await db.settings.findFirst()
     if (settings) {
+      const updateData: Record<string, number> = {}
+      if (usdRate) updateData.usdRate = usdRate.rate
+      if (eurRate) updateData.eurRate = eurRate.rate
+
+      // Compute the effective exchange rate:
+      // If customRate is set (>0), use it; otherwise use the selected reference currency rate
       const refCurrency = settings.referenceCurrency || 'USD'
       const refRate = rates.find(r => r.currency === refCurrency) || usdRate
-      if (refRate) {
+      if (refRate && !settings.customRate) {
+        updateData.exchangeRate = refRate.rate
+      }
+
+      if (Object.keys(updateData).length > 0) {
         await db.settings.update({
           where: { id: settings.id },
-          data: { exchangeRate: refRate.rate },
+          data: updateData,
         })
       }
     }

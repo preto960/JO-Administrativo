@@ -12,7 +12,18 @@ import {
 } from '@/components/ui/table'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Building2 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog'
+import { Building2, Plus, Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
 
 interface Supplier {
   id: string
@@ -28,13 +39,61 @@ interface Supplier {
 export function SuppliersView() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [loading, setLoading] = useState(true)
+  const [showDialog, setShowDialog] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [name, setName] = useState('')
+  const [rif, setRif] = useState('')
+  const [phone, setPhone] = useState('')
+  const [email, setEmail] = useState('')
+  const [address, setAddress] = useState('')
 
-  useEffect(() => {
-    api.get<Supplier[]>('/api/suppliers')
-      .then(setSuppliers)
-      .catch(() => {})
-      .finally(() => setLoading(false))
-  }, [])
+  const fetchSuppliers = async () => {
+    setLoading(true)
+    try {
+      const data = await api.get<Supplier[]>('/api/suppliers')
+      setSuppliers(data)
+    } catch {
+      toast.error('Error al cargar proveedores')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { fetchSuppliers() }, [])
+
+  const openCreateDialog = () => {
+    setName('')
+    setRif('')
+    setPhone('')
+    setEmail('')
+    setAddress('')
+    setShowDialog(true)
+  }
+
+  const handleSave = async () => {
+    if (!name.trim()) {
+      toast.error('El nombre del proveedor es obligatorio')
+      return
+    }
+    setSaving(true)
+    try {
+      await api.post('/api/suppliers', {
+        name: name.trim(),
+        rif: rif.trim() || null,
+        phone: phone.trim() || null,
+        email: email.trim() || null,
+        address: address.trim() || null,
+      })
+      toast.success('Proveedor creado exitosamente')
+      setShowDialog(false)
+      fetchSuppliers()
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Error al crear proveedor'
+      toast.error(msg)
+    } finally {
+      setSaving(false)
+    }
+  }
 
   if (loading) {
     return <div className="h-64 rounded-lg bg-muted animate-pulse" />
@@ -42,6 +101,16 @@ export function SuppliersView() {
 
   return (
     <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold">Proveedores</h2>
+          <p className="text-sm text-muted-foreground">Gestiona los proveedores de tu negocio</p>
+        </div>
+        <Button size="sm" className="bg-primary hover:bg-primary/90 text-white" onClick={openCreateDialog}>
+          <Plus className="mr-1 h-3.5 w-3.5" /> Nuevo Proveedor
+        </Button>
+      </div>
+
       <Card>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
@@ -86,6 +155,69 @@ export function SuppliersView() {
           </div>
         </CardContent>
       </Card>
+
+      {/* New Supplier Dialog */}
+      <Dialog open={showDialog} onOpenChange={setShowDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Nuevo Proveedor</DialogTitle>
+            <DialogDescription>Registra un nuevo proveedor para tu negocio</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Nombre *</Label>
+              <Input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Nombre del proveedor"
+              />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label>RIF</Label>
+                <Input
+                  value={rif}
+                  onChange={(e) => setRif(e.target.value)}
+                  placeholder="J-00000000-0"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Teléfono</Label>
+                <Input
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="+58 212-0000000"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Email</Label>
+              <Input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="proveedor@ejemplo.com"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Dirección</Label>
+              <Input
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                placeholder="Dirección del proveedor"
+              />
+            </div>
+            <Button
+              className="w-full bg-primary hover:bg-primary/90 text-white"
+              onClick={handleSave}
+              disabled={saving}
+            >
+              {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              {saving ? 'Guardando...' : 'Crear Proveedor'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

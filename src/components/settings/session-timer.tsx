@@ -15,6 +15,7 @@ export function SessionTimer() {
   const [settings, setSettings] = useState<SystemSettings | null>(null)
   const [remaining, setRemaining] = useState<number | null>(null)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const loadedRef = useRef(false)
 
   useEffect(() => {
     // Calculate approximate remaining time based on session token
@@ -26,9 +27,6 @@ export function SessionTimer() {
 
       if (!settings) return
 
-      // We approximate based on when the page loaded
-      // In a real app, we'd decode the JWT exp
-      // For now we use the settings session duration minus elapsed time
       const exp = (session as Record<string, unknown>).expires as string
       if (exp) {
         const expiresAt = new Date(exp).getTime()
@@ -40,15 +38,19 @@ export function SessionTimer() {
       }
     }
 
-    api.get<SystemSettings>('/api/settings')
-      .then(setSettings)
-      .catch(() => {
-        setSettings({ sessionDuration: 28800 })
-      })
+    // Only fetch settings once (prevent infinite loop)
+    if (!loadedRef.current) {
+      loadedRef.current = true
+      api.get<SystemSettings>('/api/settings')
+        .then(setSettings)
+        .catch(() => {
+          setSettings({ sessionDuration: 28800 })
+        })
+    }
 
     calculateRemaining()
 
-    intervalRef.current = setInterval(calculateRemaining, 60000) // Update every minute
+    intervalRef.current = setInterval(calculateRemaining, 60000)
 
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current)

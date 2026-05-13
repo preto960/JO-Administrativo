@@ -21,6 +21,9 @@ interface SettingsData {
   address: string
   baseCurrencyId: string
   referenceCurrency: string
+  usdRate: number
+  eurRate: number
+  customRate: number
   exchangeRate: number
 }
 
@@ -58,15 +61,21 @@ export function SettingsInitializer() {
         api.get<{ rates: Array<{ currency: string; rate: number; source: string }> }>('/api/exchange-rates')
           .then((data) => {
             if (data?.rates && data.rates.length > 0) {
-              // Update settings with the new exchange rate
               const currentSettings = useAppStore.getState().settings
-              const refCurrency = currentSettings?.referenceCurrency || 'USD'
-              const refRate = data.rates.find(r => r.currency === refCurrency) || data.rates[0]
-              if (refRate && currentSettings) {
-                setSettings({
-                  ...currentSettings,
-                  exchangeRate: refRate.rate,
-                })
+              if (!currentSettings) return
+              const usdRate = data.rates.find(r => r.currency === 'USD')
+              const eurRate = data.rates.find(r => r.currency === 'EUR')
+              const updates: Partial<AppSettings> = {}
+              if (usdRate) updates.usdRate = usdRate.rate
+              if (eurRate) updates.eurRate = eurRate.rate
+              // Update effective rate only if no custom rate is set
+              if (!currentSettings.customRate) {
+                const refCurrency = currentSettings.referenceCurrency || 'USD'
+                const refRate = data.rates.find(r => r.currency === refCurrency) || usdRate
+                if (refRate) updates.exchangeRate = refRate.rate
+              }
+              if (Object.keys(updates).length > 0) {
+                setSettings({ ...currentSettings, ...updates })
               }
             }
           })

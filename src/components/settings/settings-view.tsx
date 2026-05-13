@@ -63,6 +63,9 @@ interface Settings {
   email: string
   baseCurrencyId: string
   referenceCurrency: string
+  usdRate: number
+  eurRate: number
+  customRate: number
   exchangeRate: number
   sessionDuration: number
   notificationsEnabled: boolean
@@ -130,9 +133,18 @@ export function SettingsView() {
       if (data?.rates && data.rates.length > 0) {
         setSettings(prev => {
           if (!prev) return prev
-          const refCurrency = prev.referenceCurrency || 'USD'
-          const refRate = data.rates.find(r => r.currency === refCurrency) || data.rates[0]
-          return { ...prev, exchangeRate: refRate.rate }
+          const usdRate = data.rates.find(r => r.currency === 'USD')
+          const eurRate = data.rates.find(r => r.currency === 'EUR')
+          const updates: Record<string, number> = {}
+          if (usdRate) updates.usdRate = usdRate.rate
+          if (eurRate) updates.eurRate = eurRate.rate
+          // Update effective rate only if no custom rate
+          if (!prev.customRate) {
+            const refCurrency = prev.referenceCurrency || 'USD'
+            const refRate = data.rates.find(r => r.currency === refCurrency) || usdRate
+            if (refRate) updates.exchangeRate = refRate.rate
+          }
+          return { ...prev, ...updates }
         })
       }
     } catch {
@@ -345,18 +357,99 @@ export function SettingsView() {
         {/* ── Moneda Tab ─────────────────────────────────── */}
         <TabsContent value="moneda">
           <div className="space-y-4">
-            {/* Reference Currency & Exchange Rate */}
+            {/* Tasas de Referencia BCV */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Tasa de Cambio</CardTitle>
-                <CardDescription>Moneda de referencia y tasa del día (BCV)</CardDescription>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="text-base">Tasas de Referencia (BCV)</CardTitle>
+                    <CardDescription>Tasas obtenidas del Banco Central de Venezuela</CardDescription>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      setFetchingRate(true)
+                      try {
+                        const data = await api.get<{ rates: Array<{ currency: string; rate: number; source: string }> }>('/api/exchange-rates')
+                        if (data?.rates && data.rates.length > 0) {
+                          const usdRate = data.rates.find(r => r.currency === 'USD')
+                          const eurRate = data.rates.find(r => r.currency === 'EUR')
+                          const updates: Record<string, number> = {}
+                          if (usdRate) updates.usdRate = usdRate.rate
+                          if (eurRate) updates.eurRate = eurRate.rate
+                          if (!settings.customRate) {
+                            const refCurrency = settings.referenceCurrency || 'USD'
+                            const refRate = data.rates.find(r => r.currency === refCurrency) || usdRate
+                            if (refRate) updates.exchangeRate = refRate.rate
+                          }
+                          setSettings({ ...settings, ...updates })
+                          toast.success('Tasas actualizadas desde el BCV')
+                        } else {
+                          toast.error('No se pudieron obtener las tasas')
+                        }
+                      } catch {
+                        toast.error('Error al obtener tasas del BCV')
+                      } finally {
+                        setFetchingRate(false)
+                      }
+                    }}
+                    disabled={fetchingRate}
+                  >
+                    <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${fetchingRate ? 'animate-spin' : ''}`} />
+                    Actualizar
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {/* USD Rate */}
+                  <div className="rounded-lg border p-4 space-y-1">
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                      <span className="text-base">$</span>
+                      USD - Dólar Estadounidense
+                    </div>
+                    <p className="text-2xl font-bold text-primary">
+                      {(settings.usdRate || 0).toFixed(2)} <span className="text-sm font-normal text-muted-foreground">Bs.</span>
+                    </p>
+                    <p className="text-xs text-muted-foreground">1 USD = {(settings.usdRate || 0).toFixed(2)} VES</p>
+                  </div>
+
+                  {/* EUR Rate */}
+                  <div className="rounded-lg border p-4 space-y-1">
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                      <span className="text-base">€</span>
+                      EUR - Euro
+                    </div>
+                    <p className="text-2xl font-bold text-primary">
+                      {(settings.eurRate || 0).toFixed(2)} <span className="text-sm font-normal text-muted-foreground">Bs.</span>
+                    </p>
+                    <p className="text-xs text-muted-foreground">1 EUR = {(settings.eurRate || 0).toFixed(2)} VES</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Moneda de Referencia y Tasa Personalizada */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Moneda de Referencia para Precios</CardTitle>
+                <CardDescription>Selecciona la moneda base para registrar precios y una tasa personalizada (opcional)</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
                   <Label>Moneda de Referencia</Label>
                   <Select
                     value={settings.referenceCurrency || 'USD'}
-                    onValueChange={(v) => setSettings({ ...settings, referenceCurrency: v })}
+                    onValueChange={(v) => {
+                      const updated = { ...settings, referenceCurrency: v }
+                      // Recalculate effective rate
+                      if (!updated.customRate) {
+                        const refRate = v === 'EUR' ? updated.eurRate : updated.usdRate
+                        updated.exchangeRate = refRate || 0
+                      }
+                      setSettings(updated)
+                    }}
                   >
                     <SelectTrigger>
                       <SelectValue />
@@ -374,59 +467,47 @@ export function SettingsView() {
                 <Separator />
 
                 <div className="space-y-2">
-                  <Label>Tasa de Cambio (1 {settings.referenceCurrency || 'USD'} = ? Bs.)</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      type="number"
-                      step="0.01"
-                      value={settings.exchangeRate?.toString() || ''}
-                      onChange={(e) => setSettings({
-                        ...settings,
-                        exchangeRate: parseFloat(e.target.value) || 0,
-                      })}
-                    />
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={async () => {
-                        setFetchingRate(true)
-                        try {
-                          const data = await api.get<{ rates: Array<{ currency: string; rate: number; source: string }> }>('/api/exchange-rates')
-                          const rate = data.rates?.find(r => r.currency === (settings.referenceCurrency || 'USD'))
-                          if (rate) {
-                            setSettings({ ...settings, exchangeRate: rate.rate })
-                            toast.success(`Tasa actualizada desde ${rate.source}: ${rate.rate} Bs.`)
-                          } else {
-                            toast.error('No se encontró la tasa para la moneda seleccionada')
-                          }
-                        } catch {
-                          toast.error('Error al obtener tasa del BCV')
-                        } finally {
-                          setFetchingRate(false)
-                        }
-                      }}
-                      disabled={fetchingRate}
-                      title="Obtener tasa del BCV"
-                    >
-                      <RefreshCw className={`h-4 w-4 ${fetchingRate ? 'animate-spin' : ''}`} />
-                    </Button>
-                  </div>
+                  <Label>Tasa Personalizada (opcional)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    placeholder="Dejar vacío para usar la tasa del BCV"
+                    value={settings.customRate > 0 ? settings.customRate.toString() : ''}
+                    onChange={(e) => {
+                      const customRate = parseFloat(e.target.value) || 0
+                      const updated = { ...settings, customRate }
+                      // Recalculate effective rate
+                      if (customRate > 0) {
+                        updated.exchangeRate = customRate
+                      } else {
+                        const refCurrency = updated.referenceCurrency || 'USD'
+                        updated.exchangeRate = refCurrency === 'EUR'
+                          ? (updated.eurRate || 0)
+                          : (updated.usdRate || 0)
+                      }
+                      setSettings(updated)
+                    }}
+                  />
                   <p className="text-xs text-muted-foreground">
-                    Tasa obtenida automáticamente del Banco Central de Venezuela. Presione el botón de recarga para actualizar manualmente.
+                    Si ingresas un valor aquí, se usará esta tasa en lugar de la del BCV para calcular los precios.
                   </p>
                 </div>
 
+                <Separator />
+
                 <div className="rounded-lg border bg-muted/50 p-4 space-y-2">
                   <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">Referencia:</span>
-                    <span className="font-medium">{settings.referenceCurrency || 'USD'}</span>
+                    <span className="text-muted-foreground">Tasa efectiva en uso:</span>
+                    <span className="font-bold text-primary">{(settings.exchangeRate || 0).toFixed(2)} Bs.</span>
                   </div>
                   <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">Tasa:</span>
-                    <span className="font-medium">{(settings.exchangeRate || 0).toFixed(2)} Bs.</span>
+                    <span className="text-muted-foreground">Fuente:</span>
+                    <span className="font-medium">
+                      {settings.customRate > 0 ? 'Tasa personalizada' : `BCV - ${settings.referenceCurrency || 'USD'}`}
+                    </span>
                   </div>
                   <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">Ejemplo $10.00:</span>
+                    <span className="text-muted-foreground">Ejemplo 10.00 {settings.referenceCurrency || 'USD'}:</span>
                     <span className="font-bold text-primary">
                       {(10 * (settings.exchangeRate || 0)).toFixed(2)} Bs.
                     </span>
@@ -437,6 +518,9 @@ export function SettingsView() {
                   className="bg-primary hover:bg-primary/90 text-white"
                   onClick={() => saveSettings({
                     referenceCurrency: settings.referenceCurrency,
+                    usdRate: settings.usdRate,
+                    eurRate: settings.eurRate,
+                    customRate: settings.customRate,
                     exchangeRate: settings.exchangeRate,
                   })}
                   disabled={saving}
