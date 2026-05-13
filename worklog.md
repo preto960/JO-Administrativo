@@ -29,3 +29,28 @@ Stage Summary:
 - Colors persist across page reloads
 - Business name and logo update dynamically across sidebar and login
 - All 14 files updated to use semantic color classes instead of hardcoded emerald
+---
+Task ID: 1
+Agent: main
+Task: Fix sidebar auto-close, hardcoded colors, BCV scraper, auto-fetch rates, role permissions editor
+
+Work Log:
+- Fixed sidebar to auto-close on mobile when clicking any menu item (added useSidebar hook + handleNavClick)
+- Fixed text-emerald-600 in suppliers-view.tsx → changed to text-primary
+- Fixed hardcoded #059669 in financial-dashboard AreaChart → changed to var(--primary)
+- Fixed applySecondaryColor() bug that hardcoded emerald → now reads current primary from style tag
+- Rewrote BCV exchange rate scraper with 3 strategies: direct HTML, sub-pages, pydolarve fallback
+- Added auto-fetch of BCV rates on app startup (SettingsInitializer) and on settings page load
+- Added rolePermissions JSON field to Settings model (Prisma schema migration)
+- Created /api/role-permissions API endpoint (GET/PUT)
+- Created RolePermissionsEditor component with per-role view access and ability toggles
+- Added "Roles" tab in settings page
+- Updated permissions.ts to support custom permissions override via setCustomPermissions()
+- SettingsInitializer now loads custom permissions from DB on startup
+- Pushed all changes to GitHub (commit 62b38b2)
+
+Stage Summary:
+- All 5 user tasks completed: sidebar auto-hide, green colors fixed, auto-fetch BCV, improved scraper, role permissions editor
+- Changes pushed to GitHub for Vercel auto-deploy
+- New files: src/app/api/role-permissions/route.ts, src/components/settings/role-permissions-editor.tsx
+- Modified files: prisma/schema.prisma, 9 source files
