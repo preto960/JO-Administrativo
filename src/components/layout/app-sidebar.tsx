@@ -25,6 +25,7 @@ import {
   SidebarMenuItem,
   SidebarRail,
   SidebarFooter,
+  useSidebar,
 } from '@/components/ui/sidebar'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useAuth } from '@/hooks/use-auth'
@@ -47,8 +48,14 @@ export function AppSidebar() {
   const userRole = user?.role || 'cajero'
   const businessName = useSetting('businessName')
   const logoUrl = useSetting('logoUrl')
+  const { setOpenMobile } = useSidebar()
 
   const visibleItems = navItems.filter(item => item.roles.includes(userRole))
+
+  const handleNavClick = (view: AppView) => {
+    setActiveView(view)
+    if (isMobile) setOpenMobile(false)
+  }
 
   return (
     <Sidebar collapsible={isMobile ? 'offcanvas' : 'icon'}>
@@ -76,7 +83,7 @@ export function AppSidebar() {
                 <SidebarMenuItem key={item.view}>
                   <SidebarMenuButton
                     isActive={activeView === item.view}
-                    onClick={() => setActiveView(item.view)}
+                    onClick={() => handleNavClick(item.view)}
                     tooltip={item.label}
                   >
                     <item.icon className="h-4 w-4" />
@@ -95,7 +102,7 @@ export function AppSidebar() {
               <SidebarMenuButton
                 tooltip="Configuración"
                 isActive={activeView === 'settings'}
-                onClick={() => setActiveView('settings')}
+                onClick={() => handleNavClick('settings')}
               >
                 <Settings className="h-4 w-4" />
                 <span>Configuración</span>

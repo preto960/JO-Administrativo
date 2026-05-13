@@ -4,6 +4,7 @@ import { useEffect } from 'react'
 import { api } from '@/lib/api'
 import { useAppStore } from '@/stores/use-app-store'
 import { applyBothColors } from '@/components/settings/color-picker'
+import { setCustomPermissions, type UserPermissions } from '@/lib/permissions'
 import type { AppSettings } from '@/stores/use-app-store'
 
 interface SettingsData {
@@ -19,11 +20,13 @@ interface SettingsData {
   rif: string
   address: string
   baseCurrencyId: string
+  referenceCurrency: string
+  exchangeRate: number
 }
 
 /**
  * Loads settings from DB on app startup and applies theme colors to CSS variables.
- * Also stores settings in Zustand so components can access them reactively.
+ * Also auto-fetches BCV exchange rates.
  */
 export function SettingsInitializer() {
   const setSettings = useAppStore((s) => s.setSettings)
@@ -50,6 +53,37 @@ export function SettingsInitializer() {
             document.title = `${s.businessName} - ERP/POS`
           }
         }
+
+        // Auto-fetch BCV exchange rates in the background (non-blocking)
+        api.get<{ rates: Array<{ currency: string; rate: number; source: string }> }>('/api/exchange-rates')
+          .then((data) => {
+            if (data?.rates && data.rates.length > 0) {
+              // Update settings with the new exchange rate
+              const currentSettings = useAppStore.getState().settings
+              const refCurrency = currentSettings?.referenceCurrency || 'USD'
+              const refRate = data.rates.find(r => r.currency === refCurrency) || data.rates[0]
+              if (refRate && currentSettings) {
+                setSettings({
+                  ...currentSettings,
+                  exchangeRate: refRate.rate,
+                })
+              }
+            }
+          })
+          .catch(() => {
+            // Silently fail - rates will be fetched on next load
+          })
+
+        // Load custom role permissions from the database
+        api.get<{ permissions: Record<string, UserPermissions> }>('/api/role-permissions')
+          .then((data) => {
+            if (data?.permissions && Object.keys(data.permissions).length > 0) {
+              setCustomPermissions(data.permissions)
+            }
+          })
+          .catch(() => {
+            // Silently fail - use default permissions
+          })
       } catch {
         // Silently fail — use defaults from globals.css
       }

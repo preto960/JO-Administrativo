@@ -116,7 +116,18 @@ export function applyPrimaryColor(colorValue: string) {
 
 export function applySecondaryColor(colorValue: string) {
   const secondary = getColorDef(colorValue)
-  const primary = getColorDef('emerald')
+  // Read current primary from the dynamic-theme style tag or use 'emerald' as fallback
+  const styleEl = document.getElementById('dynamic-theme') as HTMLStyleElement | null
+  let primaryValue = 'emerald'
+  if (styleEl) {
+    const match = styleEl.textContent?.match(/--primary:\s*(oklch\([^)]+\))/)
+    if (match) {
+      // Find which color matches this oklch value
+      const found = colorOptions.find(c => c.light.primary === match[1] || c.dark.primary === match[1])
+      if (found) primaryValue = found.value
+    }
+  }
+  const primary = getColorDef(primaryValue)
   injectThemeStyle(primary, secondary)
 }
 

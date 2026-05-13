@@ -64,7 +64,7 @@ export function SuppliersView() {
                     <TableCell className="hidden md:table-cell">{supplier.phone || '—'}</TableCell>
                     <TableCell className="hidden lg:table-cell">{supplier.email || '—'}</TableCell>
                     <TableCell className="text-right">
-                      <span className={supplier.balance > 0 ? 'text-amber-600 font-medium' : 'text-emerald-600'}>
+                      <span className={supplier.balance > 0 ? 'text-amber-600 font-medium' : 'text-primary'}>
                         ${supplier.balance.toFixed(2)}
                       </span>
                     </TableCell>

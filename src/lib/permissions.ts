@@ -11,7 +11,7 @@ export interface UserPermissions {
   canManageSuppliers: boolean
 }
 
-const rolePermissions: Record<string, UserPermissions> = {
+const defaultRolePermissions: Record<string, UserPermissions> = {
   admin: {
     role: 'admin',
     views: ['pos', 'dashboard', 'products', 'purchases', 'clients', 'suppliers', 'cash', 'expenses', 'settings'],
@@ -62,8 +62,25 @@ const rolePermissions: Record<string, UserPermissions> = {
   },
 }
 
+/**
+ * Custom permissions override - can be set at runtime from the database.
+ * This allows the admin to customize role permissions from the settings UI.
+ */
+let customPermissions: Record<string, UserPermissions> = {}
+
+/**
+ * Set custom permissions (called from settings initializer after loading from DB).
+ */
+export function setCustomPermissions(perms: Record<string, UserPermissions>) {
+  customPermissions = perms
+}
+
 export function getPermissions(role: string): UserPermissions {
-  return rolePermissions[role] || rolePermissions.cajero
+  // First check custom permissions, then fall back to defaults
+  if (customPermissions[role]) {
+    return customPermissions[role]
+  }
+  return defaultRolePermissions[role] || defaultRolePermissions.cajero
 }
 
 export function canAccessView(role: string, view: string): boolean {
@@ -82,3 +99,5 @@ export function getRoleLabel(role: string): string {
 }
 
 export const ALL_ROLES = ['admin', 'gerente', 'cajero', 'vendedor'] as const
+
+export { defaultRolePermissions }

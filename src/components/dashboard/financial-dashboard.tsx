@@ -162,8 +162,8 @@ export function FinancialDashboard() {
                   <Area
                     type="monotone"
                     dataKey="total"
-                    stroke="#059669"
-                    fill="#059669"
+                    stroke="var(--primary)"
+                    fill="var(--primary)"
                     fillOpacity={0.1}
                     strokeWidth={2}
                   />

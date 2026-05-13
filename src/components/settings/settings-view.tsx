@@ -45,10 +45,12 @@ import {
   Trash2,
   Loader2,
   RefreshCw,
+  Shield,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { ALL_ROLES, getRoleLabel } from '@/lib/permissions'
 import { ColorPicker, applyBothColors } from './color-picker'
+import { RolePermissionsEditor } from './role-permissions-editor'
 
 interface Settings {
   id: string
@@ -121,7 +123,25 @@ export function SettingsView() {
     }
   }, [])
 
+  // Auto-fetch BCV rates on page load
+  const autoFetchRates = useCallback(async () => {
+    try {
+      const data = await api.get<{ rates: Array<{ currency: string; rate: number; source: string }> }>('/api/exchange-rates')
+      if (data?.rates && data.rates.length > 0) {
+        setSettings(prev => {
+          if (!prev) return prev
+          const refCurrency = prev.referenceCurrency || 'USD'
+          const refRate = data.rates.find(r => r.currency === refCurrency) || data.rates[0]
+          return { ...prev, exchangeRate: refRate.rate }
+        })
+      }
+    } catch {
+      // Silent fail
+    }
+  }, [])
+
   useEffect(() => { fetchSettings() }, [fetchSettings])
+  useEffect(() => { autoFetchRates() }, [autoFetchRates])
 
   const saveSettings = async (updates: Partial<Settings>) => {
     setSaving(true)
@@ -232,6 +252,10 @@ export function SettingsView() {
           <TabsTrigger value="usuarios" className="gap-1.5">
             <Users className="h-3.5 w-3.5 hidden sm:block" />
             <span>Usuarios</span>
+          </TabsTrigger>
+          <TabsTrigger value="roles" className="gap-1.5">
+            <Shield className="h-3.5 w-3.5 hidden sm:block" />
+            <span>Roles</span>
           </TabsTrigger>
           <TabsTrigger value="sistema" className="gap-1.5">
             <Monitor className="h-3.5 w-3.5 hidden sm:block" />
@@ -388,7 +412,7 @@ export function SettingsView() {
                     </Button>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Al presionar el botón se obtiene la tasa oficial del BCV automáticamente
+                    Tasa obtenida automáticamente del Banco Central de Venezuela. Presione el botón de recarga para actualizar manualmente.
                   </p>
                 </div>
 
@@ -560,6 +584,11 @@ export function SettingsView() {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* ── Roles & Permisos Tab ────────────────────────── */}
+        <TabsContent value="roles">
+          <RolePermissionsEditor />
         </TabsContent>
 
         {/* ── Sistema Tab ───────────────────────────────── */}
