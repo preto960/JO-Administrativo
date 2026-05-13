@@ -44,6 +44,7 @@ import {
   Edit,
   Trash2,
   Loader2,
+  RefreshCw,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { ALL_ROLES, getRoleLabel } from '@/lib/permissions'
@@ -59,6 +60,8 @@ interface Settings {
   rif: string
   email: string
   baseCurrencyId: string
+  referenceCurrency: string
+  exchangeRate: number
   sessionDuration: number
   notificationsEnabled: boolean
   primaryColor: string
@@ -87,6 +90,7 @@ export function SettingsView() {
   const [settings, setSettings] = useState<Settings | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [fetchingRate, setFetchingRate] = useState(false)
 
   // Users state
   const [users, setUsers] = useState<UserItem[]>([])
@@ -316,57 +320,162 @@ export function SettingsView() {
 
         {/* ── Moneda Tab ─────────────────────────────────── */}
         <TabsContent value="moneda">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Moneda Base</CardTitle>
-              <CardDescription>Selecciona la moneda principal del sistema</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label>Moneda Base</Label>
-                <Select
-                  value={settings.baseCurrencyId || currencies.find(c => c.isBase)?.id || ''}
-                  onValueChange={(v) => setSettings({ ...settings, baseCurrencyId: v })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar moneda" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {currencies.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.code} ({c.symbol}) - {c.name}
-                        {c.isBase && ' ★'}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <Separator />
-              <div className="rounded-lg bg-muted p-4">
-                <h4 className="font-medium mb-2">Monedas Disponibles</h4>
+          <div className="space-y-4">
+            {/* Reference Currency & Exchange Rate */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Tasa de Cambio</CardTitle>
+                <CardDescription>Moneda de referencia y tasa del día (BCV)</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
                 <div className="space-y-2">
-                  {currencies.map((c) => (
-                    <div key={c.id} className="flex items-center justify-between text-sm">
-                      <span>{c.name}</span>
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline">{c.code}</Badge>
-                        <span className="font-medium">{c.symbol}</span>
-                        {c.isBase && <Badge className="bg-primary">Base</Badge>}
-                      </div>
-                    </div>
-                  ))}
+                  <Label>Moneda de Referencia</Label>
+                  <Select
+                    value={settings.referenceCurrency || 'USD'}
+                    onValueChange={(v) => setSettings({ ...settings, referenceCurrency: v })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="USD">USD - Dólar Estadounidense</SelectItem>
+                      <SelectItem value="EUR">EUR - Euro</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Moneda en la que se registran los precios de productos
+                  </p>
                 </div>
-              </div>
-              <Button
-                className="bg-primary hover:bg-primary/90 text-white"
-                onClick={() => saveSettings({ baseCurrencyId: settings.baseCurrencyId })}
-                disabled={saving}
-              >
-                {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                Guardar
-              </Button>
-            </CardContent>
-          </Card>
+
+                <Separator />
+
+                <div className="space-y-2">
+                  <Label>Tasa de Cambio (1 {settings.referenceCurrency || 'USD'} = ? Bs.)</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={settings.exchangeRate?.toString() || ''}
+                      onChange={(e) => setSettings({
+                        ...settings,
+                        exchangeRate: parseFloat(e.target.value) || 0,
+                      })}
+                    />
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={async () => {
+                        setFetchingRate(true)
+                        try {
+                          const data = await api.get<{ rates: Array<{ currency: string; rate: number; source: string }> }>('/api/exchange-rates')
+                          const rate = data.rates?.find(r => r.currency === (settings.referenceCurrency || 'USD'))
+                          if (rate) {
+                            setSettings({ ...settings, exchangeRate: rate.rate })
+                            toast.success(`Tasa actualizada desde ${rate.source}: ${rate.rate} Bs.`)
+                          } else {
+                            toast.error('No se encontró la tasa para la moneda seleccionada')
+                          }
+                        } catch {
+                          toast.error('Error al obtener tasa del BCV')
+                        } finally {
+                          setFetchingRate(false)
+                        }
+                      }}
+                      disabled={fetchingRate}
+                      title="Obtener tasa del BCV"
+                    >
+                      <RefreshCw className={`h-4 w-4 ${fetchingRate ? 'animate-spin' : ''}`} />
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Al presionar el botón se obtiene la tasa oficial del BCV automáticamente
+                  </p>
+                </div>
+
+                <div className="rounded-lg border bg-muted/50 p-4 space-y-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Referencia:</span>
+                    <span className="font-medium">{settings.referenceCurrency || 'USD'}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Tasa:</span>
+                    <span className="font-medium">{(settings.exchangeRate || 0).toFixed(2)} Bs.</span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Ejemplo $10.00:</span>
+                    <span className="font-bold text-primary">
+                      {(10 * (settings.exchangeRate || 0)).toFixed(2)} Bs.
+                    </span>
+                  </div>
+                </div>
+
+                <Button
+                  className="bg-primary hover:bg-primary/90 text-white"
+                  onClick={() => saveSettings({
+                    referenceCurrency: settings.referenceCurrency,
+                    exchangeRate: settings.exchangeRate,
+                  })}
+                  disabled={saving}
+                >
+                  {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                  Guardar
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Moneda Base */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Moneda Base</CardTitle>
+                <CardDescription>Moneda principal del sistema para reportes</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Moneda Base</Label>
+                  <Select
+                    value={settings.baseCurrencyId || currencies.find(c => c.isBase)?.id || ''}
+                    onValueChange={(v) => setSettings({ ...settings, baseCurrencyId: v })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleccionar moneda" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {currencies.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.code} ({c.symbol}) - {c.name}
+                          {c.isBase && ' ★'}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Separator />
+                <div className="rounded-lg bg-muted p-4">
+                  <h4 className="font-medium mb-2">Monedas Disponibles</h4>
+                  <div className="space-y-2">
+                    {currencies.map((c) => (
+                      <div key={c.id} className="flex items-center justify-between text-sm">
+                        <span>{c.name}</span>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline">{c.code}</Badge>
+                          <span className="font-medium">{c.symbol}</span>
+                          {c.isBase && <Badge className="bg-primary">Base</Badge>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <Button
+                  className="bg-primary hover:bg-primary/90 text-white"
+                  onClick={() => saveSettings({ baseCurrencyId: settings.baseCurrencyId })}
+                  disabled={saving}
+                >
+                  {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                  Guardar
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
 
         {/* ── Sucursales Tab ─────────────────────────────── */}

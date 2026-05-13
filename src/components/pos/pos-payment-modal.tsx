@@ -1,7 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { usePosStore } from '@/stores/use-pos-store'
+import { useAuth } from '@/hooks/use-auth'
+import { useSetting } from '@/stores/use-app-store'
 import { api } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -15,7 +17,7 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import { CreditCard, Banknote, ArrowLeftRight, Clock, CheckCircle2, Loader2 } from 'lucide-react'
+import { Banknote, CreditCard, ArrowLeftRight, Clock, Smartphone, CheckCircle2, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface PosPaymentModalProps {
@@ -26,41 +28,68 @@ interface PaymentMethod {
   value: string
   label: string
   icon: React.ElementType
+  needsReference?: boolean
 }
 
 const paymentMethods: PaymentMethod[] = [
+  { value: 'divisas', label: 'Divisas', icon: Banknote },
   { value: 'efectivo', label: 'Efectivo', icon: Banknote },
-  { value: 'tarjeta', label: 'Tarjeta', icon: CreditCard },
-  { value: 'transferencia', label: 'Transferencia', icon: ArrowLeftRight },
+  { value: 'pago_movil', label: 'Pago Móvil', icon: Smartphone, needsReference: true },
+  { value: 'tarjeta', label: 'Tarjeta', icon: CreditCard, needsReference: true },
+  { value: 'transferencia', label: 'Transferencia', icon: ArrowLeftRight, needsReference: true },
   { value: 'credito', label: 'Crédito', icon: Clock },
 ]
 
 export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
-  const { items, getTotal, clearCart } = usePosStore()
-  const [method, setMethod] = useState('efectivo')
+  const { items, getTotal, clearCart, clientId } = usePosStore()
+  const { user } = useAuth()
+  const exchangeRate = useSetting('exchangeRate')
+  const referenceCurrency = useSetting('referenceCurrency')
+  const [method, setMethod] = useState('divisas')
   const [amount, setAmount] = useState(getTotal().toFixed(2))
   const [reference, setReference] = useState('')
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
+  const [currencies, setCurrencies] = useState<{ id: string; code: string; symbol: string; isBase: boolean }[]>([])
+  const [baseCurrencyId, setBaseCurrencyId] = useState('')
 
   const total = getTotal()
+  const totalBs = total * exchangeRate
+  const currencySymbol = referenceCurrency === 'EUR' ? '€' : '$'
+  const selectedMethod = paymentMethods.find(pm => pm.value === method)
+
+  // Load currencies on mount
+  useEffect(() => {
+    Promise.all([
+      api.get<{ id: string; code: string; symbol: string; isBase: boolean }[]>('/api/currencies'),
+      api.get<{ baseCurrencyId: string }>('/api/settings'),
+    ]).then(([currencies, settings]) => {
+      setCurrencies(currencies)
+      const base = currencies.find(c => c.isBase)
+      setBaseCurrencyId(settings?.baseCurrencyId || base?.id || currencies[0]?.id || '')
+    }).catch(() => {})
+  }, [])
 
   const handlePay = async () => {
     if (parseFloat(amount) <= 0) {
       toast.error('El monto debe ser mayor a cero')
       return
     }
-    if (parseFloat(amount) > total && method !== 'efectivo') {
+    if (parseFloat(amount) > total && method !== 'efectivo' && method !== 'divisas') {
       toast.error('El monto excede el total')
+      return
+    }
+    if (!baseCurrencyId) {
+      toast.error('No se pudo determinar la moneda base. Verifica la configuración.')
       return
     }
 
     setLoading(true)
     try {
       await api.post('/api/sales', {
-        clientId: null,
+        clientId: clientId || null,
         cashRegId: null,
-        userId: 'current-user',
+        userId: user?.id || '',
         lines: items.map((item) => ({
           productId: item.productId,
           quantity: item.quantity,
@@ -71,7 +100,7 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
           {
             method,
             amount: Math.min(parseFloat(amount), total),
-            currencyId: 'current-currency',
+            currencyId: baseCurrencyId,
             reference: reference || undefined,
           },
         ],
@@ -93,7 +122,10 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Cobrar</DialogTitle>
-          <DialogDescription>Total a pagar: ${total.toFixed(2)}</DialogDescription>
+          <DialogDescription>
+            Total: {currencySymbol}{total.toFixed(2)}
+            {exchangeRate > 0 && <span className="ml-2">· Bs. {totalBs.toFixed(2)}</span>}
+          </DialogDescription>
         </DialogHeader>
 
         {success ? (
@@ -107,7 +139,7 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
         ) : (
           <div className="space-y-4">
             {/* Method Selection */}
-            <RadioGroup value={method} onValueChange={setMethod} className="grid grid-cols-2 gap-3">
+            <RadioGroup value={method} onValueChange={(v) => { setMethod(v); setReference('') }} className="grid grid-cols-2 gap-3">
               {paymentMethods.map((pm) => (
                 <label
                   key={pm.value}
@@ -138,20 +170,20 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
               />
-              {method === 'efectivo' && parseFloat(amount) > total && (
+              {(method === 'efectivo' || method === 'divisas') && parseFloat(amount) > total && (
                 <p className="text-sm text-primary font-medium">
-                  Cambio: ${(parseFloat(amount) - total).toFixed(2)}
+                  Cambio: {currencySymbol}{(parseFloat(amount) - total).toFixed(2)}
                 </p>
               )}
             </div>
 
             {/* Reference */}
-            {(method === 'tarjeta' || method === 'transferencia') && (
+            {selectedMethod?.needsReference && (
               <div className="space-y-2">
                 <Label htmlFor="reference">Referencia</Label>
                 <Input
                   id="reference"
-                  placeholder="Número de referencia"
+                  placeholder={method === 'pago_movil' ? 'Número de referencia / teléfono' : 'Número de referencia'}
                   value={reference}
                   onChange={(e) => setReference(e.target.value)}
                 />
@@ -163,7 +195,7 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
               className="w-full bg-primary hover:bg-primary/90 text-white"
               size="lg"
               onClick={handlePay}
-              disabled={loading}
+              disabled={loading || !baseCurrencyId}
             >
               {loading ? (
                 <>
@@ -171,7 +203,7 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
                   Procesando...
                 </>
               ) : (
-                `Confirmar Pago $${Math.min(parseFloat(amount), total).toFixed(2)}`
+                `Confirmar Pago ${currencySymbol}${Math.min(parseFloat(amount), total).toFixed(2)}`
               )}
             </Button>
           </div>

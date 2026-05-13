@@ -328,6 +328,8 @@ model Settings {
   rif                   String   @default("")
   email                 String   @default("")
   baseCurrencyId        String   @default("")
+  referenceCurrency     String   @default("USD")
+  exchangeRate          Float    @default(36.50)
   sessionDuration       Int      @default(28800)
   notificationsEnabled  Boolean  @default(true)
   primaryColor          String   @default("emerald")

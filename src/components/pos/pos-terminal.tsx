@@ -2,6 +2,7 @@
 
 import { api } from '@/lib/api'
 import { usePosStore } from '@/stores/use-pos-store'
+import { useSetting } from '@/stores/use-app-store'
 import { PosCart } from './pos-cart'
 import { PosPaymentModal } from './pos-payment-modal'
 import { Input } from '@/components/ui/input'
@@ -36,6 +37,8 @@ interface Category {
 export function PosTerminal() {
   const { addItem, searchQuery, setSearchQuery, categoryFilter, setCategoryFilter } = usePosStore()
   const { items, getTotal, getItemCount } = usePosStore()
+  const exchangeRate = useSetting('exchangeRate')
+  const referenceCurrency = useSetting('referenceCurrency')
   const [products, setProducts] = useState<ProductWithInventory[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [showPayment, setShowPayment] = useState(false)
@@ -43,6 +46,7 @@ export function PosTerminal() {
   const [cartOpen, setCartOpen] = useState(false)
   const searchRef = useRef<HTMLInputElement>(null)
   const isMobile = useIsMobile()
+  const currencySymbol = referenceCurrency === 'EUR' ? '€' : '$'
 
   useEffect(() => {
     Promise.all([
@@ -139,7 +143,7 @@ export function PosTerminal() {
               <DrawerContent>
                 <DrawerHeader>
                   <DrawerTitle>Carrito</DrawerTitle>
-                  <DrawerDescription>{itemCount} productos · Total: ${total.toFixed(2)}</DrawerDescription>
+                  <DrawerDescription>{itemCount} productos · Total: {currencySymbol}{total.toFixed(2)}</DrawerDescription>
                 </DrawerHeader>
                 <div className="px-4 pb-4 overflow-auto max-h-[60vh]">
                   {cartContent}
@@ -196,9 +200,16 @@ export function PosTerminal() {
                     {product.sku || 'Sin SKU'}
                   </span>
                   <div className="mt-auto flex items-center justify-between w-full">
-                    <span className="text-base font-bold text-primary dark:text-primary">
-                      {product.currency.symbol}{product.price.toFixed(2)}
-                    </span>
+                    <div>
+                      <span className="text-base font-bold text-primary dark:text-primary">
+                        {currencySymbol}{product.price.toFixed(2)}
+                      </span>
+                      {exchangeRate > 0 && (
+                        <p className="text-[10px] text-muted-foreground">
+                          Bs. {(product.price * exchangeRate).toFixed(2)}
+                        </p>
+                      )}
+                    </div>
                     <span className="text-[10px] text-muted-foreground">
                       Stock: {product.inventories[0]?.stock ?? 0}
                     </span>

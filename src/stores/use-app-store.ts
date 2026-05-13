@@ -19,6 +19,8 @@ export interface AppSettings {
   rif: string
   address: string
   baseCurrencyId: string
+  referenceCurrency: string
+  exchangeRate: number
   sessionDuration: number
   notificationsEnabled: boolean
   primaryColor: string
@@ -41,6 +43,8 @@ const defaultSettings: AppSettings = {
   rif: '',
   address: '',
   baseCurrencyId: '',
+  referenceCurrency: 'USD',
+  exchangeRate: 36.50,
   sessionDuration: 28800,
   notificationsEnabled: true,
   primaryColor: 'emerald',
