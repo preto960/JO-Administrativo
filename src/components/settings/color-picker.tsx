@@ -213,7 +213,7 @@ export function applyPrimaryColor(colorValue: string) {
 export function applySecondaryColor(colorValue: string) {
   const secondary = getColorDef(colorValue)
   const styleEl = document.getElementById('dynamic-theme') as HTMLStyleElement | null
-  let primaryValue = 'emerald'
+  let primaryValue = 'blue'
   if (styleEl) {
     const match = styleEl.textContent?.match(/--primary:\s*(oklch\([^)]+\))/)
     if (match) {

@@ -1,10 +1,10 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
+import { resolveBranchId } from '@/lib/resolve-branch'
 
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url)
-    const branchId = searchParams.get('branchId') || 'sucursal-1'
+    const branchId = await resolveBranchId(request)
 
     const registers = await db.cashRegister.findMany({
       where: { branchId },
@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'userId es requerido' }, { status: 400 })
     }
 
-    const effectiveBranchId = branchId || 'sucursal-1'
+    const effectiveBranchId = body.branchId || await resolveBranchId()
 
     // Check if there's an open register for this branch
     const openRegister = await db.cashRegister.findFirst({

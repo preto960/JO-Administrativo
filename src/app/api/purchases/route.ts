@@ -1,9 +1,13 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
+import { resolveBranchId } from '@/lib/resolve-branch'
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const branchId = await resolveBranchId(request)
+
     const purchases = await db.purchase.findMany({
+      where: { branchId },
       include: {
         supplier: { select: { id: true, name: true, rif: true } },
         currency: true,
@@ -27,6 +31,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'supplierId, currencyId y lines son requeridos' }, { status: 400 })
     }
 
+    const branchId = body.branchId || await resolveBranchId()
+
     let total = 0
     const purchaseLinesData = lines.map((line: { productId: string; quantity: number; unitCost: number }) => {
       const subtotal = line.quantity * line.unitCost
@@ -45,7 +51,7 @@ export async function POST(request: NextRequest) {
       const newPurchase = await tx.purchase.create({
         data: {
           supplierId,
-          branchId: 'sucursal-1',
+          branchId,
           total,
           status: 'recibida',
           currencyId,
@@ -61,7 +67,7 @@ export async function POST(request: NextRequest) {
       // Update inventory and recalculate average cost
       for (const line of lines) {
         const inventory = await tx.inventory.findUnique({
-          where: { productId_branchId: { productId: line.productId, branchId: 'sucursal-1' } },
+          where: { productId_branchId: { productId: line.productId, branchId } },
         })
         const product = await tx.product.findUnique({ where: { id: line.productId } })
 
@@ -82,7 +88,7 @@ export async function POST(request: NextRequest) {
             await tx.inventory.create({
               data: {
                 productId: line.productId,
-                branchId: 'sucursal-1',
+                branchId,
                 stock: line.quantity,
                 minStock: 0,
               },

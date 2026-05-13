@@ -31,11 +31,25 @@ export interface AppSettings {
   theme: string
 }
 
+export interface BranchItem {
+  id: string
+  name: string
+  code: string
+  address: string | null
+  phone: string | null
+  active: boolean
+  isMain: boolean
+}
+
 interface AppState {
   activeView: AppView
   settings: AppSettings | null
+  selectedBranchId: string | null
+  branches: BranchItem[]
   setActiveView: (view: AppView) => void
   setSettings: (settings: AppSettings) => void
+  setSelectedBranchId: (id: string | null) => void
+  setBranches: (branches: BranchItem[]) => void
 }
 
 const defaultSettings: AppSettings = {
@@ -61,8 +75,12 @@ const defaultSettings: AppSettings = {
 export const useAppStore = create<AppState>((set) => ({
   activeView: 'pos',
   settings: null,
+  selectedBranchId: null,
+  branches: [],
   setActiveView: (view) => set({ activeView: view }),
   setSettings: (settings) => set({ settings }),
+  setSelectedBranchId: (id) => set({ selectedBranchId: id }),
+  setBranches: (branches) => set({ branches }),
 }))
 
 // Helper to get a setting with fallback

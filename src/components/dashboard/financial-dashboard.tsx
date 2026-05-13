@@ -43,7 +43,7 @@ function KpiCard({
   value,
   icon: Icon,
   trend,
-  color = 'emerald',
+  color = 'primary',
 }: {
   title: string
   value: string
@@ -52,14 +52,14 @@ function KpiCard({
   color?: string
 }) {
   const colorMap: Record<string, string> = {
-    emerald: 'bg-primary/5 text-primary border-primary/20 dark:bg-primary/10 dark:text-primary dark:border-primary/30',
+    primary: 'bg-primary/5 text-primary border-primary/20 dark:bg-primary/10 dark:text-primary dark:border-primary/30',
     red: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950/30 dark:text-red-400 dark:border-red-800',
     amber: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-800',
     violet: 'bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-950/30 dark:text-violet-400 dark:border-violet-800',
   }
 
   return (
-    <Card className={colorMap[color] || colorMap.emerald}>
+    <Card className={colorMap[color] || colorMap.primary}>
       <CardContent className="p-4">
         <div className="flex items-center justify-between">
           <div>
@@ -118,7 +118,7 @@ export function FinancialDashboard() {
           value={`$${data.ingresosHoy.toFixed(2)}`}
           icon={DollarSign}
           trend="up"
-          color="emerald"
+          color="primary"
         />
         <KpiCard
           title="Gastos Hoy"
@@ -148,7 +148,7 @@ export function FinancialDashboard() {
           value={data.chartData.reduce((s, d) => s + d.count, 0).toString()}
           icon={Receipt}
           trend="up"
-          color="emerald"
+          color="primary"
         />
         <KpiCard
           title="Productos Activos"
@@ -167,7 +167,7 @@ export function FinancialDashboard() {
           value={`$${data.ingresosMes.toFixed(2)}`}
           icon={DollarSign}
           trend="up"
-          color="emerald"
+          color="primary"
         />
       </div>
 

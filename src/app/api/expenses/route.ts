@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
+import { resolveBranchId } from '@/lib/resolve-branch'
 
 export async function GET(request: NextRequest) {
   try {
@@ -7,8 +8,9 @@ export async function GET(request: NextRequest) {
     const category = searchParams.get('category') || ''
     const from = searchParams.get('from') || ''
     const to = searchParams.get('to') || ''
+    const branchId = await resolveBranchId(request)
 
-    const where: Record<string, unknown> = {}
+    const where: Record<string, unknown> = { branchId }
     if (category) where.category = category
     if (from || to) {
       where.date = {}
@@ -34,9 +36,10 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
+    const branchId = body.branchId || await resolveBranchId()
     const expense = await db.expense.create({
       data: {
-        branchId: 'sucursal-1',
+        branchId,
         category: body.category,
         description: body.description,
         amount: body.amount,

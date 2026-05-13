@@ -128,15 +128,35 @@ model RecipeComponent {
   @@unique([productId, componentId])
 }
 
+model Branch {
+  id       String   @id @default(cuid())
+  name     String
+  code     String   @unique
+  address  String?
+  phone    String?
+  active   Boolean  @default(true)
+  isMain   Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  inventories          Inventory[]
+  sales                Sale[]
+  purchases            Purchase[]
+  cashRegisters        CashRegister[]
+  expenses             Expense[]
+  inventoryAdjustments InventoryAdjustment[]
+}
+
 model Inventory {
   id        String   @id @default(cuid())
   productId String
-  branchId  String   @default("sucursal-1")
+  branchId  String
   stock     Float    @default(0)
   minStock  Float    @default(0)
   updatedAt DateTime @updatedAt
 
   product Product @relation(fields: [productId], references: [id])
+  branch   Branch   @relation(fields: [branchId], references: [id])
 
   @@unique([productId, branchId])
 }
@@ -144,7 +164,7 @@ model Inventory {
 model Purchase {
   id         String   @id @default(cuid())
   supplierId String
-  branchId   String   @default("sucursal-1")
+  branchId   String
   date       DateTime @default(now())
   total      Float    @default(0)
   status     String   @default("recibida")
@@ -154,6 +174,7 @@ model Purchase {
 
   supplier Supplier @relation(fields: [supplierId], references: [id])
   currency Currency @relation(fields: [currencyId], references: [id])
+  branch   Branch   @relation(fields: [branchId], references: [id])
 
   lines    PurchaseLine[]
   payables AccountPayable[]
@@ -176,7 +197,7 @@ model Sale {
   clientId   String?
   cashRegId  String?
   userId     String
-  branchId   String   @default("sucursal-1")
+  branchId   String
   date       DateTime @default(now())
   total      Float    @default(0)
   status     String   @default("completada")
@@ -187,6 +208,7 @@ model Sale {
   client  Client?       @relation(fields: [clientId], references: [id])
   cashReg CashRegister? @relation(fields: [cashRegId], references: [id])
   user    User          @relation(fields: [userId], references: [id])
+  branch   Branch       @relation(fields: [branchId], references: [id])
 
   lines       SaleLine[]
   payments    SalePayment[]
@@ -222,7 +244,7 @@ model SalePayment {
 model CashRegister {
   id          String    @id @default(cuid())
   userId      String
-  branchId    String    @default("sucursal-1")
+  branchId    String
   openingDate DateTime  @default(now())
   closingDate DateTime?
   initialAmt  Float     @default(0)
@@ -230,6 +252,7 @@ model CashRegister {
   status      String    @default("abierta")
 
   user      User           @relation(fields: [userId], references: [id])
+  branch    Branch         @relation(fields: [branchId], references: [id])
   sales     Sale[]
   movements CashMovement[]
   cuts      CashCut[]
@@ -266,7 +289,7 @@ model CashCut {
 model InventoryAdjustment {
   id        String   @id @default(cuid())
   productId String
-  branchId  String   @default("sucursal-1")
+  branchId  String
   type      String
   quantity  Float
   reason    String
@@ -275,6 +298,7 @@ model InventoryAdjustment {
 
   product Product @relation(fields: [productId], references: [id])
   user    User    @relation(fields: [userId], references: [id])
+  branch  Branch  @relation(fields: [branchId], references: [id])
 }
 
 model AccountReceivable {
@@ -305,7 +329,7 @@ model AccountPayable {
 
 model Expense {
   id          String   @id @default(cuid())
-  branchId    String   @default("sucursal-1")
+  branchId    String
   category    String
   description String
   amount      Float
@@ -316,6 +340,7 @@ model Expense {
 
   currency Currency @relation(fields: [currencyId], references: [id])
   user     User     @relation(fields: [userId], references: [id])
+  branch   Branch   @relation(fields: [branchId], references: [id])
 }
 
 model Settings {

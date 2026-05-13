@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
+import { resolveBranchId } from '@/lib/resolve-branch'
 
 export async function GET(
   _request: NextRequest,
@@ -55,6 +56,24 @@ export async function PUT(
       },
       include: { currency: true, category: true },
     })
+
+    // Update inventory if stock or minStock provided
+    if (body.initialStock !== undefined || body.minStock !== undefined) {
+      const branchId = await resolveBranchId()
+      const inventory = await db.inventory.findFirst({
+        where: { productId: id, branchId },
+      })
+      if (inventory) {
+        const updateData: Record<string, number> = {}
+        if (body.initialStock !== undefined) updateData.stock = body.initialStock
+        if (body.minStock !== undefined) updateData.minStock = body.minStock
+        await db.inventory.update({
+          where: { id: inventory.id },
+          data: updateData,
+        })
+      }
+    }
+
     return NextResponse.json(product)
   } catch (error) {
     return NextResponse.json({ error: 'Error al actualizar producto' }, { status: 500 })

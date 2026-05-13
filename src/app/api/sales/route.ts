@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
+import { resolveBranchId } from '@/lib/resolve-branch'
 
 export async function GET(request: NextRequest) {
   try {
@@ -10,8 +11,9 @@ export async function GET(request: NextRequest) {
     const page = parseInt(searchParams.get('page') || '1')
     const limit = parseInt(searchParams.get('limit') || '20')
     const skip = (page - 1) * limit
+    const branchId = await resolveBranchId(request)
 
-    const where: Record<string, unknown> = {}
+    const where: Record<string, unknown> = { branchId }
     if (status) where.status = status
     if (from || to) {
       where.date = {}
@@ -62,6 +64,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Fetch product costAvg for each line
+    const branchId = body.branchId || await resolveBranchId()
     const productIds = lines.map((l: { productId: string }) => l.productId)
     const products = await db.product.findMany({
       where: { id: { in: productIds } },
@@ -97,7 +100,7 @@ export async function POST(request: NextRequest) {
           clientId: clientId || null,
           cashRegId: cashRegId || null,
           userId,
-          branchId: 'sucursal-1',
+          branchId,
           total,
           status: 'completada',
           lines: { create: saleLinesData },
@@ -120,7 +123,7 @@ export async function POST(request: NextRequest) {
       // Deduct inventory stock for each product
       for (const line of lines) {
         const inventory = await tx.inventory.findUnique({
-          where: { productId_branchId: { productId: line.productId, branchId: 'sucursal-1' } },
+          where: { productId_branchId: { productId: line.productId, branchId } },
         })
         if (inventory) {
           await tx.inventory.update({

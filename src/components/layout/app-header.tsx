@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import { useAppStore } from '@/stores/use-app-store'
 import { SidebarTrigger } from '@/components/ui/sidebar'
 import { Separator } from '@/components/ui/separator'
@@ -11,14 +12,22 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { Moon, Sun, LogOut, UserCircle, Settings } from 'lucide-react'
+import { Moon, Sun, LogOut, UserCircle, Settings, GitBranch } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { Button } from '@/components/ui/button'
 import { NotificationBell } from '@/components/layout/notification-bell'
 import { SessionTimer } from '@/components/settings/session-timer'
 import { useAuth } from '@/hooks/use-auth'
 import { signOut } from 'next-auth/react'
+import { api } from '@/lib/api'
 
 const viewLabels: Record<string, string> = {
   pos: 'Punto de Venta',
@@ -33,13 +42,31 @@ const viewLabels: Record<string, string> = {
 }
 
 export function AppHeader() {
-  const { activeView, setActiveView } = useAppStore()
+  const { activeView, setActiveView, selectedBranchId, setSelectedBranchId, branches, setBranches } = useAppStore()
   const { setTheme, theme } = useTheme()
   const { user } = useAuth()
+  const [loading, setLoading] = useState(true)
+
+  // Fetch branches on mount
+  useEffect(() => {
+    api.get<Array<{ id: string; name: string; code: string; address: string | null; phone: string | null; active: boolean; isMain: boolean }>>('/api/branches')
+      .then((data) => {
+        setBranches(data)
+        // Auto-select the first active branch if none selected
+        if (!selectedBranchId && data.length > 0) {
+          const firstActive = data.find(b => b.active)
+          if (firstActive) setSelectedBranchId(firstActive.id)
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
 
   const initials = user?.name
     ? user.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
     : 'US'
+
+  const selectedBranch = branches.find(b => b.id === selectedBranchId)
 
   return (
     <header className="flex h-12 shrink-0 items-center gap-1.5 border-b px-3 md:h-14 md:gap-2 md:px-4">
@@ -47,6 +74,29 @@ export function AppHeader() {
       <Separator orientation="vertical" className="mr-1.5 h-4 md:mr-2" />
       <h2 className="text-sm font-semibold md:text-lg truncate">{viewLabels[activeView] || 'Dashboard'}</h2>
       <div className="ml-auto flex items-center gap-1 md:gap-2">
+        {/* Branch Selector */}
+        {!loading && branches.length > 0 && (
+          <div className="hidden sm:block">
+            <Select
+              value={selectedBranchId || ''}
+              onValueChange={(v) => setSelectedBranchId(v)}
+            >
+              <SelectTrigger className="w-40 h-8 text-xs">
+                <GitBranch className="h-3 w-3 mr-1 shrink-0" />
+                <SelectValue placeholder="Sucursal" />
+              </SelectTrigger>
+              <SelectContent>
+                {branches
+                  .filter(b => b.active)
+                  .map((branch) => (
+                    <SelectItem key={branch.id} value={branch.id}>
+                      <span className="truncate">{branch.name}</span>
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
         <SessionTimer />
         <NotificationBell />
         <Button
@@ -75,6 +125,12 @@ export function AppHeader() {
                 <p className="text-sm font-medium">{user?.name || 'Usuario'}</p>
                 <p className="text-xs text-muted-foreground">{user?.email || 'usuario@erp.com'}</p>
                 <p className="text-xs text-primary capitalize">{user?.role || 'cajero'}</p>
+                {selectedBranch && (
+                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+                    <GitBranch className="h-3 w-3" />
+                    {selectedBranch.name}
+                  </p>
+                )}
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />

@@ -107,6 +107,8 @@ export function ProductsTable() {
   const [formCost, setFormCost] = useState('')
   const [formCategory, setFormCategory] = useState('')
   const [formCurrency, setFormCurrency] = useState('')
+  const [formStock, setFormStock] = useState('')
+  const [formMinStock, setFormMinStock] = useState('')
   const [formActive, setFormActive] = useState(true)
   const [saving, setSaving] = useState(false)
 
@@ -156,6 +158,8 @@ export function ProductsTable() {
     setFormSku('')
     setFormPrice('')
     setFormCost('0')
+    setFormStock('')
+    setFormMinStock('')
     setFormCategory('')
     setFormCurrency('')
     setFormActive(true)
@@ -177,6 +181,8 @@ export function ProductsTable() {
       setFormSku(product.sku || '')
       setFormPrice(product.price.toString())
       setFormCost(product.costAvg.toString())
+      setFormStock(product.inventories[0]?.stock?.toString() || '')
+      setFormMinStock(product.inventories[0]?.minStock?.toString() || '')
       setFormCategory(product.category?.id || '__none__')
       setFormCurrency(product.currency.id)
       setFormActive(product.active)
@@ -219,10 +225,16 @@ export function ProductsTable() {
         await api.put(`/api/products/${editProduct.id}`, {
           ...body,
           active: formActive,
+          initialStock: formStock !== '' ? parseInt(formStock) : undefined,
+          minStock: formMinStock !== '' ? parseInt(formMinStock) : undefined,
         })
         toast.success('Producto actualizado')
       } else {
-        await api.post('/api/products', body)
+        await api.post('/api/products', {
+          ...body,
+          initialStock: formStock !== '' ? parseInt(formStock) : undefined,
+          minStock: formMinStock !== '' ? parseInt(formMinStock) : undefined,
+        })
         toast.success('Producto creado')
       }
       setDialogOpen(false)
@@ -530,6 +542,32 @@ export function ProductsTable() {
                   min="0"
                   value={formPrice}
                   onChange={(e) => setFormPrice(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="pstock">Stock Inicial</Label>
+                <Input
+                  id="pstock"
+                  type="number"
+                  step="1"
+                  min="0"
+                  value={formStock}
+                  onChange={(e) => setFormStock(e.target.value)}
+                  placeholder="0"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="pminstock">Stock Mínimo</Label>
+                <Input
+                  id="pminstock"
+                  type="number"
+                  step="1"
+                  min="0"
+                  value={formMinStock}
+                  onChange={(e) => setFormMinStock(e.target.value)}
+                  placeholder="0"
                 />
               </div>
             </div>

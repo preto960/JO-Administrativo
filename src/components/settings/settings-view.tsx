@@ -53,6 +53,25 @@ import { ALL_ROLES, getRoleLabel } from '@/lib/permissions'
 import { ColorPicker, applyBothColors } from './color-picker'
 import { RolePermissionsEditor } from './role-permissions-editor'
 
+interface Branch {
+  id: string
+  name: string
+  code: string
+  address: string | null
+  phone: string | null
+  active: boolean
+  isMain: boolean
+  createdAt: string
+  updatedAt: string
+  _count: {
+    inventories: number
+    sales: number
+    purchases: number
+    cashRegisters: number
+    expenses: number
+  }
+}
+
 interface Settings {
   id: string
   key: string
@@ -111,6 +130,15 @@ export function SettingsView() {
   const [userRole, setUserRole] = useState('cajero')
   const [userActive, setUserActive] = useState(true)
 
+  // Branches state
+  const [branches, setBranches] = useState<Branch[]>([])
+  const [showBranchDialog, setShowBranchDialog] = useState(false)
+  const [editingBranch, setEditingBranch] = useState<Branch | null>(null)
+  const [branchSaving, setBranchSaving] = useState(false)
+  const [branchName, setBranchName] = useState('')
+  const [branchAddress, setBranchAddress] = useState('')
+  const [branchPhone, setBranchPhone] = useState('')
+
   const fetchSettings = useCallback(async () => {
     // Fetch settings independently — this is the critical load
     try {
@@ -127,6 +155,7 @@ export function SettingsView() {
     // Fetch users and currencies in background (non-blocking)
     api.get<UserItem[]>('/api/users').then(setUsers).catch(() => {})
     api.get<CurrencyItem[]>('/api/currencies').then(setCurrencies).catch(() => {})
+    api.get<Branch[]>('/api/branches').then(setBranches).catch(() => {})
   }, [])
 
   // Auto-fetch BCV rates on page load
@@ -541,24 +570,105 @@ export function SettingsView() {
         <TabsContent value="sucursales">
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Sucursales</CardTitle>
-              <CardDescription>Gestión de sucursales (en desarrollo)</CardDescription>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-base">Sucursales</CardTitle>
+                  <CardDescription>Gestiona las sucursales de tu negocio</CardDescription>
+                </div>
+                <Button size="sm" className="bg-primary hover:bg-primary/90 text-white" onClick={() => {
+                  setEditingBranch(null)
+                  setBranchName('')
+                  setBranchAddress('')
+                  setBranchPhone('')
+                  setShowBranchDialog(true)
+                }}>
+                  <Plus className="mr-1 h-3.5 w-3.5" /> Nueva
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
-              <div className="rounded-lg border p-4">
-                <div className="flex items-center gap-3">
-                  <GitBranch className="h-5 w-5 text-primary" />
-                  <div>
-                    <p className="font-medium">Sucursal Principal</p>
-                    <p className="text-sm text-muted-foreground">ID: sucursal-1</p>
-                  </div>
-                  <Badge className="bg-primary ml-auto">Activa</Badge>
-                </div>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Nombre</TableHead>
+                      <TableHead>Código</TableHead>
+                      <TableHead className="hidden sm:table-cell">Dirección</TableHead>
+                      <TableHead className="hidden md:table-cell">Teléfono</TableHead>
+                      <TableHead>Estado</TableHead>
+                      <TableHead className="text-right">Acciones</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {branches.map((branch) => (
+                      <TableRow key={branch.id} className={!branch.active ? 'opacity-60' : ''}>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">{branch.name}</span>
+                            {branch.isMain && (
+                              <Badge className="bg-primary text-primary-foreground text-[10px] px-1.5 py-0">Principal</Badge>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground font-mono">{branch.code}</TableCell>
+                        <TableCell className="hidden sm:table-cell text-sm">{branch.address || '—'}</TableCell>
+                        <TableCell className="hidden md:table-cell text-sm">{branch.phone || '—'}</TableCell>
+                        <TableCell>
+                          <Badge variant={branch.active ? 'default' : 'secondary'}>
+                            {branch.active ? 'Activa' : 'Inactiva'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => {
+                                setEditingBranch(branch)
+                                setBranchName(branch.name)
+                                setBranchAddress(branch.address || '')
+                                setBranchPhone(branch.phone || '')
+                                setShowBranchDialog(true)
+                              }}
+                              title="Editar"
+                            >
+                              <Edit className="h-3.5 w-3.5" />
+                            </Button>
+                            {!branch.isMain && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className={`h-8 w-8 ${branch.active ? 'text-destructive' : 'text-primary'}`}
+                                onClick={async () => {
+                                  try {
+                                    await api.put(`/api/branches/${branch.id}`, { active: !branch.active })
+                                    setBranches(prev => prev.map(b => b.id === branch.id ? { ...b, active: !branch.active } : b))
+                                    toast.success(branch.active ? 'Sucursal desactivada' : 'Sucursal reactivada')
+                                  } catch {
+                                    toast.error('Error al cambiar estado')
+                                  }
+                                }}
+                                title={branch.active ? 'Desactivar' : 'Reactivar'}
+                              >
+                                {branch.active ? <Trash2 className="h-3.5 w-3.5" /> : <GitBranch className="h-3.5 w-3.5" />}
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {branches.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                          <GitBranch className="mx-auto mb-2 h-8 w-8 opacity-50" />
+                          No hay sucursales registradas
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
               </div>
-              <p className="text-sm text-muted-foreground mt-4">
-                La gestión de múltiples sucursales estará disponible próximamente.
-                Actualmente el sistema opera con una sola sucursal (sucursal-1).
-              </p>
             </CardContent>
           </Card>
         </TabsContent>
@@ -722,6 +832,66 @@ export function SettingsView() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* ── Branch Dialog ────────────────────────────────── */}
+      <Dialog open={showBranchDialog} onOpenChange={setShowBranchDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{editingBranch ? 'Editar Sucursal' : 'Nueva Sucursal'}</DialogTitle>
+            <DialogDescription>
+              {editingBranch ? 'Modifica los datos de la sucursal' : 'Crea una nueva sucursal para tu negocio'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Nombre *</Label>
+              <Input value={branchName} onChange={(e) => setBranchName(e.target.value)} placeholder="Nombre de la sucursal" />
+            </div>
+            <div className="space-y-2">
+              <Label>Dirección</Label>
+              <Input value={branchAddress} onChange={(e) => setBranchAddress(e.target.value)} placeholder="Dirección de la sucursal" />
+            </div>
+            <div className="space-y-2">
+              <Label>Teléfono</Label>
+              <Input value={branchPhone} onChange={(e) => setBranchPhone(e.target.value)} placeholder="+58 212-0000000" />
+            </div>
+            <Button className="w-full bg-primary hover:bg-primary/90 text-white" onClick={async () => {
+              if (!branchName.trim()) {
+                toast.error('El nombre es obligatorio')
+                return
+              }
+              setBranchSaving(true)
+              try {
+                if (editingBranch) {
+                  await api.put(`/api/branches/${editingBranch.id}`, {
+                    name: branchName,
+                    address: branchAddress || null,
+                    phone: branchPhone || null,
+                  })
+                  toast.success('Sucursal actualizada')
+                } else {
+                  await api.post('/api/branches', {
+                    name: branchName,
+                    address: branchAddress || null,
+                    phone: branchPhone || null,
+                  })
+                  toast.success('Sucursal creada')
+                }
+                setShowBranchDialog(false)
+                const updated = await api.get<Branch[]>('/api/branches')
+                setBranches(updated)
+              } catch {
+                toast.error('Error al guardar sucursal')
+              } finally {
+                setBranchSaving(false)
+              }
+            }} disabled={branchSaving || !branchName.trim()}>
+              {branchSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              {branchSaving ? 'Guardando...' : editingBranch ? 'Actualizar' : 'Crear Sucursal'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* ── User Dialog ──────────────────────────────────── */}
       <Dialog open={showUserDialog} onOpenChange={setShowUserDialog}>

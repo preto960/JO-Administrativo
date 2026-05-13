@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
+import { resolveBranchId } from '@/lib/resolve-branch'
 
 export async function GET(
   _request: NextRequest,
@@ -56,7 +57,7 @@ export async function POST(
       // Restore inventory
       for (const line of sale.lines) {
         const inventory = await tx.inventory.findUnique({
-          where: { productId_branchId: { productId: line.productId, branchId: 'sucursal-1' } },
+          where: { productId_branchId: { productId: line.productId, branchId: sale.branchId } },
         })
         if (inventory) {
           await tx.inventory.update({

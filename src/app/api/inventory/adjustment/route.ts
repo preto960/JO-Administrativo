@@ -1,14 +1,16 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
+import { resolveBranchId } from '@/lib/resolve-branch'
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
     const { productId, type, quantity, reason, userId } = body
+    const branchId = body.branchId || await resolveBranchId()
 
     const adjustment = await db.$transaction(async (tx) => {
       const inv = await tx.inventory.findUnique({
-        where: { productId_branchId: { productId, branchId: 'sucursal-1' } },
+        where: { productId_branchId: { productId, branchId } },
       })
       if (!inv) {
         throw new Error('Inventario no encontrado')
@@ -20,7 +22,7 @@ export async function POST(request: NextRequest) {
       })
 
       return tx.inventoryAdjustment.create({
-        data: { productId, branchId: 'sucursal-1', type, quantity, reason, userId },
+        data: { productId, branchId, type, quantity, reason, userId },
         include: { product: true },
       })
     })

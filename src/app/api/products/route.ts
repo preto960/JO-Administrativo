@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
+import { resolveBranchId } from '@/lib/resolve-branch'
 
 export async function GET(request: NextRequest) {
   try {
@@ -7,6 +8,7 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('search') || ''
     const categoryId = searchParams.get('categoryId') || ''
     const active = searchParams.get('active')
+    const branchId = await resolveBranchId(request)
 
     const where: Record<string, unknown> = {}
     if (search) {
@@ -30,7 +32,7 @@ export async function GET(request: NextRequest) {
       include: {
         currency: true,
         category: true,
-        inventories: { where: { branchId: 'sucursal-1' } },
+        inventories: { where: { branchId } },
       },
       orderBy: { name: 'asc' },
     })
@@ -57,13 +59,14 @@ export async function POST(request: NextRequest) {
       include: { currency: true, category: true },
     })
 
-    // Create inventory entry
+    // Create inventory entry for the current branch
+    const branchId = await resolveBranchId()
     await db.inventory.create({
       data: {
         productId: product.id,
-        branchId: 'sucursal-1',
-        stock: 0,
-        minStock: body.minStock || 0,
+        branchId,
+        stock: body.initialStock ?? 0,
+        minStock: body.minStock ?? 0,
       },
     })
 

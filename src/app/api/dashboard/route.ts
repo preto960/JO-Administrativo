@@ -1,32 +1,35 @@
 import { db } from '@/lib/db'
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
+import { resolveBranchId } from '@/lib/resolve-branch'
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const branchId = await resolveBranchId(request)
     const today = new Date()
     today.setHours(0, 0, 0, 0)
     const monthStart = new Date(today.getFullYear(), today.getMonth(), 1)
 
     // Sales today
     const salesToday = await db.sale.findMany({
-      where: { date: { gte: today }, status: 'completada' },
+      where: { date: { gte: today }, status: 'completada', branchId },
       include: { lines: { include: { product: { select: { name: true } } } }, payments: true },
     })
 
     // Sales this month
     const salesMonth = await db.sale.findMany({
-      where: { date: { gte: monthStart }, status: 'completada' },
+      where: { date: { gte: monthStart }, status: 'completada', branchId },
       include: { lines: { include: { product: { select: { name: true } } } }, payments: true },
     })
 
     // Expenses today & month
-    const expensesToday = await db.expense.findMany({ where: { date: { gte: today } } })
-    const expensesMonth = await db.expense.findMany({ where: { date: { gte: monthStart } } })
+    const expensesToday = await db.expense.findMany({ where: { date: { gte: today }, branchId } })
+    const expensesMonth = await db.expense.findMany({ where: { date: { gte: monthStart }, branchId } })
 
     // Adjustments this month (losses)
     const adjustmentsMonth = await db.inventoryAdjustment.findMany({
       where: {
         createdAt: { gte: monthStart },
+        branchId,
       },
       include: { product: true },
     })
@@ -67,7 +70,7 @@ export async function GET() {
 
     // Last 10 sales
     const recentSales = await db.sale.findMany({
-      where: { status: 'completada' },
+      where: { status: 'completada', branchId },
       include: {
         client: { select: { name: true } },
         user: { select: { name: true } },
@@ -79,7 +82,7 @@ export async function GET() {
 
     // Alerts: low stock
     const lowStockItems = await db.inventory.findMany({
-      where: { branchId: 'sucursal-1' },
+      where: { branchId },
       include: { product: { select: { name: true, active: true } } },
     })
     const lowStockAlerts = lowStockItems
@@ -107,7 +110,7 @@ export async function GET() {
       nextD.setDate(nextD.getDate() + 1)
 
       const daySales = await db.sale.findMany({
-        where: { date: { gte: d, lt: nextD }, status: 'completada' },
+        where: { date: { gte: d, lt: nextD }, status: 'completada', branchId },
       })
       const dayTotal = daySales.reduce((s, sale) => s + sale.total, 0)
 
@@ -120,7 +123,7 @@ export async function GET() {
 
     // Open cash register
     const openRegister = await db.cashRegister.findFirst({
-      where: { status: 'abierta' },
+      where: { status: 'abierta', branchId },
       include: {
         user: { select: { name: true } },
         _count: { select: { sales: true } },
