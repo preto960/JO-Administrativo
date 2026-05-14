@@ -23,6 +23,7 @@ model User {
   adjustments InventoryAdjustment[]
   expenses   Expense[]
   notifications Notification[]
+  supplierPayments SupplierPayment[]
 }
 
 model Client {
@@ -52,6 +53,7 @@ model Supplier {
 
   purchases Purchase[]
   payables  AccountPayable[]
+  payments  SupplierPayment[]
 }
 
 model Currency {
@@ -162,13 +164,14 @@ model Inventory {
 }
 
 model Purchase {
-  id         String   @id @default(cuid())
-  supplierId String
-  branchId   String
-  date       DateTime @default(now())
-  total      Float    @default(0)
-  status     String   @default("recibida")
-  currencyId String
+  id          String   @id @default(cuid())
+  supplierId  String
+  branchId    String
+  date        DateTime @default(now())
+  total       Float    @default(0)
+  status      String   @default("recibida")
+  currencyId  String
+  paidUpfront Boolean  @default(false)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
@@ -322,9 +325,27 @@ model AccountPayable {
   pendingBalance Float
   dueDate        DateTime?
   status         String    @default("pendiente")
+  createdAt      DateTime  @default(now())
 
-  supplier Supplier? @relation(fields: [supplierId], references: [id])
-  purchase Purchase? @relation(fields: [purchaseId], references: [id])
+  supplier       Supplier?          @relation(fields: [supplierId], references: [id])
+  purchase       Purchase?          @relation(fields: [purchaseId], references: [id])
+ payments        SupplierPayment[]
+}
+
+model SupplierPayment {
+  id             String   @id @default(cuid())
+  supplierId     String
+  payableId      String?
+  amount         Float
+  method         String   @default("efectivo")
+  reference      String?
+  cashRegId      String?
+  userId         String
+  createdAt      DateTime @default(now())
+
+  supplier Supplier?       @relation(fields: [supplierId], references: [id])
+  payable  AccountPayable? @relation(fields: [payableId], references: [id])
+  user     User            @relation(fields: [userId], references: [id])
 }
 
 model Expense {

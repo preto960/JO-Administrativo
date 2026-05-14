@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
 
 export type AppView =
   | 'pos'
@@ -41,15 +42,7 @@ export interface BranchItem {
   isMain: boolean
 }
 
-function getStoredView(): AppView {
-  if (typeof window !== 'undefined') {
-    const stored = localStorage.getItem('activeView')
-    if (stored && ['pos', 'dashboard', 'products', 'purchases', 'clients', 'suppliers', 'cash', 'expenses', 'settings'].includes(stored)) {
-      return stored as AppView
-    }
-  }
-  return 'pos'
-}
+const VALID_VIEWS: AppView[] = ['pos', 'dashboard', 'products', 'purchases', 'clients', 'suppliers', 'cash', 'expenses', 'settings']
 
 interface AppState {
   activeView: AppView
@@ -82,21 +75,31 @@ const defaultSettings: AppSettings = {
   theme: 'light',
 }
 
-export const useAppStore = create<AppState>((set) => ({
-  activeView: getStoredView(),
-  settings: null,
-  selectedBranchId: null,
-  branches: [],
-  setActiveView: (view) => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('activeView', view)
+export const useAppStore = create<AppState>()(
+  persist(
+    (set) => ({
+      activeView: 'pos',
+      settings: null,
+      selectedBranchId: null,
+      branches: [],
+      setActiveView: (view) => {
+        if (VALID_VIEWS.includes(view)) {
+          set({ activeView: view })
+        }
+      },
+      setSettings: (settings) => set({ settings }),
+      setSelectedBranchId: (id) => set({ selectedBranchId: id }),
+      setBranches: (branches) => set({ branches }),
+    }),
+    {
+      name: 'jo-admin-store',
+      partialize: (state) => ({
+        activeView: state.activeView,
+        selectedBranchId: state.selectedBranchId,
+      }),
     }
-    set({ activeView: view })
-  },
-  setSettings: (settings) => set({ settings }),
-  setSelectedBranchId: (id) => set({ selectedBranchId: id }),
-  setBranches: (branches) => set({ branches }),
-}))
+  )
+)
 
 // Helper to get a setting with fallback
 export function useSetting<K extends keyof AppSettings>(key: K): AppSettings[K] {

@@ -1,6 +1,6 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
-import { resolveBranchId } from '@/lib/resolve-branch'
+import { resolveBranchId, branchFromBody } from '@/lib/resolve-branch'
 
 export async function GET(request: NextRequest) {
   try {
@@ -63,9 +63,36 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Debe incluir al menos una línea de venta' }, { status: 400 })
     }
 
-    // Fetch product costAvg for each line
-    const branchId = body.branchId || await resolveBranchId()
+    const branchId = branchFromBody(body) || await resolveBranchId()
+
+    // SERVER-SIDE STOCK VALIDATION (race condition protection)
     const productIds = lines.map((l: { productId: string }) => l.productId)
+    const inventories = await db.inventory.findMany({
+      where: {
+        productId: { in: productIds },
+        branchId,
+      },
+    })
+    const inventoryMap = new Map(inventories.map((inv) => [inv.productId, inv]))
+
+    const insufficientStock: string[] = []
+    for (const line of lines) {
+      const inv = inventoryMap.get(line.productId)
+      const availableStock = inv?.stock || 0
+      if (line.quantity > availableStock) {
+        const product = await db.product.findUnique({ where: { id: line.productId }, select: { name: true } })
+        insufficientStock.push(`"${product?.name || line.productId}": solicitado ${line.quantity}, disponible ${availableStock}`)
+      }
+    }
+
+    if (insufficientStock.length > 0) {
+      return NextResponse.json({
+        error: 'Stock insuficiente',
+        details: insufficientStock,
+      }, { status: 400 })
+    }
+
+    // Fetch product costAvg for each line
     const products = await db.product.findMany({
       where: { id: { in: productIds } },
       select: { id: true, costAvg: true, price: true },
@@ -133,28 +160,38 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Low stock notification to admin users
+      // Low stock notification to admin users — ONE notification per admin summarizing all low stock
       const adminUsers = await tx.user.findMany({
         where: { role: 'admin', active: true },
         select: { id: true },
       })
 
-      for (const admin of adminUsers) {
-        for (const line of lines) {
-          const inv = await tx.inventory.findUnique({
-            where: { productId_branchId: { productId: line.productId, branchId } },
-            include: { product: { select: { name: true } } },
-          })
-          if (inv && inv.stock <= inv.minStock && inv.minStock > 0) {
-            await tx.notification.create({
-              data: {
-                userId: admin.id,
-                title: 'Stock Bajo',
-                message: `"${inv.product.name}" tiene ${inv.stock} unidades (mín: ${inv.minStock}). Reposición necesaria.`,
-                type: 'warning',
-              },
-            })
+      // Collect unique low-stock products
+      const lowStockProducts: string[] = []
+      for (const line of lines) {
+        const inv = await tx.inventory.findUnique({
+          where: { productId_branchId: { productId: line.productId, branchId } },
+          include: { product: { select: { name: true } } },
+        })
+        if (inv && inv.minStock > 0 && inv.stock <= inv.minStock) {
+          const msg = `"${inv.product.name}" tiene ${inv.stock} uds (mín: ${inv.minStock})`
+          if (!lowStockProducts.includes(msg)) {
+            lowStockProducts.push(msg)
           }
+        }
+      }
+
+      // Create one notification per admin with all low-stock products
+      if (lowStockProducts.length > 0) {
+        for (const admin of adminUsers) {
+          await tx.notification.create({
+            data: {
+              userId: admin.id,
+              title: `Stock Bajo (${lowStockProducts.length} producto${lowStockProducts.length > 1 ? 's' : ''})`,
+              message: lowStockProducts.join('. ') + '. Reposición necesaria.',
+              type: 'warning',
+            },
+          })
         }
       }
 

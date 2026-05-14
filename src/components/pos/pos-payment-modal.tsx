@@ -52,21 +52,25 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
   const [success, setSuccess] = useState(false)
   const [currencies, setCurrencies] = useState<{ id: string; code: string; symbol: string; isBase: boolean }[]>([])
   const [baseCurrencyId, setBaseCurrencyId] = useState('')
+  const [openCashRegId, setOpenCashRegId] = useState<string | null>(null)
 
   const total = getTotal()
   const totalBs = total * exchangeRate
   const currencySymbol = referenceCurrency === 'EUR' ? '€' : '$'
   const selectedMethod = paymentMethods.find(pm => pm.value === method)
 
-  // Load currencies on mount
+  // Load currencies and open cash register on mount
   useEffect(() => {
     Promise.all([
       api.get<{ id: string; code: string; symbol: string; isBase: boolean }[]>('/api/currencies'),
       api.get<{ baseCurrencyId: string }>('/api/settings'),
-    ]).then(([currencies, settings]) => {
+      api.get<Array<{ id: string; status: string }>>('/api/cash-register'),
+    ]).then(([currencies, settings, registers]) => {
       setCurrencies(currencies)
       const base = currencies.find(c => c.isBase)
       setBaseCurrencyId(settings?.baseCurrencyId || base?.id || currencies[0]?.id || '')
+      const openReg = registers?.find(r => r.status === 'abierta')
+      if (openReg) setOpenCashRegId(openReg.id)
     }).catch(() => {})
   }, [])
 
@@ -88,7 +92,7 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
     try {
       await api.post('/api/sales', {
         clientId: clientId || null,
-        cashRegId: null,
+        cashRegId: openCashRegId,
         userId: user?.id || '',
         lines: items.map((item) => ({
           productId: item.productId,
@@ -138,6 +142,12 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
           </div>
         ) : (
           <div className="space-y-4">
+            {!openCashRegId && (
+              <div className="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-2 text-xs text-amber-700 dark:text-amber-400">
+                No hay caja abierta. Las ventas no se asociarán a un registro de caja.
+              </div>
+            )}
+
             {/* Method Selection */}
             <RadioGroup value={method} onValueChange={(v) => { setMethod(v); setReference('') }} className="grid grid-cols-2 gap-3">
               {paymentMethods.map((pm) => (

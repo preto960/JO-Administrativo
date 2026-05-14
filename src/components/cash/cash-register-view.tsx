@@ -30,7 +30,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Wallet, Plus, ArrowUpCircle, ArrowDownCircle, Lock } from 'lucide-react'
+import { Wallet, Plus, ArrowUpCircle, ArrowDownCircle, Lock, Eye } from 'lucide-react'
+import { useAuth } from '@/hooks/use-auth'
 import { toast } from 'sonner'
 
 interface CashRegister {
@@ -55,6 +56,7 @@ interface CashMovement {
 }
 
 export function CashRegisterView() {
+  const { user } = useAuth()
   const [registers, setRegisters] = useState<CashRegister[]>([])
   const [movements, setMovements] = useState<CashMovement[]>([])
   const [loading, setLoading] = useState(true)
@@ -96,7 +98,7 @@ export function CashRegisterView() {
     setSaving(true)
     try {
       await api.post('/api/cash-register/open', {
-        userId: 'current-user',
+        userId: user?.id || '',
         initialAmt: parseFloat(initialAmt) || 0,
       })
       toast.success('Caja abierta exitosamente')
@@ -120,13 +122,15 @@ export function CashRegisterView() {
     }
     setSaving(true)
     try {
+      const currencies = await api.get<Array<{ id: string; isBase: boolean }>>('/api/currencies')
+      const baseCurrency = currencies.find(c => c.isBase)
       await api.post('/api/cash-register/movement', {
         cashRegId: openRegId,
         type: moveType,
         amount: parseFloat(moveAmount),
         concept: moveConcept,
-        currencyId: 'current-currency',
-        userId: 'current-user',
+        currencyId: baseCurrency?.id || currencies[0]?.id || '',
+        userId: user?.id || '',
       })
       toast.success('Movimiento registrado')
       setShowMovement(false)

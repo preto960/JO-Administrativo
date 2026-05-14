@@ -8,6 +8,7 @@ export interface CartItem {
   unitCost: number
   currencySymbol: string
   lineTotal: number
+  maxStock: number
 }
 
 interface PosState {
@@ -24,6 +25,7 @@ interface PosState {
   setClientId: (id: string | null) => void
   getTotal: () => number
   getItemCount: () => number
+  getCurrentQty: (productId: string) => number
 }
 
 export const usePosStore = create<PosState>((set, get) => ({
@@ -39,16 +41,25 @@ export const usePosStore = create<PosState>((set, get) => ({
     const { items } = get()
     const existing = items.find((i) => i.productId === item.productId)
     if (existing) {
+      const newQty = existing.quantity + item.quantity
+      // Validate stock limit
+      if (newQty > item.maxStock) {
+        return false
+      }
       set({
         items: items.map((i) =>
           i.productId === item.productId
-            ? { ...i, quantity: i.quantity + item.quantity, lineTotal: (i.quantity + item.quantity) * i.unitPrice }
+            ? { ...i, quantity: newQty, lineTotal: newQty * i.unitPrice }
             : i
         ),
       })
     } else {
+      if (item.quantity > item.maxStock) {
+        return false
+      }
       set({ items: [...items, { ...item, lineTotal: item.quantity * item.unitPrice }] })
     }
+    return true
   },
 
   removeItem: (productId) => {
@@ -59,6 +70,10 @@ export const usePosStore = create<PosState>((set, get) => ({
     if (quantity <= 0) {
       get().removeItem(productId)
       return
+    }
+    const item = get().items.find((i) => i.productId === productId)
+    if (item && quantity > item.maxStock) {
+      return // Don't allow exceeding stock
     }
     set({
       items: get().items.map((i) =>
@@ -74,4 +89,8 @@ export const usePosStore = create<PosState>((set, get) => ({
 
   getTotal: () => get().items.reduce((s, i) => s + i.lineTotal, 0),
   getItemCount: () => get().items.reduce((s, i) => s + i.quantity, 0),
+  getCurrentQty: (productId) => {
+    const item = get().items.find((i) => i.productId === productId)
+    return item?.quantity || 0
+  },
 }))

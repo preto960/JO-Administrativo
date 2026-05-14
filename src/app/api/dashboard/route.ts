@@ -86,7 +86,7 @@ export async function GET(request: NextRequest) {
       include: { product: { select: { name: true, active: true } } },
     })
     const lowStockAlerts = lowStockItems
-      .filter(i => i.product.active && i.stock <= i.minStock)
+      .filter(i => i.product.active && i.minStock > 0 && i.stock <= i.minStock)
       .map(i => ({ productName: i.product.name, stock: i.stock, minStock: i.minStock }))
 
     // Alerts: overdue accounts receivable
@@ -98,6 +98,17 @@ export async function GET(request: NextRequest) {
       clientName: r.client.name,
       pendingBalance: r.pendingBalance,
       dueDate: r.dueDate,
+    }))
+
+    // Alerts: overdue accounts payable (supplier debts)
+    const overduePayables = await db.accountPayable.findMany({
+      where: { status: 'pendiente', dueDate: { lt: new Date() } },
+      include: { supplier: { select: { name: true } } },
+    })
+    const overduePayableAlerts = overduePayables.map(p => ({
+      supplierName: p.supplier?.name || 'Desconocido',
+      pendingBalance: p.pendingBalance,
+      dueDate: p.dueDate,
     }))
 
     // Sales chart data (last 7 days)
@@ -141,6 +152,7 @@ export async function GET(request: NextRequest) {
       recentSales,
       lowStockAlerts,
       overdueAlerts,
+      overduePayableAlerts,
       chartData,
       openRegister,
     })

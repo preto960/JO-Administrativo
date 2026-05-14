@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { api } from '@/lib/api'
+import { useAuth } from '@/hooks/use-auth'
 import {
   Table,
   TableBody,
@@ -10,11 +11,12 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Card, CardContent } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Separator } from '@/components/ui/separator'
 import {
   Dialog,
   DialogContent,
@@ -22,7 +24,15 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog'
-import { Building2, Plus, Loader2, DollarSign } from 'lucide-react'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { Building2, Plus, Loader2, DollarSign, Eye, Pencil, History } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface Supplier {
@@ -36,7 +46,28 @@ interface Supplier {
   _count: { purchases: number }
 }
 
+interface Payable {
+  id: string
+  amount: number
+  pendingBalance: number
+  dueDate: string | null
+  status: string
+  createdAt: string
+  purchase: { id: string; date: string; total: number; paidUpfront: boolean } | null
+  payments: Array<{ id: string; amount: number; method: string; reference: string | null; createdAt: string; user: { name: string } }>
+}
+
+interface PaymentRecord {
+  id: string
+  amount: number
+  method: string
+  reference: string | null
+  createdAt: string
+  user: { name: string }
+}
+
 export function SuppliersView() {
+  const { user } = useAuth()
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [loading, setLoading] = useState(true)
   const [showDialog, setShowDialog] = useState(false)
@@ -52,8 +83,30 @@ export function SuppliersView() {
   const [payingSupplierName, setPayingSupplierName] = useState('')
   const [payingSupplierBalance, setPayingSupplierBalance] = useState(0)
   const [paymentAmount, setPaymentAmount] = useState('')
+  const [paymentMethod, setPaymentMethod] = useState('efectivo')
+  const [paymentReference, setPaymentReference] = useState('')
   const [showPaymentDialog, setShowPaymentDialog] = useState(false)
   const [paying, setPaying] = useState(false)
+
+  // History dialog state
+  const [historySupplierId, setHistorySupplierId] = useState<string | null>(null)
+  const [historySupplierName, setHistorySupplierName] = useState('')
+  const [payables, setPayables] = useState<Payable[]>([])
+  const [payments, setPayments] = useState<PaymentRecord[]>([])
+  const [loadingHistory, setLoadingHistory] = useState(false)
+  const [showHistoryDialog, setShowHistoryDialog] = useState(false)
+
+  // Edit dialog state
+  const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null)
+  const [editName, setEditName] = useState('')
+  const [editRif, setEditRif] = useState('')
+  const [editPhone, setEditPhone] = useState('')
+  const [editEmail, setEditEmail] = useState('')
+  const [editAddress, setEditAddress] = useState('')
+  const [showEditDialog, setShowEditDialog] = useState(false)
+  const [editing, setEditing] = useState(false)
+
+  const [openCashRegId, setOpenCashRegId] = useState<string | null>(null)
 
   const fetchSuppliers = async () => {
     setLoading(true)
@@ -69,6 +122,16 @@ export function SuppliersView() {
 
   useEffect(() => { fetchSuppliers() }, [])
 
+  // Fetch open cash register
+  useEffect(() => {
+    api.get<Array<{ id: string; status: string }>>('/api/cash-register')
+      .then(regs => {
+        const openReg = regs?.find(r => r.status === 'abierta')
+        if (openReg) setOpenCashRegId(openReg.id)
+      })
+      .catch(() => {})
+  }, [])
+
   const openCreateDialog = () => {
     setName('')
     setRif('')
@@ -83,7 +146,35 @@ export function SuppliersView() {
     setPayingSupplierName(supplier.name)
     setPayingSupplierBalance(supplier.balance)
     setPaymentAmount(supplier.balance.toFixed(2))
+    setPaymentMethod('efectivo')
+    setPaymentReference('')
     setShowPaymentDialog(true)
+  }
+
+  const openHistoryDialog = async (supplier: Supplier) => {
+    setHistorySupplierId(supplier.id)
+    setHistorySupplierName(supplier.name)
+    setShowHistoryDialog(true)
+    setLoadingHistory(true)
+    try {
+      const data = await api.get<{ payables: Payable[]; payments: PaymentRecord[] }>(`/api/suppliers/${supplier.id}/payables`)
+      setPayables(data.payables)
+      setPayments(data.payments)
+    } catch {
+      toast.error('Error al cargar historial')
+    } finally {
+      setLoadingHistory(false)
+    }
+  }
+
+  const openEditDialog = (supplier: Supplier) => {
+    setEditingSupplier(supplier)
+    setEditName(supplier.name)
+    setEditRif(supplier.rif || '')
+    setEditPhone(supplier.phone || '')
+    setEditEmail(supplier.email || '')
+    setEditAddress(supplier.address || '')
+    setShowEditDialog(true)
   }
 
   const handlePayment = async () => {
@@ -99,7 +190,14 @@ export function SuppliersView() {
     }
     setPaying(true)
     try {
-      await api.post(`/api/suppliers/${payingSupplierId}/payment`, { amount: amt })
+      await api.post(`/api/suppliers/${payingSupplierId}/payment`, {
+        amount: amt,
+        method: paymentMethod,
+        reference: paymentReference || undefined,
+        cashRegId: openCashRegId || undefined,
+        userId: user?.id || '',
+        currencyId: '', // Will be resolved server-side if needed
+      })
       toast.success(`Pago de $${amt.toFixed(2)} registrado exitosamente`)
       setShowPaymentDialog(false)
       fetchSuppliers()
@@ -133,6 +231,31 @@ export function SuppliersView() {
       toast.error(msg)
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleEditSave = async () => {
+    if (!editingSupplier || !editName.trim()) {
+      toast.error('El nombre del proveedor es obligatorio')
+      return
+    }
+    setEditing(true)
+    try {
+      await api.put(`/api/suppliers/${editingSupplier.id}`, {
+        name: editName.trim(),
+        rif: editRif.trim() || null,
+        phone: editPhone.trim() || null,
+        email: editEmail.trim() || null,
+        address: editAddress.trim() || null,
+      })
+      toast.success('Proveedor actualizado exitosamente')
+      setShowEditDialog(false)
+      fetchSuppliers()
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Error al actualizar proveedor'
+      toast.error(msg)
+    } finally {
+      setEditing(false)
     }
   }
 
@@ -183,11 +306,19 @@ export function SuppliersView() {
                       <Badge variant="outline">{supplier._count.purchases}</Badge>
                     </TableCell>
                     <TableCell className="text-right">
-                      {supplier.balance > 0 && (
-                        <Button size="sm" variant="outline" className="text-primary hover:text-primary" onClick={() => openPaymentDialog(supplier)}>
-                          <DollarSign className="mr-1 h-3 w-3" /> Pagar
+                      <div className="flex items-center justify-end gap-1">
+                        <Button size="sm" variant="ghost" title="Editar" onClick={() => openEditDialog(supplier)}>
+                          <Pencil className="h-3.5 w-3.5" />
                         </Button>
-                      )}
+                        <Button size="sm" variant="ghost" title="Historial" onClick={() => openHistoryDialog(supplier)}>
+                          <History className="h-3.5 w-3.5" />
+                        </Button>
+                        {supplier.balance > 0 && (
+                          <Button size="sm" variant="outline" className="text-primary hover:text-primary" onClick={() => openPaymentDialog(supplier)}>
+                            <DollarSign className="mr-1 h-3 w-3" /> Pagar
+                          </Button>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -215,54 +346,67 @@ export function SuppliersView() {
           <div className="space-y-4">
             <div className="space-y-2">
               <Label>Nombre *</Label>
-              <Input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Nombre del proveedor"
-              />
+              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nombre del proveedor" />
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label>RIF</Label>
-                <Input
-                  value={rif}
-                  onChange={(e) => setRif(e.target.value)}
-                  placeholder="J-00000000-0"
-                />
+                <Input value={rif} onChange={(e) => setRif(e.target.value)} placeholder="J-00000000-0" />
               </div>
               <div className="space-y-2">
                 <Label>Teléfono</Label>
-                <Input
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="+58 212-0000000"
-                />
+                <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+58 212-0000000" />
               </div>
             </div>
             <div className="space-y-2">
               <Label>Email</Label>
-              <Input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="proveedor@ejemplo.com"
-              />
+              <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="proveedor@ejemplo.com" />
             </div>
             <div className="space-y-2">
               <Label>Dirección</Label>
-              <Input
-                value={address}
-                onChange={(e) => setAddress(e.target.value)}
-                placeholder="Dirección del proveedor"
-              />
+              <Input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Dirección del proveedor" />
             </div>
-            <Button
-              className="w-full bg-primary hover:bg-primary/90 text-white"
-              onClick={handleSave}
-              disabled={saving}
-            >
+            <Button className="w-full bg-primary hover:bg-primary/90 text-white" onClick={handleSave} disabled={saving}>
               {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               {saving ? 'Guardando...' : 'Crear Proveedor'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Supplier Dialog */}
+      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Editar Proveedor</DialogTitle>
+            <DialogDescription>Modifica los datos del proveedor</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Nombre *</Label>
+              <Input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Nombre del proveedor" />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label>RIF</Label>
+                <Input value={editRif} onChange={(e) => setEditRif(e.target.value)} placeholder="J-00000000-0" />
+              </div>
+              <div className="space-y-2">
+                <Label>Teléfono</Label>
+                <Input value={editPhone} onChange={(e) => setEditPhone(e.target.value)} placeholder="+58 212-0000000" />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Email</Label>
+              <Input type="email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} placeholder="proveedor@ejemplo.com" />
+            </div>
+            <div className="space-y-2">
+              <Label>Dirección</Label>
+              <Input value={editAddress} onChange={(e) => setEditAddress(e.target.value)} placeholder="Dirección del proveedor" />
+            </div>
+            <Button className="w-full bg-primary hover:bg-primary/90 text-white" onClick={handleEditSave} disabled={editing}>
+              {editing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              {editing ? 'Guardando...' : 'Guardar Cambios'}
             </Button>
           </div>
         </DialogContent>
@@ -289,6 +433,18 @@ export function SuppliersView() {
               </div>
             </div>
             <div className="space-y-2">
+              <Label>Método de Pago</Label>
+              <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="efectivo">Efectivo</SelectItem>
+                  <SelectItem value="transferencia">Transferencia</SelectItem>
+                  <SelectItem value="pago_movil">Pago Móvil</SelectItem>
+                  <SelectItem value="tarjeta">Tarjeta</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
               <Label htmlFor="paymentAmt">Monto a Pagar</Label>
               <Input
                 id="paymentAmt"
@@ -304,6 +460,21 @@ export function SuppliersView() {
                 Saldo después del pago: ${(payingSupplierBalance - (parseFloat(paymentAmount) || 0)).toFixed(2)}
               </p>
             </div>
+            {paymentMethod !== 'efectivo' && (
+              <div className="space-y-2">
+                <Label>Referencia</Label>
+                <Input
+                  value={paymentReference}
+                  onChange={(e) => setPaymentReference(e.target.value)}
+                  placeholder="Número de referencia"
+                />
+              </div>
+            )}
+            {paymentMethod === 'efectivo' && !openCashRegId && (
+              <div className="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-2 text-xs text-amber-700 dark:text-amber-400">
+                No hay caja abierta. El pago no se registrará como salida de caja.
+              </div>
+            )}
             <Button
               className="w-full bg-primary hover:bg-primary/90 text-white"
               onClick={handlePayment}
@@ -313,6 +484,109 @@ export function SuppliersView() {
               {paying ? 'Procesando...' : 'Registrar Pago'}
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* History Dialog */}
+      <Dialog open={showHistoryDialog} onOpenChange={setShowHistoryDialog}>
+        <DialogContent className="sm:max-w-2xl max-h-[80vh]">
+          <DialogHeader>
+            <DialogTitle>Historial de {historySupplierName}</DialogTitle>
+            <DialogDescription>Cuentas por pagar y pagos realizados</DialogDescription>
+          </DialogHeader>
+          {loadingHistory ? (
+            <div className="h-48 rounded-lg bg-muted animate-pulse" />
+          ) : (
+            <div className="space-y-4 max-h-[60vh] overflow-y-auto">
+              {/* Payables */}
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm">Cuentas por Pagar</CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  {payables.length === 0 ? (
+                    <p className="text-sm text-muted-foreground p-4 text-center">Sin cuentas pendientes</p>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Fecha</TableHead>
+                            <TableHead>Total</TableHead>
+                            <TableHead>Pendiente</TableHead>
+                            <TableHead>Vencimiento</TableHead>
+                            <TableHead>Estado</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {payables.map((p) => (
+                            <TableRow key={p.id}>
+                              <TableCell className="text-xs">
+                                {p.purchase ? new Date(p.purchase.date).toLocaleDateString('es-VE') : '—'}
+                              </TableCell>
+                              <TableCell className="text-sm">${p.amount.toFixed(2)}</TableCell>
+                              <TableCell className="text-sm font-medium text-amber-600">
+                                ${p.pendingBalance.toFixed(2)}
+                              </TableCell>
+                              <TableCell className="text-xs">
+                                {p.dueDate ? new Date(p.dueDate).toLocaleDateString('es-VE') : '—'}
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant={p.status === 'pendiente' ? 'default' : p.status === 'parcial' ? 'outline' : 'secondary'}>
+                                  {p.status}
+                                </Badge>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Payments */}
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm">Pagos Realizados</CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  {payments.length === 0 ? (
+                    <p className="text-sm text-muted-foreground p-4 text-center">Sin pagos registrados</p>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Fecha</TableHead>
+                            <TableHead>Monto</TableHead>
+                            <TableHead>Método</TableHead>
+                            <TableHead>Referencia</TableHead>
+                            <TableHead>Usuario</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {payments.map((p) => (
+                            <TableRow key={p.id}>
+                              <TableCell className="text-xs">
+                                {new Date(p.createdAt).toLocaleString('es-VE')}
+                              </TableCell>
+                              <TableCell className="text-sm font-medium text-primary">
+                                ${p.amount.toFixed(2)}
+                              </TableCell>
+                              <TableCell className="text-xs capitalize">{p.method}</TableCell>
+                              <TableCell className="text-xs">{p.reference || '—'}</TableCell>
+                              <TableCell className="text-xs">{p.user?.name || '—'}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

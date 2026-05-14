@@ -1,6 +1,6 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
-import { resolveBranchId } from '@/lib/resolve-branch'
+import { resolveBranchId, branchFromBody } from '@/lib/resolve-branch'
 
 export async function GET(request: NextRequest) {
   try {
@@ -25,13 +25,14 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { supplierId, lines, currencyId } = body
+    const { supplierId, lines, currencyId, paidUpfront } = body
 
     if (!supplierId || !lines || lines.length === 0 || !currencyId) {
       return NextResponse.json({ error: 'supplierId, currencyId y lines son requeridos' }, { status: 400 })
     }
 
-    const branchId = body.branchId || await resolveBranchId()
+    const branchId = branchFromBody(body) || await resolveBranchId()
+    const isPaidUpfront = paidUpfront === true
 
     let total = 0
     const purchaseLinesData = lines.map((line: { productId: string; quantity: number; unitCost: number }) => {
@@ -55,6 +56,7 @@ export async function POST(request: NextRequest) {
           total,
           status: 'recibida',
           currencyId,
+          paidUpfront: isPaidUpfront,
           lines: { create: purchaseLinesData },
         },
         include: {
@@ -85,8 +87,7 @@ export async function POST(request: NextRequest) {
               data: { stock: newStock },
             })
           } else {
-            // Create inventory record if doesn't exist
-            const newInv = await tx.inventory.create({
+            await tx.inventory.create({
               data: {
                 productId: line.productId,
                 branchId,
@@ -94,8 +95,6 @@ export async function POST(request: NextRequest) {
                 minStock: 0,
               },
             })
-            // Check if newly created inventory is already at or below minStock
-            // (won't happen with minStock=0, but for safety)
           }
 
           await tx.product.update({
@@ -123,21 +122,24 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Update supplier balance and create AccountPayable
-      await tx.supplier.update({
-        where: { id: supplierId },
-        data: { balance: { increment: total } },
-      })
-      await tx.accountPayable.create({
-        data: {
-          supplierId,
-          purchaseId: newPurchase.id,
-          amount: total,
-          pendingBalance: total,
-          status: 'pendiente',
-          dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-        },
-      })
+      // Only create debt if NOT paid upfront
+      if (!isPaidUpfront) {
+        // Update supplier balance and create AccountPayable
+        await tx.supplier.update({
+          where: { id: supplierId },
+          data: { balance: { increment: total } },
+        })
+        await tx.accountPayable.create({
+          data: {
+            supplierId,
+            purchaseId: newPurchase.id,
+            amount: total,
+            pendingBalance: total,
+            status: 'pendiente',
+            dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+          },
+        })
+      }
 
       return newPurchase
     })

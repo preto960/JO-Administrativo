@@ -23,7 +23,7 @@ export function useNotifications(userId: string | undefined, onNewNotification?:
   const fetchNotifications = useCallback(async () => {
     if (!userId) return
     try {
-      const res = await fetch('/api/notifications')
+      const res = await fetch(`/api/notifications?userId=${userId}`)
       if (res.ok) {
         const data = await res.json()
         setNotifications(data)
@@ -66,7 +66,7 @@ export function useNotifications(userId: string | undefined, onNewNotification?:
     const doFetch = async () => {
       if (cancelled) return
       try {
-        const res = await fetch('/api/notifications')
+        const res = await fetch(`/api/notifications?userId=${userId}`)
         if (res.ok && !cancelled) {
           const data = await res.json()
           setNotifications(data)
@@ -108,7 +108,7 @@ export function useNotifications(userId: string | undefined, onNewNotification?:
       await fetch('/api/notifications', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ markAll: true }),
+        body: JSON.stringify({ markAll: true, userId }),
       })
       setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))
       setUnreadCount(0)

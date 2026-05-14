@@ -35,6 +35,7 @@ interface DashboardData {
   }>
   lowStockAlerts: Array<{ productName: string; stock: number; minStock: number }>
   overdueAlerts: Array<{ clientName: string; pendingBalance: number; dueDate: string }>
+  overduePayableAlerts: Array<{ supplierName: string; pendingBalance: number; dueDate: string }>
   chartData: Array<{ date: string; total: number; count: number }>
 }
 
@@ -282,7 +283,7 @@ export function FinancialDashboard() {
             <CardTitle className="text-base">Alertas</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 max-h-72 overflow-y-auto">
-            {data.lowStockAlerts.length === 0 && data.overdueAlerts.length === 0 ? (
+            {data.lowStockAlerts.length === 0 && data.overdueAlerts.length === 0 && data.overduePayableAlerts.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-4">Sin alertas</p>
             ) : (
               <>
@@ -306,9 +307,23 @@ export function FinancialDashboard() {
                     className="rounded-md border border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950/30 p-2"
                   >
                     <p className="text-xs font-semibold text-red-700 dark:text-red-400">
-                      Cuenta Vencida
+                      Cuenta Vencida (Cliente)
                     </p>
                     <p className="text-xs">{alert.clientName}</p>
+                    <p className="text-[10px] text-muted-foreground">
+                      Pendiente: ${alert.pendingBalance.toFixed(2)}
+                    </p>
+                  </div>
+                ))}
+                {data.overduePayableAlerts.map((alert, i) => (
+                  <div
+                    key={`payable-${i}`}
+                    className="rounded-md border border-orange-200 bg-orange-50 dark:border-orange-800 dark:bg-orange-950/30 p-2"
+                  >
+                    <p className="text-xs font-semibold text-orange-700 dark:text-orange-400">
+                      Pago Vencido (Proveedor)
+                    </p>
+                    <p className="text-xs">{alert.supplierName}</p>
                     <p className="text-[10px] text-muted-foreground">
                       Pendiente: ${alert.pendingBalance.toFixed(2)}
                     </p>

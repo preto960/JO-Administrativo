@@ -43,14 +43,20 @@ export function PosCart({ onPayment }: PosCartProps) {
           <div className="space-y-2">
             {items.map((item) => {
               const itemTotalBs = item.lineTotal * exchangeRate
+              const atMaxStock = item.quantity >= item.maxStock
               return (
                 <div key={item.productId} className="rounded-md border p-2">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium leading-tight truncate">{item.productName}</p>
                       <p className="text-xs text-muted-foreground">
-                        {currencySymbol}{item.unitPrice.toFixed(2)} c/u
+                        {item.currencySymbol}{item.unitPrice.toFixed(2)} c/u
                       </p>
+                      {atMaxStock && (
+                        <p className="text-[10px] text-amber-600 font-medium mt-0.5">
+                          Stock máximo alcanzado ({item.maxStock})
+                        </p>
+                      )}
                     </div>
                     <button
                       onClick={() => removeItem(item.productId)}
@@ -74,14 +80,16 @@ export function PosCart({ onPayment }: PosCartProps) {
                         variant="outline"
                         size="icon"
                         className="h-6 w-6"
+                        disabled={atMaxStock}
                         onClick={() => updateQuantity(item.productId, item.quantity + 1)}
+                        title={atMaxStock ? `Stock máximo: ${item.maxStock}` : 'Agregar uno más'}
                       >
                         <Plus className="h-3 w-3" />
                       </Button>
                     </div>
                     <div className="text-right">
                       <span className="text-sm font-bold text-primary dark:text-primary">
-                        {currencySymbol}{item.lineTotal.toFixed(2)}
+                        {item.currencySymbol}{item.lineTotal.toFixed(2)}
                       </span>
                       {exchangeRate > 0 && (
                         <p className="text-[10px] text-muted-foreground">

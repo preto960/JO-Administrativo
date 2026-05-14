@@ -2,7 +2,7 @@
 
 import { api } from '@/lib/api'
 import { usePosStore } from '@/stores/use-pos-store'
-import { useSetting } from '@/stores/use-app-store'
+import { useSetting, useAppStore } from '@/stores/use-app-store'
 import { PosCart } from './pos-cart'
 import { PosPaymentModal } from './pos-payment-modal'
 import { Input } from '@/components/ui/input'
@@ -35,10 +35,11 @@ interface Category {
 }
 
 export function PosTerminal() {
-  const { addItem, searchQuery, setSearchQuery, categoryFilter, setCategoryFilter } = usePosStore()
+  const { addItem, getCurrentQty, searchQuery, setSearchQuery, categoryFilter, setCategoryFilter } = usePosStore()
   const { items, getTotal, getItemCount } = usePosStore()
   const exchangeRate = useSetting('exchangeRate')
   const referenceCurrency = useSetting('referenceCurrency')
+  const selectedBranchId = useAppStore((s) => s.selectedBranchId)
   const [products, setProducts] = useState<ProductWithInventory[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [showPayment, setShowPayment] = useState(false)
@@ -79,6 +80,17 @@ export function PosTerminal() {
     return result
   }, [searchQuery, categoryFilter, products])
 
+  // Get stock for the selected branch, fallback to first inventory
+  const getBranchStock = (product: ProductWithInventory): { stock: number; branchName: string | null } => {
+    if (selectedBranchId) {
+      const branchInv = product.inventories.find(i => i.branchId === selectedBranchId)
+      if (branchInv) return { stock: branchInv.stock, branchName: null }
+    }
+    // Fallback to first inventory
+    const firstInv = product.inventories[0]
+    return { stock: firstInv?.stock ?? 0, branchName: firstInv?.branch?.name || null }
+  }
+
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
       if (e.key === 'F2' || (e.ctrlKey && e.key === 'k')) {
@@ -95,7 +107,8 @@ export function PosTerminal() {
   }, [handleKeyDown])
 
   const handleAddProduct = (product: ProductWithInventory) => {
-    const stock = product.inventories[0]?.stock ?? 0
+    const { stock } = getBranchStock(product)
+
     if (stock <= 0) {
       const otherBranches = product.inventories.filter(i => i.stock > 0 && i.branch)
       if (otherBranches.length > 0) {
@@ -105,14 +118,26 @@ export function PosTerminal() {
       }
       return
     }
-    addItem({
+
+    const currentQty = getCurrentQty(product.id)
+    if (currentQty >= stock) {
+      toast.error(`Solo hay ${stock} unidades disponibles. Ya tienes ${currentQty} en el carrito.`)
+      return
+    }
+
+    const result = addItem({
       productId: product.id,
       productName: product.name,
       quantity: 1,
       unitPrice: product.price,
       unitCost: product.costAvg,
       currencySymbol: product.currency.symbol,
+      maxStock: stock,
     })
+
+    if (!result) {
+      toast.error('No se puede agregar más. Stock insuficiente.')
+    }
   }
 
   // After a successful sale, refresh products to show updated stock
@@ -204,17 +229,24 @@ export function PosTerminal() {
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 p-1">
               {filteredProducts.map((product) => {
-                const currentStock = product.inventories[0]?.stock ?? 0
-                const outOfStock = currentStock <= 0
+                const { stock } = getBranchStock(product)
+                const outOfStock = stock <= 0
+                const currentQty = getCurrentQty(product.id)
+                const atMaxStock = currentQty >= stock
                 return (
                 <button
                   key={product.id}
                   onClick={() => handleAddProduct(product)}
-                  className={`group relative flex flex-col items-start gap-1 rounded-lg border bg-card p-3 text-left transition-all hover:border-primary/30 hover:shadow-md hover:bg-primary/5 dark:hover:bg-primary/10 ${outOfStock ? 'opacity-50' : ''}`}
+                  disabled={outOfStock}
+                  className={`group relative flex flex-col items-start gap-1 rounded-lg border bg-card p-3 text-left transition-all hover:border-primary/30 hover:shadow-md hover:bg-primary/5 dark:hover:bg-primary/10 ${outOfStock ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
                   <div className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity">
                     {outOfStock ? (
                       <span className="flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-white text-xs">
+                        <AlertTriangle className="h-3 w-3" />
+                      </span>
+                    ) : atMaxStock ? (
+                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-white text-xs">
                         <AlertTriangle className="h-3 w-3" />
                       </span>
                     ) : (
@@ -223,6 +255,11 @@ export function PosTerminal() {
                   </div>
                   {outOfStock && (
                     <Badge variant="destructive" className="absolute left-2 top-2 text-[9px] px-1.5 py-0">Sin stock</Badge>
+                  )}
+                  {atMaxStock && !outOfStock && (
+                    <Badge variant="outline" className="absolute left-2 top-2 text-[9px] px-1.5 py-0 text-amber-600 border-amber-300">
+                      Max alcanzado
+                    </Badge>
                   )}
                   <span className={`text-sm font-medium leading-tight line-clamp-2 ${outOfStock ? 'line-through' : ''}`}>
                     {product.name}
@@ -241,9 +278,14 @@ export function PosTerminal() {
                         </p>
                       )}
                     </div>
-                    <span className={`text-[10px] ${outOfStock ? 'text-red-500 font-medium' : 'text-muted-foreground'}`}>
-                      Stock: {currentStock}
-                    </span>
+                    <div className="text-right">
+                      <span className={`text-[10px] ${outOfStock ? 'text-red-500 font-medium' : atMaxStock ? 'text-amber-600 font-medium' : 'text-muted-foreground'}`}>
+                        Stock: {stock}
+                      </span>
+                      {currentQty > 0 && (
+                        <p className="text-[10px] text-primary font-medium">En carrito: {currentQty}</p>
+                      )}
+                    </div>
                   </div>
                 </button>
                 )

@@ -2,7 +2,7 @@ import { db } from '@/lib/db'
 import { NextRequest } from 'next/server'
 
 /**
- * Resolve the branchId from the request query parameters.
+ * Resolve the branchId from the request query parameters or body branchId.
  * If no branchId is provided, returns the first active branch.
  * Falls back to a hardcoded value for backwards compatibility.
  */
@@ -12,16 +12,6 @@ export async function resolveBranchId(request?: NextRequest): Promise<string> {
     const { searchParams } = new URL(request.url)
     const queryBranchId = searchParams.get('branchId')
     if (queryBranchId) return queryBranchId
-  }
-
-  // Try from request body
-  if (request && request.method === 'POST') {
-    try {
-      const body = await request.json()
-      if (body.branchId) return body.branchId
-    } catch {
-      // Body might not be JSON or already consumed
-    }
   }
 
   // Fall back to first active branch from DB
@@ -36,4 +26,13 @@ export async function resolveBranchId(request?: NextRequest): Promise<string> {
   }
 
   return 'sucursal-1'
+}
+
+/**
+ * Extract branchId from an already-parsed request body.
+ * Use this in POST handlers after reading the body.
+ */
+export function branchFromBody(body: Record<string, unknown>): string | null {
+  if (body.branchId && typeof body.branchId === 'string') return body.branchId
+  return null
 }
