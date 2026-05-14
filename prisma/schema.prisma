@@ -248,6 +248,7 @@ model SalePayment {
 
 model CashRegister {
   id          String    @id @default(cuid())
+  name        String?
   userId      String
   branchId    String
   openingDate DateTime  @default(now())
@@ -327,6 +328,7 @@ model AccountPayable {
   pendingBalance Float
   dueDate        DateTime?
   status         String    @default("pendiente")
+  description    String?
   createdAt      DateTime  @default(now())
 
   supplier       Supplier?          @relation(fields: [supplierId], references: [id])

@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { userId, initialAmt, branchId } = body
+    const { userId, initialAmt, branchId, name } = body
 
     if (!userId) {
       return NextResponse.json({ error: 'userId es requerido' }, { status: 400 })
@@ -36,6 +36,7 @@ export async function POST(request: NextRequest) {
 
     const register = await db.cashRegister.create({
       data: {
+        name: name?.trim() || null,
         userId,
         branchId: effectiveBranchId,
         initialAmt: initialAmt || 0,

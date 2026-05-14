@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { api } from '@/lib/api'
+import { useAppStore } from '@/stores/use-app-store'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { TrendingUp, TrendingDown, DollarSign, ShoppingCart, Target, PiggyBank, Package, Users, Receipt } from 'lucide-react'
@@ -84,15 +85,18 @@ function KpiCard({
 }
 
 export function FinancialDashboard() {
+  const selectedBranchId = useAppStore((s) => s.selectedBranchId)
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    api.get<DashboardData>('/api/dashboard')
+    setLoading(true)
+    const branchParam = selectedBranchId ? `?branchId=${selectedBranchId}` : ''
+    api.get<DashboardData>(`/api/dashboard${branchParam}`)
       .then(setData)
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [])
+  }, [selectedBranchId])
 
   if (loading) {
     return (

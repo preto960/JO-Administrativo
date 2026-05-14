@@ -64,7 +64,7 @@ export function PosTerminal() {
     })
   }, [])
 
-  useEffect(() => { fetchProducts() }, [fetchProducts])
+  useEffect(() => { fetchProducts() }, [fetchProducts, selectedBranchId])
 
   const filteredProducts = useMemo(() => {
     let result = products
@@ -241,7 +241,7 @@ export function PosTerminal() {
                   key={product.id}
                   onClick={() => handleAddProduct(product)}
                   disabled={outOfStock}
-                  className={`group relative flex flex-col items-start gap-1 rounded-lg border bg-card p-3 text-left transition-all hover:border-primary/30 hover:shadow-md hover:bg-primary/5 dark:hover:bg-primary/10 ${outOfStock ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  className={`group relative flex flex-col items-start gap-0.5 rounded-lg border bg-card p-3 text-left transition-all hover:border-primary/30 hover:shadow-md hover:bg-primary/5 dark:hover:bg-primary/10 ${outOfStock ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
                   <div className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity">
                     {outOfStock ? (
@@ -256,32 +256,30 @@ export function PosTerminal() {
                       <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary text-white text-xs">+</span>
                     )}
                   </div>
-                  {outOfStock && (
-                    <Badge variant="destructive" className="absolute left-2 top-2 text-[9px] px-1.5 py-0">Sin stock</Badge>
-                  )}
-                  {atMaxStock && !outOfStock && (
-                    <Badge variant="outline" className="absolute left-2 top-2 text-[9px] px-1.5 py-0 text-amber-600 border-amber-300">
-                      Max alcanzado
-                    </Badge>
-                  )}
-                  <span className={`text-sm font-medium leading-tight line-clamp-2 ${outOfStock ? 'line-through' : ''}`}>
+                  <span className={`text-sm font-medium leading-tight line-clamp-1 ${outOfStock ? 'line-through' : ''}`}>
                     {product.name}
                   </span>
-                  <span className="text-xs text-muted-foreground">
+                  <span className="text-[10px] text-muted-foreground leading-tight">
                     {product.sku || 'Sin SKU'}
                   </span>
                   <div className="mt-auto flex items-center justify-between w-full">
                     <div>
-                      <span className="text-base font-bold text-primary dark:text-primary">
+                      <span className="text-sm font-bold text-primary dark:text-primary">
                         {currencySymbol}{effectivePrice.toFixed(2)}
-                      </span>
-                    </div>
-                    <div className="text-right">
-                      <span className={`text-[10px] ${outOfStock ? 'text-red-500 font-medium' : atMaxStock ? 'text-amber-600 font-medium' : 'text-muted-foreground'}`}>
-                        Stock: {stock}
                       </span>
                       {currentQty > 0 && (
                         <p className="text-[10px] text-primary font-medium">En carrito: {currentQty}</p>
+                      )}
+                    </div>
+                    <div className="text-right">
+                      {outOfStock ? (
+                        <Badge variant="destructive" className="text-[9px] px-1.5 py-0">Sin stock</Badge>
+                      ) : atMaxStock ? (
+                        <Badge variant="outline" className="text-[9px] px-1.5 py-0 text-amber-600 border-amber-300">Max alcanzado</Badge>
+                      ) : (
+                        <span className="text-[10px] text-muted-foreground">
+                          Stock: {stock}
+                        </span>
                       )}
                     </div>
                   </div>

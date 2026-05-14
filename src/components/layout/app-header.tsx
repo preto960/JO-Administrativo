@@ -53,7 +53,9 @@ export function AppHeader() {
       .then((data) => {
         setBranches(data)
         // Auto-select the first active branch if none selected
-        if (!selectedBranchId && data.length > 0) {
+        // Use getState() to read the latest persisted value (avoid closure bug)
+        const currentBranchId = useAppStore.getState().selectedBranchId
+        if (!currentBranchId && data.length > 0) {
           const firstActive = data.find(b => b.active)
           if (firstActive) setSelectedBranchId(firstActive.id)
         }

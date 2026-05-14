@@ -36,6 +36,7 @@ import { toast } from 'sonner'
 
 interface CashRegister {
   id: string
+  name: string | null
   openingDate: string
   closingDate: string | null
   initialAmt: number
@@ -55,6 +56,7 @@ export function CashRegisterView() {
   const [showClose, setShowClose] = useState(false)
   const [closeRegId, setCloseRegId] = useState<string | null>(null)
   const [initialAmt, setInitialAmt] = useState('100')
+  const [registerName, setRegisterName] = useState('')
   const [moveType, setMoveType] = useState('entrada')
   const [moveAmount, setMoveAmount] = useState('')
   const [moveConcept, setMoveConcept] = useState('')
@@ -84,9 +86,11 @@ export function CashRegisterView() {
       await api.post('/api/cash-register/open', {
         userId: user?.id || '',
         initialAmt: parseFloat(initialAmt) || 0,
+        name: registerName.trim() || undefined,
       })
       toast.success('Caja abierta exitosamente')
       setShowOpen(false)
+      setRegisterName('')
       fetchData()
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Error al abrir caja'
@@ -244,6 +248,7 @@ export function CashRegisterView() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead>Caja</TableHead>
                     <TableHead>Cajero</TableHead>
                     <TableHead>Apertura</TableHead>
                     <TableHead className="text-right">Inicial</TableHead>
@@ -255,7 +260,8 @@ export function CashRegisterView() {
                 <TableBody>
                   {openRegisters.map((reg) => (
                     <TableRow key={reg.id}>
-                      <TableCell className="font-medium">{reg.user.name}</TableCell>
+                      <TableCell className="font-medium">{reg.name || '—'}</TableCell>
+                      <TableCell className="text-sm">{reg.user.name}</TableCell>
                       <TableCell className="text-sm">
                         {new Date(reg.openingDate).toLocaleString('es-VE')}
                       </TableCell>
@@ -301,6 +307,7 @@ export function CashRegisterView() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Apertura</TableHead>
+                  <TableHead>Caja</TableHead>
                   <TableHead>Cajero</TableHead>
                   <TableHead className="text-right">Inicial</TableHead>
                   <TableHead className="text-right hidden sm:table-cell">Final</TableHead>
@@ -314,6 +321,7 @@ export function CashRegisterView() {
                     <TableCell className="text-sm">
                       {new Date(reg.openingDate).toLocaleString('es-VE')}
                     </TableCell>
+                    <TableCell className="font-medium">{reg.name || '—'}</TableCell>
                     <TableCell className="font-medium">{reg.user.name}</TableCell>
                     <TableCell className="text-right">${reg.initialAmt.toFixed(2)}</TableCell>
                     <TableCell className="text-right font-semibold hidden sm:table-cell">${reg.currentAmt.toFixed(2)}</TableCell>
@@ -329,7 +337,7 @@ export function CashRegisterView() {
                 ))}
                 {registers.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                       No hay registros de caja
                     </TableCell>
                   </TableRow>
@@ -348,6 +356,10 @@ export function CashRegisterView() {
             <DialogDescription>Ingresa el monto inicial para abrir la caja</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="regname">Nombre de la Caja (opcional)</Label>
+              <Input id="regname" value={registerName} onChange={(e) => setRegisterName(e.target.value)} placeholder="Ej: Caja Principal, Caja 2, Caja Enfermería..." />
+            </div>
             <div className="space-y-2">
               <Label htmlFor="initial">Monto Inicial</Label>
               <Input id="initial" type="number" step="0.01" value={initialAmt} onChange={(e) => setInitialAmt(e.target.value)} />
@@ -380,7 +392,7 @@ export function CashRegisterView() {
                   <SelectContent>
                     {openRegisters.map((reg) => (
                       <SelectItem key={reg.id} value={reg.id}>
-                        {reg.user.name} — ${reg.currentAmt.toFixed(2)}
+                        {reg.name || reg.user.name} — ${reg.currentAmt.toFixed(2)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -424,6 +436,10 @@ export function CashRegisterView() {
               const reg = registers.find(r => r.id === closeRegId)
               return reg ? (
                 <div className="rounded-md bg-muted p-3 space-y-1 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Caja:</span>
+                    <span className="font-medium">{reg.name || '—'}</span>
+                  </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Cajero:</span>
                     <span className="font-medium">{reg.user.name}</span>

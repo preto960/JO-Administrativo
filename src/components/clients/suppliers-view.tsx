@@ -23,7 +23,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog'
-import { Building2, Plus, Loader2, Eye, Pencil, ShoppingBag } from 'lucide-react'
+import { Building2, Plus, Loader2, Eye, Pencil, ShoppingBag, DollarSign, FileText, CalendarDays } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface Supplier {
@@ -33,6 +33,7 @@ interface Supplier {
   phone: string | null
   email: string | null
   address: string | null
+  balance: number
   _count: { purchases: number }
 }
 
@@ -43,6 +44,23 @@ interface PurchaseRecord {
   paidAmount: number
   status: string
   currency: { symbol: string; code: string }
+}
+
+interface PayableRecord {
+  id: string
+  amount: number
+  pendingBalance: number
+  status: string
+  dueDate: string | null
+  description: string | null
+  createdAt: string
+  purchase: {
+    id: string
+    date: string
+    total: number
+    lines: Array<{ product: { name: string } }>
+  } | null
+  payments: Array<{ amount: number; createdAt: string; user: { name: string } }>
 }
 
 export function SuppliersView() {
@@ -71,6 +89,21 @@ export function SuppliersView() {
   const [editAddress, setEditAddress] = useState('')
   const [showEditDialog, setShowEditDialog] = useState(false)
   const [editing, setEditing] = useState(false)
+
+  // Add Payable dialog state
+  const [payableSupplier, setPayableSupplier] = useState<Supplier | null>(null)
+  const [showPayableDialog, setShowPayableDialog] = useState(false)
+  const [payableAmount, setPayableAmount] = useState('')
+  const [payableDescription, setPayableDescription] = useState('')
+  const [payableDueDate, setPayableDueDate] = useState('')
+  const [savingPayable, setSavingPayable] = useState(false)
+
+  // Debt/Payables dialog state
+  const [debtSupplier, setDebtSupplier] = useState<Supplier | null>(null)
+  const [payables, setPayables] = useState<PayableRecord[]>([])
+  const [totalDebt, setTotalDebt] = useState(0)
+  const [loadingDebt, setLoadingDebt] = useState(false)
+  const [showDebtDialog, setShowDebtDialog] = useState(false)
 
   const fetchSuppliers = async () => {
     setLoading(true)
@@ -117,6 +150,29 @@ export function SuppliersView() {
     setEditEmail(supplier.email || '')
     setEditAddress(supplier.address || '')
     setShowEditDialog(true)
+  }
+
+  const openPayableDialog = (supplier: Supplier) => {
+    setPayableSupplier(supplier)
+    setPayableAmount('')
+    setPayableDescription('')
+    setPayableDueDate('')
+    setShowPayableDialog(true)
+  }
+
+  const openDebtDialog = async (supplier: Supplier) => {
+    setDebtSupplier(supplier)
+    setShowDebtDialog(true)
+    setLoadingDebt(true)
+    try {
+      const data = await api.get<{ payables: PayableRecord[]; totalDebt: number }>(`/api/suppliers/${supplier.id}/payables`)
+      setPayables(data.payables)
+      setTotalDebt(data.totalDebt)
+    } catch {
+      toast.error('Error al cargar deudas')
+    } finally {
+      setLoadingDebt(false)
+    }
   }
 
   const handleSave = async () => {
@@ -169,6 +225,31 @@ export function SuppliersView() {
     }
   }
 
+  const handleCreatePayable = async () => {
+    if (!payableSupplier) return
+    const amt = parseFloat(payableAmount)
+    if (!amt || amt <= 0) {
+      toast.error('El monto debe ser mayor a 0')
+      return
+    }
+    setSavingPayable(true)
+    try {
+      await api.post(`/api/suppliers/${payableSupplier.id}/payables`, {
+        amount: amt,
+        description: payableDescription.trim() || null,
+        dueDate: payableDueDate || null,
+      })
+      toast.success(`Cuenta por pagar de $${amt.toFixed(2)} registrada`)
+      setShowPayableDialog(false)
+      fetchSuppliers()
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Error al crear cuenta por pagar'
+      toast.error(msg)
+    } finally {
+      setSavingPayable(false)
+    }
+  }
+
   if (loading) {
     return <div className="h-64 rounded-lg bg-muted animate-pulse" />
   }
@@ -193,29 +274,44 @@ export function SuppliersView() {
                 <TableRow>
                   <TableHead>Proveedor</TableHead>
                   <TableHead className="hidden sm:table-cell">RIF</TableHead>
-                  <TableHead className="hidden md:table-cell">Teléfono</TableHead>
-                  <TableHead className="hidden lg:table-cell">Email</TableHead>
-                  <TableHead className="text-right">Compras</TableHead>
+                  <TableHead className="text-right hidden md:table-cell">Compras</TableHead>
+                  <TableHead className="text-right">Deuda</TableHead>
                   <TableHead className="text-right">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {suppliers.map((supplier) => (
                   <TableRow key={supplier.id}>
-                    <TableCell className="font-medium">{supplier.name}</TableCell>
+                    <TableCell>
+                      <div>
+                        <span className="font-medium">{supplier.name}</span>
+                        {supplier.phone && (
+                          <p className="text-xs text-muted-foreground md:hidden">{supplier.phone}</p>
+                        )}
+                      </div>
+                    </TableCell>
                     <TableCell className="hidden sm:table-cell">{supplier.rif || '—'}</TableCell>
-                    <TableCell className="hidden md:table-cell">{supplier.phone || '—'}</TableCell>
-                    <TableCell className="hidden lg:table-cell">{supplier.email || '—'}</TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right hidden md:table-cell">
                       <Badge variant="outline">{supplier._count.purchases}</Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <span className={supplier.balance > 0 ? 'text-red-600 font-medium' : 'text-primary'}>
+                        ${supplier.balance.toFixed(2)}
+                      </span>
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1">
                         <Button size="sm" variant="ghost" title="Editar" onClick={() => openEditDialog(supplier)}>
                           <Pencil className="h-3.5 w-3.5" />
                         </Button>
+                        <Button size="sm" variant="ghost" title="Ver Deudas" onClick={() => openDebtDialog(supplier)}>
+                          <DollarSign className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button size="sm" variant="outline" title="Agregar Deuda" onClick={() => openPayableDialog(supplier)}>
+                          <Plus className="h-3 w-3" />
+                        </Button>
                         <Button size="sm" variant="outline" title="Ver Compras" onClick={() => openPurchasesDialog(supplier)}>
-                          <ShoppingBag className="mr-1 h-3 w-3" /> Compras
+                          <ShoppingBag className="mr-1 h-3 w-3" />
                         </Button>
                       </div>
                     </TableCell>
@@ -223,7 +319,7 @@ export function SuppliersView() {
                 ))}
                 {suppliers.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
                       <Building2 className="mx-auto mb-2 h-8 w-8 opacity-50" />
                       No hay proveedores registrados
                     </TableCell>
@@ -308,6 +404,161 @@ export function SuppliersView() {
               {editing ? 'Guardando...' : 'Guardar Cambios'}
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Payable Dialog */}
+      <Dialog open={showPayableDialog} onOpenChange={setShowPayableDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Agregar Deuda a {payableSupplier?.name}</DialogTitle>
+            <DialogDescription>Registra una cuenta por pagar a este proveedor</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {payableSupplier && (
+              <div className="rounded-md bg-muted p-3 space-y-1 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Deuda actual:</span>
+                  <span className="font-medium text-red-600">${payableSupplier.balance.toFixed(2)}</span>
+                </div>
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label htmlFor="pamount">Monto a Deber *</Label>
+              <Input
+                id="pamount"
+                type="number"
+                step="0.01"
+                min="0"
+                value={payableAmount}
+                onChange={(e) => setPayableAmount(e.target.value)}
+                placeholder="0.00"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="pdesc">Descripción / Productos</Label>
+              <Input
+                id="pdesc"
+                value={payableDescription}
+                onChange={(e) => setPayableDescription(e.target.value)}
+                placeholder="Ej: 10 cajas de cerveza Polar, 5 bolsas de harina PAN..."
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="pduedate">Plazo de Pago</Label>
+              <Input
+                id="pduedate"
+                type="date"
+                value={payableDueDate}
+                onChange={(e) => setPayableDueDate(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">Fecha límite para realizar el pago</p>
+            </div>
+            <Button
+              className="w-full bg-primary hover:bg-primary/90 text-white"
+              onClick={handleCreatePayable}
+              disabled={savingPayable || !parseFloat(payableAmount) || parseFloat(payableAmount) <= 0}
+            >
+              {savingPayable ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
+              {savingPayable ? 'Registrando...' : 'Registrar Deuda'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Debt/Payables Dialog */}
+      <Dialog open={showDebtDialog} onOpenChange={setShowDebtDialog}>
+        <DialogContent className="sm:max-w-2xl max-h-[80vh]">
+          <DialogHeader>
+            <DialogTitle>Deudas de {debtSupplier?.name}</DialogTitle>
+            <DialogDescription>Cuentas por pagar pendientes</DialogDescription>
+          </DialogHeader>
+          {loadingDebt ? (
+            <div className="h-48 rounded-lg bg-muted animate-pulse" />
+          ) : (
+            <div className="space-y-4 max-h-[60vh] overflow-y-auto">
+              {/* Summary */}
+              <div className="grid grid-cols-2 gap-3">
+                <Card>
+                  <CardContent className="p-3 text-center">
+                    <p className="text-xs text-muted-foreground">Deuda Total</p>
+                    <p className="text-xl font-bold text-red-600">${totalDebt.toFixed(2)}</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-3 text-center">
+                    <p className="text-xs text-muted-foreground">Cuentas Pendientes</p>
+                    <p className="text-xl font-bold">
+                      {payables.filter(p => p.status === 'pendiente' || p.status === 'parcial').length}
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Payables Table */}
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm">Detalle de Deudas</CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  {payables.length === 0 ? (
+                    <p className="text-sm text-muted-foreground p-4 text-center">Sin deudas registradas</p>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Fecha</TableHead>
+                            <TableHead>Descripción</TableHead>
+                            <TableHead>Total</TableHead>
+                            <TableHead>Pendiente</TableHead>
+                            <TableHead>Vencimiento</TableHead>
+                            <TableHead>Estado</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {payables.map((p) => (
+                            <TableRow key={p.id}>
+                              <TableCell className="text-xs">
+                                {new Date(p.createdAt).toLocaleDateString('es-VE')}
+                              </TableCell>
+                              <TableCell className="text-xs max-w-[150px] truncate">
+                                {p.description || p.purchase?.lines?.map(l => l.product.name).join(', ') || '—'}
+                              </TableCell>
+                              <TableCell className="text-sm">
+                                ${p.amount.toFixed(2)}
+                              </TableCell>
+                              <TableCell className="text-sm font-medium">
+                                <span className={p.pendingBalance > 0 ? 'text-red-600' : 'text-primary'}>
+                                  ${p.pendingBalance.toFixed(2)}
+                                </span>
+                              </TableCell>
+                              <TableCell className="text-xs">
+                                {p.dueDate ? (
+                                  <span className={new Date(p.dueDate) < new Date() && p.pendingBalance > 0 ? 'text-red-600 font-medium' : ''}>
+                                    {new Date(p.dueDate).toLocaleDateString('es-VE')}
+                                  </span>
+                                ) : '—'}
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant={
+                                  p.status === 'pagada' ? 'default' :
+                                  p.status === 'parcial' ? 'outline' : 'secondary'
+                                }>
+                                  {p.status === 'pagada' ? 'Pagada' :
+                                   p.status === 'parcial' ? 'Parcial' : 'Pendiente'}
+                                </Badge>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 

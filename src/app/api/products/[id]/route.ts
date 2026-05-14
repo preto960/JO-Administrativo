@@ -54,12 +54,16 @@ export async function PUT(
         categoryId: body.categoryId || null,
         active: body.active,
       },
-      include: { currency: true, category: true },
+      include: {
+        currency: true,
+        category: true,
+        inventories: true,
+      },
     })
 
     // Update inventory if stock or minStock provided
-    if (body.initialStock !== undefined || body.minStock !== undefined) {
-      const branchId = await resolveBranchId()
+    if (body.initialStock !== undefined || body.minStock !== undefined || body.branchPrice !== undefined) {
+      const branchId = body.branchId || await resolveBranchId()
       const inventory = await db.inventory.findFirst({
         where: { productId: id, branchId },
       })
@@ -67,9 +71,21 @@ export async function PUT(
         const updateData: Record<string, number> = {}
         if (body.initialStock !== undefined) updateData.stock = body.initialStock
         if (body.minStock !== undefined) updateData.minStock = body.minStock
+        if (body.branchPrice !== undefined) updateData.price = body.branchPrice
         await db.inventory.update({
           where: { id: inventory.id },
           data: updateData,
+        })
+      } else if (body.branchId) {
+        // Create inventory for this branch if it doesn't exist yet
+        await db.inventory.create({
+          data: {
+            productId: id,
+            branchId: body.branchId,
+            stock: body.initialStock ?? 0,
+            minStock: body.minStock ?? 0,
+            price: body.branchPrice ?? 0,
+          },
         })
       }
     }
