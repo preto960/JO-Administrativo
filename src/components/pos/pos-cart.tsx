@@ -50,7 +50,7 @@ export function PosCart({ onPayment }: PosCartProps) {
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium leading-tight truncate">{item.productName}</p>
                       <p className="text-xs text-muted-foreground">
-                        {item.currencySymbol}{item.unitPrice.toFixed(2)} c/u
+                        {currencySymbol}{item.unitPrice.toFixed(2)} c/u
                       </p>
                       {atMaxStock && (
                         <p className="text-[10px] text-amber-600 font-medium mt-0.5">
@@ -89,7 +89,7 @@ export function PosCart({ onPayment }: PosCartProps) {
                     </div>
                     <div className="text-right">
                       <span className="text-sm font-bold text-primary dark:text-primary">
-                        {item.currencySymbol}{item.lineTotal.toFixed(2)}
+                        {currencySymbol}{item.lineTotal.toFixed(2)}
                       </span>
                       {exchangeRate > 0 && (
                         <p className="text-[10px] text-muted-foreground">
