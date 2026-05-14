@@ -109,3 +109,36 @@ Stage Summary:
 - 6 frontend components modified/rewritten
 - Build passing with no errors
 - Committed as 369caab
+
+---
+Task ID: 3
+Agent: Main Agent
+Task: 10 security, permissions, and UX improvements
+
+Work Log:
+- **Task 1 (Session/role permissions)**: app-shell.tsx now checks if the current activeView is allowed for the logged-in user's role. If not, redirects to POS. localStorage is cleared on logout to prevent stale view persistence across sessions.
+
+- **Task 2 (Date column styling)**: Added whitespace-nowrap and padding to date cells in client history table to prevent overlap with amount columns.
+
+- **Task 3 (Cash registers - cashier-only)**: cash-register-view.tsx now filters users by role=cajero for assignment, adds branch selector filter (defaults to main branch), shows branch column in all tables.
+
+- **Task 4 (Password encryption)**: Created src/lib/password.ts with bcryptjs. Auth route now uses comparePassword (supports legacy plaintext + hashed). New passwords are hashed on create/update. Auto-migration: first login with plaintext password hashes it.
+
+- **Task 5 (Soft delete)**: Added deletedAt DateTime? to User, Client, Supplier, Expense models. All GET APIs filter out deleted records. DELETE endpoints added to /api/clients, /api/suppliers, /api/expenses, /api/users. Delete buttons added to all frontend tables.
+
+- **Task 6 (Cashier read-only)**: Cashiers see branch+register as read-only badges in header. No open/close/movement buttons. Branch forced from JWT branchId.
+
+- **Task 7 (Email on close)**: Created src/lib/email.ts with nodemailer. Close single register and close-all APIs send HTML email to admin with detailed cash closure report (sales, expenses, difference).
+
+- **Task 8 (Cashier closure alert)**: Created /api/cash-register/check endpoint. Frontend polls every 30s. Shows modal alert when admin closes cashier's register. Notification also created in DB.
+
+- **Task 9 (User branch assignment)**: Added branchId to User model (nullable, with relation to Branch). User create/edit dialog in settings shows branch selector for non-admin roles. JWT includes branchId. Users API returns branch info.
+
+- **Task 10 (Default divisas)**: Client payment dialog default method changed from 'efectivo' to 'divisas'.
+
+Stage Summary:
+- All 10 tasks implemented and committed as 62258d3
+- 3 new files: src/lib/password.ts, src/lib/email.ts, src/app/api/cash-register/check/route.ts
+- Schema: deletedAt on User/Client/Supplier/Expense, branchId on User
+- bcryptjs + nodemailer installed
+- Build passing
