@@ -5,6 +5,7 @@ import { api } from '@/lib/api'
 import { useAuth } from '@/hooks/use-auth'
 import { useAppStore } from '@/stores/use-app-store'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -32,7 +33,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Wallet, Plus, ArrowUpCircle, ArrowDownCircle, Lock, Eye, Loader2, UserCircle, AlertTriangle, GitBranch } from 'lucide-react'
+import { Wallet, Plus, ArrowUpCircle, ArrowDownCircle, Lock, Eye, Loader2, UserCircle, AlertTriangle, GitBranch, Banknote, ClipboardCheck, CheckCircle2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface CashRegister {
@@ -54,6 +55,17 @@ interface BranchItem {
   isMain: boolean
   active: boolean
 }
+
+const DENOMINATIONS = [
+  { value: 100, label: 'Bs 100', type: 'billete' },
+  { value: 50, label: 'Bs 50', type: 'billete' },
+  { value: 20, label: 'Bs 20', type: 'billete' },
+  { value: 10, label: 'Bs 10', type: 'billete' },
+  { value: 5, label: 'Bs 5', type: 'billete' },
+  { value: 1, label: 'Bs 1', type: 'billete' },
+  { value: 0.5, label: 'Bs 0,50', type: 'moneda' },
+  { value: 0.25, label: 'Bs 0,25', type: 'moneda' },
+]
 
 export function CashRegisterView() {
   const { user } = useAuth()
@@ -78,6 +90,19 @@ export function CashRegisterView() {
   const [saving, setSaving] = useState(false)
   const [closeActual, setCloseActual] = useState('')
   const [closingAll, setClosingAll] = useState(false)
+
+  // Retiro de Excedente state
+  const [showWithdrawal, setShowWithdrawal] = useState(false)
+  const [withdrawalRegId, setWithdrawalRegId] = useState<string | null>(null)
+  const [withdrawalAmount, setWithdrawalAmount] = useState('')
+  const [withdrawalConcept, setWithdrawalConcept] = useState('')
+
+  // Arqueo de Caja state
+  const [showAudit, setShowAudit] = useState(false)
+  const [auditRegId, setAuditRegId] = useState<string | null>(null)
+  const [auditBreakdown, setAuditBreakdown] = useState<Record<string, string>>({})
+  const [auditNotes, setAuditNotes] = useState('')
+  const [auditResult, setAuditResult] = useState<{ counted: number; expected: number; difference: number } | null>(null)
 
   // Register closure alert for cashiers
   const [showClosedAlert, setShowClosedAlert] = useState(false)
@@ -217,6 +242,84 @@ export function CashRegisterView() {
     } finally {
       setSaving(false)
     }
+  }
+
+  const handleWithdrawal = async () => {
+    if (!withdrawalAmount || parseFloat(withdrawalAmount) <= 0) {
+      toast.error('El monto debe ser mayor a cero')
+      return
+    }
+    if (!withdrawalRegId) {
+      toast.error('No se seleccionó caja')
+      return
+    }
+    setSaving(true)
+    try {
+      const currencies = await api.get<Array<{ id: string; isBase: boolean }>>('/api/currencies')
+      const baseCurrency = currencies.find(c => c.isBase)
+      const result = await api.post('/api/cash-register/withdrawal', {
+        cashRegId: withdrawalRegId,
+        amount: parseFloat(withdrawalAmount),
+        concept: withdrawalConcept.trim() || undefined,
+        currencyId: baseCurrency?.id || currencies[0]?.id || '',
+        userId: user?.id || '',
+      })
+      toast.success(`Retiro de excedente por $${result.amount.toFixed(2)} registrado`)
+      setShowWithdrawal(false)
+      setWithdrawalAmount('')
+      setWithdrawalConcept('')
+      setWithdrawalRegId(null)
+      fetchData(filterBranchId)
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Error al registrar retiro'
+      toast.error(msg)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleAudit = async () => {
+    if (!auditRegId) {
+      toast.error('No se seleccionó caja')
+      return
+    }
+    setSaving(true)
+    try {
+      const numericBreakdown: Record<string, number> = {}
+      for (const [key, val] of Object.entries(auditBreakdown)) {
+        const num = parseFloat(val) || 0
+        if (num > 0) numericBreakdown[key] = num
+      }
+      if (Object.keys(numericBreakdown).length === 0) {
+        toast.error('Debe ingresar al menos una denominación')
+        setSaving(false)
+        return
+      }
+      const result = await api.post<{ counted: number; expected: number; difference: number }>(
+        '/api/cash-register/audit',
+        {
+          cashRegId: auditRegId,
+          userId: user?.id || '',
+          breakdown: numericBreakdown,
+          notes: auditNotes.trim() || undefined,
+        }
+      )
+      setAuditResult(result)
+      toast.success('Arqueo de caja registrado')
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Error al registrar arqueo'
+      toast.error(msg)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const resetAuditDialog = () => {
+    setShowAudit(false)
+    setAuditRegId(null)
+    setAuditBreakdown({})
+    setAuditNotes('')
+    setAuditResult(null)
   }
 
   const closeAllRegisters = async () => {
@@ -359,8 +462,28 @@ export function CashRegisterView() {
                 )}
                 {isCashier && (
                   <p className="text-xs text-muted-foreground mt-1">
-                    Modo cajero: solo lectura
+                    Modo cajero
                   </p>
+                )}
+                {openRegisters.length > 0 && (
+                  <>
+                    <Button size="sm" variant="outline" className="text-orange-600 border-orange-300 hover:bg-orange-50" onClick={() => {
+                      if (openRegisters.length === 1) {
+                        setWithdrawalRegId(openRegisters[0].id)
+                      }
+                      setShowWithdrawal(true)
+                    }}>
+                      <Banknote className="mr-1 h-3 w-3" /> Retiro
+                    </Button>
+                    <Button size="sm" variant="outline" className="text-emerald-600 border-emerald-300 hover:bg-emerald-50" onClick={() => {
+                      if (openRegisters.length === 1) {
+                        setAuditRegId(openRegisters[0].id)
+                      }
+                      setShowAudit(true)
+                    }}>
+                      <ClipboardCheck className="mr-1 h-3 w-3" /> Arqueo
+                    </Button>
+                  </>
                 )}
               </div>
             </div>
@@ -386,7 +509,7 @@ export function CashRegisterView() {
                     <TableHead className="text-right">Inicial</TableHead>
                     <TableHead className="text-right">Actual</TableHead>
                     <TableHead className="text-right">Ventas</TableHead>
-                    {!isCashier && <TableHead className="text-right">Acciones</TableHead>}
+                    <TableHead className="text-right">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -405,25 +528,39 @@ export function CashRegisterView() {
                       <TableCell className="text-right">
                         <Badge variant="outline">{reg._count.sales}</Badge>
                       </TableCell>
-                      {!isCashier && (
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-1">
-                            <Button size="sm" variant="ghost" onClick={() => {
-                              setMovementRegId(reg.id)
-                              setShowMovement(true)
-                            }}>
-                              <ArrowDownCircle className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button size="sm" variant="ghost" className="text-red-600" onClick={() => {
-                              setCloseRegId(reg.id)
-                              setCloseActual('')
-                              setShowClose(true)
-                            }}>
-                              <Lock className="h-3.5 w-3.5" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      )}
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-1">
+                          {!isCashier && (
+                            <>
+                              <Button size="sm" variant="ghost" onClick={() => {
+                                setMovementRegId(reg.id)
+                                setShowMovement(true)
+                              }}>
+                                <ArrowDownCircle className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button size="sm" variant="ghost" className="text-red-600" onClick={() => {
+                                setCloseRegId(reg.id)
+                                setCloseActual('')
+                                setShowClose(true)
+                              }}>
+                                <Lock className="h-3.5 w-3.5" />
+                              </Button>
+                            </>
+                          )}
+                          <Button size="sm" variant="ghost" className="text-orange-600" onClick={() => {
+                            setWithdrawalRegId(reg.id)
+                            setShowWithdrawal(true)
+                          }} title="Retiro de Excedente">
+                            <Banknote className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button size="sm" variant="ghost" className="text-emerald-600" onClick={() => {
+                            setAuditRegId(reg.id)
+                            setShowAudit(true)
+                          }} title="Arqueo de Caja">
+                            <ClipboardCheck className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -618,6 +755,245 @@ export function CashRegisterView() {
             </p>
             <Button className="w-full bg-red-600 hover:bg-red-700 text-white" onClick={closeRegister} disabled={saving}>
               {saving ? 'Cerrando...' : 'Confirmar Cierre'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Retiro de Excedente Dialog */}
+      <Dialog open={showWithdrawal} onOpenChange={(open) => {
+        if (!open) {
+          setShowWithdrawal(false)
+          setWithdrawalRegId(null)
+          setWithdrawalAmount('')
+          setWithdrawalConcept('')
+        }
+      }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Banknote className="h-5 w-5 text-orange-600" />
+              Retiro de Excedente
+            </DialogTitle>
+            <DialogDescription>Retira el efectivo excedente de la caja</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {openRegisters.length > 1 && (
+              <div className="space-y-2">
+                <Label>Caja</Label>
+                <Select value={withdrawalRegId || ''} onValueChange={setWithdrawalRegId}>
+                  <SelectTrigger><SelectValue placeholder="Seleccionar caja" /></SelectTrigger>
+                  <SelectContent>
+                    {openRegisters.map((reg) => (
+                      <SelectItem key={reg.id} value={reg.id}>
+                        {reg.name || reg.user.name} — ${reg.currentAmt.toFixed(2)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {withdrawalRegId && (() => {
+              const reg = registers.find(r => r.id === withdrawalRegId)
+              if (!reg) return null
+              return (
+                <div className="rounded-md bg-muted p-3 space-y-1 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Caja:</span>
+                    <span className="font-medium">{reg.name || '—'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Saldo actual:</span>
+                    <span className="font-bold text-primary">${reg.currentAmt.toFixed(2)}</span>
+                  </div>
+                </div>
+              )
+            })()}
+            <div className="space-y-2">
+              <Label htmlFor="wamt">Monto a Retirar</Label>
+              <Input
+                id="wamt"
+                type="number"
+                step="0.01"
+                min="0"
+                value={withdrawalAmount}
+                onChange={(e) => setWithdrawalAmount(e.target.value)}
+                placeholder="0.00"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="wconcept">Concepto (opcional)</Label>
+              <Input
+                id="wconcept"
+                value={withdrawalConcept}
+                onChange={(e) => setWithdrawalConcept(e.target.value)}
+                placeholder="Razón del retiro..."
+              />
+            </div>
+            <Button
+              className="w-full bg-orange-600 hover:bg-orange-700 text-white"
+              onClick={handleWithdrawal}
+              disabled={saving || !withdrawalAmount || parseFloat(withdrawalAmount) <= 0}
+            >
+              {saving ? 'Registrando...' : 'Registrar Retiro'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Arqueo de Caja Dialog */}
+      <Dialog open={showAudit} onOpenChange={(open) => {
+        if (!open) resetAuditDialog()
+      }}>
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ClipboardCheck className="h-5 w-5 text-emerald-600" />
+              Arqueo de Caja
+            </DialogTitle>
+            <DialogDescription>Verificación del efectivo en caja por denominación</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {openRegisters.length > 1 && (
+              <div className="space-y-2">
+                <Label>Caja</Label>
+                <Select value={auditRegId || ''} onValueChange={setAuditRegId}>
+                  <SelectTrigger><SelectValue placeholder="Seleccionar caja" /></SelectTrigger>
+                  <SelectContent>
+                    {openRegisters.map((reg) => (
+                      <SelectItem key={reg.id} value={reg.id}>
+                        {reg.name || reg.user.name} — ${reg.currentAmt.toFixed(2)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {auditRegId && (() => {
+              const reg = registers.find(r => r.id === auditRegId)
+              if (!reg) return null
+              return (
+                <div className="rounded-md bg-muted p-3 space-y-1 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Caja:</span>
+                    <span className="font-medium">{reg.name || '—'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Monto esperado:</span>
+                    <span className="font-bold text-primary">${reg.currentAmt.toFixed(2)}</span>
+                  </div>
+                </div>
+              )
+            })()}
+
+            <div className="space-y-3">
+              <Label className="text-sm font-medium">Denominaciones</Label>
+              <div className="grid grid-cols-2 gap-2">
+                {DENOMINATIONS.map((denom) => (
+                  <div key={denom.value} className="flex items-center gap-2">
+                    <span className="text-xs font-mono w-16 text-right shrink-0 text-muted-foreground">
+                      {denom.label}
+                    </span>
+                    <Input
+                      type="number"
+                      min="0"
+                      className="h-8 text-sm"
+                      placeholder="0"
+                      value={auditBreakdown[denom.value.toString()] || ''}
+                      onChange={(e) =>
+                        setAuditBreakdown((prev) => ({
+                          ...prev,
+                          [denom.value.toString()]: e.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Totals */}
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Total contado:</span>
+                <span className="font-bold text-lg">
+                  ${Object.entries(auditBreakdown).reduce(
+                    (sum, [denom, qty]) => sum + parseFloat(denom) * (parseFloat(qty) || 0),
+                    0
+                  ).toFixed(2)}
+                </span>
+              </div>
+              {auditRegId && (() => {
+                const reg = registers.find(r => r.id === auditRegId)
+                if (!reg) return null
+                const counted = Object.entries(auditBreakdown).reduce(
+                  (sum, [denom, qty]) => sum + parseFloat(denom) * (parseFloat(qty) || 0),
+                  0
+                )
+                const diff = counted - reg.currentAmt
+                return (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Diferencia:</span>
+                    <span className={`font-bold ${diff > 0 ? 'text-amber-600' : diff < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                      {diff > 0 ? '+' : ''}{diff.toFixed(2)}
+                      {diff > 0 && ' (Sobrante)'}
+                      {diff < 0 && ' (Faltante)'}
+                      {diff === 0 && ' (Cuadrado)'}
+                    </span>
+                  </div>
+                )
+              })()}
+            </div>
+
+            {/* Audit Result */}
+            {auditResult && (
+              <div className={`rounded-md p-4 text-center ${
+                auditResult.difference === 0
+                  ? 'bg-emerald-50 border border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-800'
+                  : auditResult.difference > 0
+                    ? 'bg-amber-50 border border-amber-200 dark:bg-amber-950/30 dark:border-amber-800'
+                    : 'bg-red-50 border border-red-200 dark:bg-red-950/30 dark:border-red-800'
+              }`}>
+                {auditResult.difference === 0 ? (
+                  <>
+                    <CheckCircle2 className="h-8 w-8 text-emerald-600 mx-auto mb-1" />
+                    <p className="font-bold text-emerald-700 dark:text-emerald-400">Cuadrado</p>
+                  </>
+                ) : auditResult.difference > 0 ? (
+                  <p className="font-bold text-amber-700 dark:text-amber-400">
+                    Sobrante: ${auditResult.difference.toFixed(2)}
+                  </p>
+                ) : (
+                  <p className="font-bold text-red-700 dark:text-red-400">
+                    Faltante: ${Math.abs(auditResult.difference).toFixed(2)}
+                  </p>
+                )}
+                <div className="text-xs text-muted-foreground mt-2 space-y-0.5">
+                  <p>Esperado: ${auditResult.expected.toFixed(2)}</p>
+                  <p>Contado: ${auditResult.counted.toFixed(2)}</p>
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label htmlFor="auditnotes">Notas (opcional)</Label>
+              <Textarea
+                id="auditnotes"
+                value={auditNotes}
+                onChange={(e) => setAuditNotes(e.target.value)}
+                placeholder="Observaciones del arqueo..."
+                rows={2}
+              />
+            </div>
+
+            <Button
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
+              onClick={handleAudit}
+              disabled={saving}
+            >
+              {saving ? 'Registrando...' : auditResult ? 'Registrar Nuevo Arqueo' : 'Registrar Arqueo'}
             </Button>
           </div>
         </DialogContent>

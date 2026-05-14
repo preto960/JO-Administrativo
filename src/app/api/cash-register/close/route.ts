@@ -44,7 +44,11 @@ export async function POST(request: NextRequest) {
       .filter(m => m.type === 'entrada')
       .reduce((sum, m) => sum + m.amount, 0)
 
-    const expected = Math.round((register.initialAmt + totalSales + totalEntries - totalExpenses) * 100) / 100
+    const totalRetiros = register.movements
+      .filter(m => m.type === 'retiro_excedente')
+      .reduce((sum, m) => sum + m.amount, 0)
+
+    const expected = Math.round((register.initialAmt + totalSales + totalEntries - totalExpenses - totalRetiros) * 100) / 100
     const actualAmt = actual !== undefined ? actual : expected
     const difference = Math.round((actualAmt - expected) * 100) / 100
     const closingDate = new Date()
@@ -64,6 +68,7 @@ export async function POST(request: NextRequest) {
           cashRegId,
           totalSales: Math.round(totalSales * 100) / 100,
           totalExpenses: Math.round(totalExpenses * 100) / 100,
+          totalRetiros: Math.round(totalRetiros * 100) / 100,
           expected,
           actual: actualAmt,
           difference,
@@ -85,6 +90,7 @@ export async function POST(request: NextRequest) {
         difference,
         totalSales,
         totalExpenses,
+        totalRetiros,
       }).catch(() => {})
     })
 

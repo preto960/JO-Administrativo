@@ -26,6 +26,7 @@ model User {
   expenses          Expense[]
   notifications     Notification[]
   supplierPayments  SupplierPayment[]
+  audits            CashAudit[]
   branch            Branch?           @relation(fields: [branchId], references: [id])
 }
 
@@ -268,6 +269,7 @@ model CashRegister {
   sales     Sale[]
   movements CashMovement[]
   cuts      CashCut[]
+  audits    CashAudit[]
 }
 
 model CashMovement {
@@ -290,12 +292,28 @@ model CashCut {
   cashRegId     String
   totalSales    Float    @default(0)
   totalExpenses Float    @default(0)
+  totalRetiros  Float    @default(0)
   expected      Float    @default(0)
   actual        Float    @default(0)
   difference    Float    @default(0)
   cutDate       DateTime @default(now())
 
   cashReg CashRegister @relation(fields: [cashRegId], references: [id], onDelete: Cascade)
+}
+
+model CashAudit {
+  id         String   @id @default(cuid())
+  cashRegId  String
+  userId     String
+  expected   Float    @default(0)
+  counted    Float    @default(0)
+  difference Float    @default(0)
+  breakdown  Json     @default("{}")
+  notes      String?
+  auditDate  DateTime @default(now())
+
+  cashReg CashRegister @relation(fields: [cashRegId], references: [id])
+  user    User         @relation(fields: [userId], references: [id])
 }
 
 model InventoryAdjustment {

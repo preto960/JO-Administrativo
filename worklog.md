@@ -142,3 +142,38 @@ Stage Summary:
 - Schema: deletedAt on User/Client/Supplier/Expense, branchId on User
 - bcryptjs + nodemailer installed
 - Build passing
+
+---
+Task ID: 4
+Agent: Main Agent
+Task: Fix login error, convert email to Resend, implement Retiro de Excedente + Arqueo de Caja
+
+Work Log:
+- **Fix login error (useSession undefined)**: Root cause was SessionProvider inside AppShell but useSession called from AppShell too (via useAuth). Moved SessionProvider to page.tsx wrapping AppShell. Removed duplicate SessionProvider from app-shell.tsx.
+
+- **Convert email to Resend**: Rewrote src/lib/email.ts to use Resend SDK instead of nodemailer. Uses RESEND_API_KEY and RESEND_FROM_EMAIL env vars. Same HTML templates preserved. Both sendCashCloseEmail and sendCashCloseAllEmail functions migrated.
+
+- **Fase 1: Retiro de Excedente**:
+  - Added totalRetiros Float @default(0) to CashCut model
+  - Created /api/cash-register/withdrawal/route.ts (POST) - creates CashMovement with type='retiro_excedente', validates funds, updates register balance
+  - Updated close/route.ts and close-all/route.ts to track retiro_excedente separately in CashCut
+  - Added "Retiro" button (Banknote icon) in cash-register-view.tsx available for cashier AND admin
+  - Retiro dialog: register selector, amount, optional concept
+
+- **Fase 2: Arqueo de Caja**:
+  - Created CashAudit model in Prisma schema (id, cashRegId, userId, expected, counted, difference, breakdown JSON, notes, auditDate)
+  - Added relations: CashRegister.audits[], User.audits[]
+  - Created /api/cash-register/audit/route.ts (GET + POST) - lists audits, creates new audit with denomination breakdown
+  - Added "Arqueo" button (ClipboardCheck icon) in cash-register-view.tsx available for cashier AND admin
+  - Arqueo dialog: Venezuelan bill denominations (Bs 100, 50, 20, 10, 5, 1, 0.50, 0.25), live total, difference result (Cuadrado/Sobrante/Faltante), optional notes
+  - Prisma db push executed, schema synced
+
+Stage Summary:
+- Login error fixed (SessionProvider moved to correct level)
+- Email system migrated from nodemailer to Resend
+- 2 new API routes: /api/cash-register/withdrawal, /api/cash-register/audit
+- 1 new Prisma model: CashAudit
+- 1 new Prisma field: CashCut.totalRetiros
+- cash-register-view.tsx updated with Retiro and Arqueo dialogs + buttons
+- close/route.ts and close-all/route.ts updated with totalRetiros tracking
+- Build passing with no errors

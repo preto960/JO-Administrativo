@@ -38,7 +38,11 @@ export async function POST(request: NextRequest) {
           .filter(m => m.type === 'entrada')
           .reduce((sum, m) => sum + m.amount, 0)
 
-        const expected = Math.round((register.initialAmt + totalSales + totalEntries - totalExpenses) * 100) / 100
+        const totalRetiros = register.movements
+          .filter(m => m.type === 'retiro_excedente')
+          .reduce((sum, m) => sum + m.amount, 0)
+
+        const expected = Math.round((register.initialAmt + totalSales + totalEntries - totalExpenses - totalRetiros) * 100) / 100
         const actual = expected
 
         await tx.cashRegister.update({
@@ -55,6 +59,7 @@ export async function POST(request: NextRequest) {
             cashRegId: register.id,
             totalSales: Math.round(totalSales * 100) / 100,
             totalExpenses: Math.round(totalExpenses * 100) / 100,
+            totalRetiros: Math.round(totalRetiros * 100) / 100,
             expected,
             actual,
             difference: 0,
@@ -77,7 +82,8 @@ export async function POST(request: NextRequest) {
           }, 0)
           const totalExpenses = r.movements.filter(m => m.type === 'salida').reduce((sum, m) => sum + m.amount, 0)
           const totalEntries = r.movements.filter(m => m.type === 'entrada').reduce((sum, m) => sum + m.amount, 0)
-          const expected = Math.round((r.initialAmt + totalSales + totalEntries - totalExpenses) * 100) / 100
+          const totalRetiros = r.movements.filter(m => m.type === 'retiro_excedente').reduce((sum, m) => sum + m.amount, 0)
+          const expected = Math.round((r.initialAmt + totalSales + totalEntries - totalExpenses - totalRetiros) * 100) / 100
           return {
             cashierName: r.user.name,
             registerName: r.name,
@@ -90,6 +96,7 @@ export async function POST(request: NextRequest) {
             difference: 0,
             totalSales,
             totalExpenses,
+            totalRetiros,
           }
         })
       ).catch(() => {})

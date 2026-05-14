@@ -1,22 +1,6 @@
-import nodemailer from 'nodemailer'
+import { Resend } from 'resend'
 
-let transporter: nodemailer.Transporter | null = null
-
-function getTransporter(): nodemailer.Transporter {
-  if (transporter) return transporter
-
-  transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST || 'smtp.gmail.com',
-    port: parseInt(process.env.SMTP_PORT || '587'),
-    secure: false,
-    auth: {
-      user: process.env.SMTP_USER || '',
-      pass: process.env.SMTP_PASS || '',
-    },
-  })
-
-  return transporter
-}
+const resend = new Resend(process.env.RESEND_API_KEY)
 
 interface CashCloseData {
   cashierName: string
@@ -44,8 +28,7 @@ export async function sendCashCloseEmail(data: CashCloseData): Promise<boolean> 
       return false
     }
 
-    const mailer = getTransporter()
-    const fromEmail = process.env.SMTP_USER || 'noreply@jo-administrativo.com'
+    const fromEmail = process.env.RESEND_FROM_EMAIL || 'JO-Administrativo <onboarding@resend.dev>'
 
     const diffText = data.difference > 0
       ? `<span style="color: green;">Sobrante: $${data.difference.toFixed(2)}</span>`
@@ -53,9 +36,9 @@ export async function sendCashCloseEmail(data: CashCloseData): Promise<boolean> 
         ? `<span style="color: red;">Faltante: $${Math.abs(data.difference).toFixed(2)}</span>`
         : `<span style="color: green;">Cuadrado</span>`
 
-    await mailer.sendMail({
-      from: `"JO-Administrativo" <${fromEmail}>`,
-      to: adminEmail,
+    await resend.emails.send({
+      from: fromEmail,
+      to: [adminEmail],
       subject: `[Cierre de Caja] ${data.registerName || 'Caja'} - ${data.cashierName} - ${new Date().toLocaleDateString('es-VE')}`,
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -151,8 +134,7 @@ export async function sendCashCloseAllEmail(cuts: Array<{
       return false
     }
 
-    const mailer = getTransporter()
-    const fromEmail = process.env.SMTP_USER || 'noreply@jo-administrativo.com'
+    const fromEmail = process.env.RESEND_FROM_EMAIL || 'JO-Administrativo <onboarding@resend.dev>'
 
     const grandTotal = cuts.reduce((sum, c) => sum + c.actual, 0)
 
@@ -173,9 +155,9 @@ export async function sendCashCloseAllEmail(cuts: Array<{
       `
     }).join('')
 
-    await mailer.sendMail({
-      from: `"JO-Administrativo" <${fromEmail}>`,
-      to: adminEmail,
+    await resend.emails.send({
+      from: fromEmail,
+      to: [adminEmail],
       subject: `[Cierre Masivo] ${cuts.length} cajas cerradas - ${new Date().toLocaleDateString('es-VE')}`,
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 700px; margin: 0 auto;">

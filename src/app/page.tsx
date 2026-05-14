@@ -1,6 +1,7 @@
 'use client'
 
 import dynamic from 'next/dynamic'
+import { SessionProvider } from 'next-auth/react'
 
 const AppShell = dynamic(
   () => import('@/components/layout/app-shell').then(mod => ({ default: mod.AppShell })),
@@ -8,5 +9,9 @@ const AppShell = dynamic(
 )
 
 export default function Home() {
-  return <AppShell />
+  return (
+    <SessionProvider>
+      <AppShell />
+    </SessionProvider>
+  )
 }
