@@ -8,7 +8,8 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('search') || ''
     const categoryId = searchParams.get('categoryId') || ''
     const active = searchParams.get('active')
-    const branchId = await resolveBranchId(request)
+    const queryBranchId = searchParams.get('branchId')
+    const allInventories = searchParams.get('allInventories') === 'true'
 
     const where: Record<string, unknown> = {}
     if (search) {
@@ -25,9 +26,9 @@ export async function GET(request: NextRequest) {
     } else if (active === 'false') {
       where.active = false
     }
-    // If active is 'all' or not provided, show all products (no active filter)
 
-    const allInventories = searchParams.get('allInventories') === 'true'
+    // Use query-provided branchId if available, otherwise resolve from cookie/DB
+    const branchId = queryBranchId || await resolveBranchId(request)
 
     const products = await db.product.findMany({
       where,
@@ -41,7 +42,7 @@ export async function GET(request: NextRequest) {
       orderBy: { name: 'asc' },
     })
 
-    return NextResponse.json(products)
+    return NextResponse.json({ products, branchId })
   } catch (error) {
     return NextResponse.json({ error: 'Error al obtener productos' }, { status: 500 })
   }
@@ -64,13 +65,14 @@ export async function POST(request: NextRequest) {
     })
 
     // Create inventory entry for the current branch
-    const branchId = await resolveBranchId()
+    const branchId = body.branchId || await resolveBranchId()
     await db.inventory.create({
       data: {
         productId: product.id,
         branchId,
         stock: body.initialStock ?? 0,
         minStock: body.minStock ?? 0,
+        price: body.branchPrice ?? 0,
       },
     })
 

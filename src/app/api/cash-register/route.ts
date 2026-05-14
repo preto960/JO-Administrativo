@@ -32,16 +32,7 @@ export async function POST(request: NextRequest) {
 
     const effectiveBranchId = body.branchId || await resolveBranchId()
 
-    // Check if there's an open register for this branch
-    const openRegister = await db.cashRegister.findFirst({
-      where: { branchId: effectiveBranchId, status: 'abierta' },
-    })
-    if (openRegister) {
-      return NextResponse.json(
-        { error: 'Ya existe una caja abierta en esta sucursal', register: openRegister },
-        { status: 400 }
-      )
-    }
+    // Allow multiple open registers per branch - removed the single-check
 
     const register = await db.cashRegister.create({
       data: {

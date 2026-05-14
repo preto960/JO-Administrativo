@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { api } from '@/lib/api'
+import { useAppStore } from '@/stores/use-app-store'
 import {
   Table,
   TableBody,
@@ -55,7 +56,7 @@ interface Product {
   active: boolean
   currency: { id: string; symbol: string; code: string }
   category: { id: string; name: string } | null
-  inventories: Array<{ id: string; stock: number; minStock: number }>
+  inventories: Array<{ id: string; stock: number; minStock: number; branchId: string; price: number }>
 }
 
 interface Category {
@@ -69,6 +70,11 @@ interface Currency {
   code: string
   symbol: string
   isBase: boolean
+}
+
+interface BranchItem {
+  id: string
+  name: string
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -88,6 +94,8 @@ function fmtStock(n: number): string {
 // ── Component ───────────────────────────────────────────────────────────────
 
 export function ProductsTable() {
+  const selectedBranchId = useAppStore((s) => s.selectedBranchId)
+  const branches = useAppStore((s) => s.branches)
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [currencies, setCurrencies] = useState<Currency[]>([])
@@ -109,6 +117,7 @@ export function ProductsTable() {
   const [formCurrency, setFormCurrency] = useState('')
   const [formStock, setFormStock] = useState('')
   const [formMinStock, setFormMinStock] = useState('')
+  const [formBranchPrice, setFormBranchPrice] = useState('')
   const [formActive, setFormActive] = useState(true)
   const [saving, setSaving] = useState(false)
 
@@ -117,12 +126,13 @@ export function ProductsTable() {
   const fetchData = useCallback(async () => {
     try {
       const activeParam = showInactive ? 'all' : 'true'
+      const branchParam = selectedBranchId ? `&branchId=${selectedBranchId}` : ''
       const [prods, cats, currs] = await Promise.all([
-        api.get<Product[]>(`/api/products?active=${activeParam}`),
+        api.get<{ products: Product[] }>(`/api/products?active=${activeParam}${branchParam}`),
         api.get<Category[]>('/api/categories'),
         api.get<Currency[]>('/api/currencies'),
       ])
-      setProducts(prods)
+      setProducts(prods.products)
       setCategories(cats)
       setCurrencies(currs)
     } catch {
@@ -130,7 +140,7 @@ export function ProductsTable() {
     } finally {
       setLoading(false)
     }
-  }, [showInactive])
+  }, [showInactive, selectedBranchId])
 
   useEffect(() => {
     fetchData()
@@ -151,6 +161,28 @@ export function ProductsTable() {
   const activeCount = products.filter((p) => p.active).length
   const inactiveCount = products.filter((p) => !p.active).length
 
+  // ── Get branch-specific stock ────────────────────────────────────────────
+
+  const getBranchStock = (product: Product): { stock: number; minStock: number; branchPrice: number; label: string } => {
+    if (selectedBranchId) {
+      const branchInv = product.inventories.find(i => i.branchId === selectedBranchId)
+      if (branchInv) {
+        return { stock: branchInv.stock, minStock: branchInv.minStock, branchPrice: branchInv.price, label: '' }
+      }
+      return { stock: 0, minStock: 0, branchPrice: 0, label: 'N/A' }
+    }
+    // No branch selected — show total stock
+    const totalStock = product.inventories.reduce((sum, i) => sum + i.stock, 0)
+    return { stock: totalStock, minStock: 0, branchPrice: 0, label: 'Total' }
+  }
+
+  // ── Get effective price (branch-specific or global) ─────────────────────
+
+  const getEffectivePrice = (product: Product): number => {
+    const { branchPrice } = getBranchStock(product)
+    return branchPrice > 0 ? branchPrice : product.price
+  }
+
   // ── Dialog helpers ───────────────────────────────────────────────────────
 
   const resetForm = useCallback(() => {
@@ -160,6 +192,7 @@ export function ProductsTable() {
     setFormCost('0')
     setFormStock('')
     setFormMinStock('')
+    setFormBranchPrice('')
     setFormCategory('')
     setFormCurrency('')
     setFormActive(true)
@@ -181,14 +214,23 @@ export function ProductsTable() {
       setFormSku(product.sku || '')
       setFormPrice(product.price.toString())
       setFormCost(product.costAvg.toString())
-      setFormStock(product.inventories[0]?.stock?.toString() || '')
-      setFormMinStock(product.inventories[0]?.minStock?.toString() || '')
       setFormCategory(product.category?.id || '__none__')
       setFormCurrency(product.currency.id)
       setFormActive(product.active)
+      // Set branch-specific values
+      if (selectedBranchId) {
+        const branchInv = product.inventories.find(i => i.branchId === selectedBranchId)
+        setFormStock(branchInv?.stock?.toString() || '')
+        setFormMinStock(branchInv?.minStock?.toString() || '')
+        setFormBranchPrice(branchInv?.price > 0 ? branchInv.price.toString() : '')
+      } else {
+        setFormStock(product.inventories[0]?.stock?.toString() || '')
+        setFormMinStock(product.inventories[0]?.minStock?.toString() || '')
+        setFormBranchPrice('')
+      }
       setDialogOpen(true)
     },
-    []
+    [selectedBranchId]
   )
 
   const openDeleteConfirm = useCallback((product: Product) => {
@@ -219,6 +261,8 @@ export function ProductsTable() {
         currencyId: formCurrency,
         categoryId: formCategory && formCategory !== '__none__' ? formCategory : null,
         type: 'simple',
+        branchId: selectedBranchId || undefined,
+        branchPrice: formBranchPrice !== '' ? parseFloat(formBranchPrice) : undefined,
       }
 
       if (editProduct) {
@@ -292,6 +336,8 @@ export function ProductsTable() {
 
   // ── Render ───────────────────────────────────────────────────────────────
 
+  const branchName = branches.find(b => b.id === selectedBranchId)?.name
+
   return (
     <div className="space-y-4">
       {/* Toolbar */}
@@ -339,6 +385,13 @@ export function ProductsTable() {
         </div>
       </div>
 
+      {/* Branch indicator */}
+      {branchName && (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Badge variant="outline" className="text-primary">Sucursal: {branchName}</Badge>
+        </div>
+      )}
+
       {/* Summary badges */}
       <div className="flex items-center gap-3 text-sm text-muted-foreground">
         <Badge variant="secondary">{filteredProducts.length} producto{filteredProducts.length !== 1 ? 's' : ''}</Badge>
@@ -368,9 +421,10 @@ export function ProductsTable() {
               <TableBody>
                 {filteredProducts.map((product) => {
                   const curr = product.currency
-                  const stock = product.inventories[0]?.stock ?? 0
-                  const minStock = product.inventories[0]?.minStock ?? 0
-                  const isLowStock = product.active && stock <= minStock
+                  const { stock, minStock, label } = getBranchStock(product)
+                  const effectivePrice = getEffectivePrice(product)
+                  const isLowStock = product.active && minStock > 0 && stock <= minStock
+                  const hasBranchPrice = selectedBranchId && product.inventories.some(i => i.branchId === selectedBranchId && i.price > 0)
                   return (
                     <TableRow
                       key={product.id}
@@ -389,12 +443,18 @@ export function ProductsTable() {
                         {curr.symbol}{fmt(product.costAvg)}
                       </TableCell>
                       <TableCell className="text-right font-semibold tabular-nums">
-                        {curr.symbol}{fmt(product.price)}
+                        {curr.symbol}{fmt(effectivePrice)}
+                        {hasBranchPrice && (
+                          <span className="ml-1 text-[10px] text-amber-600">★</span>
+                        )}
                       </TableCell>
                       <TableCell className="text-right hidden md:table-cell tabular-nums">
                         <span className={isLowStock ? 'text-red-600 font-medium' : ''}>
-                          {fmtStock(stock)}
+                          {label === 'N/A' ? 'N/A' : fmtStock(stock)}
                         </span>
+                        {label === 'Total' && (
+                          <span className="ml-1 text-[10px] text-muted-foreground">(total)</span>
+                        )}
                         {isLowStock && (
                           <span className="ml-1 text-[10px] text-red-500">(mín: {fmtStock(minStock)})</span>
                         )}
@@ -545,6 +605,23 @@ export function ProductsTable() {
                 />
               </div>
             </div>
+            {selectedBranchId && (
+              <div className="space-y-2">
+                <Label htmlFor="pbranchprice">Precio Sucursal ({branchName})</Label>
+                <Input
+                  id="pbranchprice"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={formBranchPrice}
+                  onChange={(e) => setFormBranchPrice(e.target.value)}
+                  placeholder="Vacío = usar precio global"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Si se establece, este precio sobrescribe el precio global para esta sucursal
+                </p>
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="pstock">Stock Inicial</Label>

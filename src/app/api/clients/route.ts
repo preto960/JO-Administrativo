@@ -19,10 +19,24 @@ export async function GET(request: NextRequest) {
       where,
       include: {
         _count: { select: { sales: true } },
+        receivables: {
+          where: { status: 'pendiente' },
+          select: { pendingBalance: true },
+        },
       },
       orderBy: { name: 'asc' },
     })
-    return NextResponse.json(clients)
+
+    // Compute pending balance for each client
+    const clientsWithBalance = clients.map(client => {
+      const pendingBalance = client.receivables.reduce((sum, r) => sum + r.pendingBalance, 0)
+      return {
+        ...client,
+        pendingBalance: Math.round(pendingBalance * 100) / 100,
+      }
+    })
+
+    return NextResponse.json(clientsWithBalance)
   } catch (error) {
     return NextResponse.json({ error: 'Error al obtener clientes' }, { status: 500 })
   }

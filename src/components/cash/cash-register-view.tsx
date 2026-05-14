@@ -30,7 +30,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Wallet, Plus, ArrowUpCircle, ArrowDownCircle, Lock, Eye } from 'lucide-react'
+import { Wallet, Plus, ArrowUpCircle, ArrowDownCircle, Lock, Eye, Loader2 } from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth'
 import { toast } from 'sonner'
 
@@ -45,40 +45,27 @@ interface CashRegister {
   _count: { sales: number; movements: number }
 }
 
-interface CashMovement {
-  id: string
-  type: string
-  amount: number
-  concept: string
-  createdAt: string
-  currency: { symbol: string }
-  user: { name: string }
-}
-
 export function CashRegisterView() {
   const { user } = useAuth()
   const [registers, setRegisters] = useState<CashRegister[]>([])
-  const [movements, setMovements] = useState<CashMovement[]>([])
   const [loading, setLoading] = useState(true)
-  const [openRegId, setOpenRegId] = useState<string | null>(null)
   const [showOpen, setShowOpen] = useState(false)
   const [showMovement, setShowMovement] = useState(false)
+  const [movementRegId, setMovementRegId] = useState<string | null>(null)
   const [showClose, setShowClose] = useState(false)
+  const [closeRegId, setCloseRegId] = useState<string | null>(null)
   const [initialAmt, setInitialAmt] = useState('100')
   const [moveType, setMoveType] = useState('entrada')
   const [moveAmount, setMoveAmount] = useState('')
   const [moveConcept, setMoveConcept] = useState('')
   const [saving, setSaving] = useState(false)
   const [closeActual, setCloseActual] = useState('')
+  const [closingAll, setClosingAll] = useState(false)
 
   const fetchData = async () => {
     try {
       const data = await api.get<CashRegister[]>('/api/cash-register')
       setRegisters(data)
-      const openReg = data.find(r => r.status === 'abierta')
-      if (openReg) {
-        setOpenRegId(openReg.id)
-      }
     } catch {
       toast.error('Error al cargar caja')
     } finally {
@@ -88,11 +75,8 @@ export function CashRegisterView() {
 
   useEffect(() => { fetchData() }, [])
 
-  useEffect(() => {
-    if (openRegId) {
-      // Movements come from the register - for now we show them in the open register
-    }
-  }, [openRegId])
+  const openRegisters = registers.filter(r => r.status === 'abierta')
+  const totalOpenAmt = openRegisters.reduce((sum, r) => sum + r.currentAmt, 0)
 
   const openRegister = async () => {
     setSaving(true)
@@ -104,8 +88,9 @@ export function CashRegisterView() {
       toast.success('Caja abierta exitosamente')
       setShowOpen(false)
       fetchData()
-    } catch {
-      toast.error('Error al abrir caja')
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Error al abrir caja'
+      toast.error(msg)
     } finally {
       setSaving(false)
     }
@@ -116,8 +101,8 @@ export function CashRegisterView() {
       toast.error('Monto y concepto son obligatorios')
       return
     }
-    if (!openRegId) {
-      toast.error('No hay caja abierta')
+    if (!movementRegId) {
+      toast.error('No se seleccionó caja')
       return
     }
     setSaving(true)
@@ -125,7 +110,7 @@ export function CashRegisterView() {
       const currencies = await api.get<Array<{ id: string; isBase: boolean }>>('/api/currencies')
       const baseCurrency = currencies.find(c => c.isBase)
       await api.post('/api/cash-register/movement', {
-        cashRegId: openRegId,
+        cashRegId: movementRegId,
         type: moveType,
         amount: parseFloat(moveAmount),
         concept: moveConcept,
@@ -136,6 +121,7 @@ export function CashRegisterView() {
       setShowMovement(false)
       setMoveAmount('')
       setMoveConcept('')
+      setMovementRegId(null)
       fetchData()
     } catch {
       toast.error('Error al registrar movimiento')
@@ -145,16 +131,17 @@ export function CashRegisterView() {
   }
 
   const closeRegister = async () => {
-    if (!openRegId) return
+    if (!closeRegId) return
     setSaving(true)
     try {
       await api.post('/api/cash-register/close', {
-        cashRegId: openRegId,
+        cashRegId: closeRegId,
         actual: closeActual ? parseFloat(closeActual) : undefined,
       })
       toast.success('Caja cerrada exitosamente')
       setShowClose(false)
-      setOpenRegId(null)
+      setCloseRegId(null)
+      setCloseActual('')
       fetchData()
     } catch {
       toast.error('Error al cerrar caja')
@@ -163,7 +150,20 @@ export function CashRegisterView() {
     }
   }
 
-  const currentRegister = registers.find(r => r.status === 'abierta')
+  const closeAllRegisters = async () => {
+    setClosingAll(true)
+    try {
+      const result = await api.post<{ message: string }>('/api/cash-register/close-all', {})
+      toast.success(result.message)
+      fetchData()
+    } catch {
+      toast.error('Error al cerrar todas las cajas')
+    } finally {
+      setClosingAll(false)
+    }
+  }
+
+  const currentRegister = registers[0]?.status === 'abierta' ? openRegisters[0] : null
 
   if (loading) {
     return <div className="h-64 rounded-lg bg-muted animate-pulse" />
@@ -179,9 +179,11 @@ export function CashRegisterView() {
               <Wallet className="h-5 w-5 text-primary dark:text-primary" />
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Caja Actual</p>
+              <p className="text-xs text-muted-foreground">
+                {openRegisters.length > 1 ? `Total (${openRegisters.length} cajas)` : 'Caja Actual'}
+              </p>
               <p className="text-2xl font-bold text-primary dark:text-primary">
-                ${currentRegister ? currentRegister.currentAmt.toFixed(2) : '0.00'}
+                ${totalOpenAmt.toFixed(2)}
               </p>
             </div>
           </CardContent>
@@ -194,8 +196,8 @@ export function CashRegisterView() {
             <div>
               <p className="text-xs text-muted-foreground">Estado</p>
               <p className="text-lg font-bold">
-                {currentRegister ? (
-                  <Badge className="bg-primary">Abierta</Badge>
+                {openRegisters.length > 0 ? (
+                  <Badge className="bg-primary">{openRegisters.length} Abierta{openRegisters.length > 1 ? 's' : ''}</Badge>
                 ) : (
                   <Badge variant="secondary">Cerrada</Badge>
                 )}
@@ -207,24 +209,86 @@ export function CashRegisterView() {
           <CardContent className="p-4 flex items-center justify-between">
             <div>
               <p className="text-xs text-muted-foreground">Acciones</p>
-              {currentRegister ? (
-                <div className="flex gap-2 mt-1">
-                  <Button size="sm" variant="outline" onClick={() => setShowMovement(true)}>
-                    <ArrowDownCircle className="mr-1 h-3 w-3" /> Movimiento
+              <div className="flex gap-2 mt-1 flex-wrap">
+                <Button size="sm" variant="outline" onClick={() => {
+                  if (openRegisters.length === 1) {
+                    setMovementRegId(openRegisters[0].id)
+                  }
+                  setShowMovement(true)
+                }}>
+                  <ArrowDownCircle className="mr-1 h-3 w-3" /> Movimiento
+                </Button>
+                {openRegisters.length > 0 && (
+                  <Button size="sm" variant="outline" className="text-red-600" onClick={closeAllRegisters} disabled={closingAll}>
+                    {closingAll ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Lock className="mr-1 h-3 w-3" />}
+                    Cerrar Todas
                   </Button>
-                  <Button size="sm" variant="outline" className="text-red-600" onClick={() => setShowClose(true)}>
-                    <Lock className="mr-1 h-3 w-3" /> Cerrar
-                  </Button>
-                </div>
-              ) : (
-                <Button size="sm" className="bg-primary hover:bg-primary/90 text-white mt-1" onClick={() => setShowOpen(true)}>
+                )}
+                <Button size="sm" className="bg-primary hover:bg-primary/90 text-white" onClick={() => setShowOpen(true)}>
                   <Plus className="mr-1 h-3 w-3" /> Abrir Caja
                 </Button>
-              )}
+              </div>
             </div>
           </CardContent>
         </Card>
       </div>
+
+      {/* Open Registers */}
+      {openRegisters.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Cajas Abiertas</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Cajero</TableHead>
+                    <TableHead>Apertura</TableHead>
+                    <TableHead className="text-right">Inicial</TableHead>
+                    <TableHead className="text-right">Actual</TableHead>
+                    <TableHead className="text-right">Ventas</TableHead>
+                    <TableHead className="text-right">Acciones</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {openRegisters.map((reg) => (
+                    <TableRow key={reg.id}>
+                      <TableCell className="font-medium">{reg.user.name}</TableCell>
+                      <TableCell className="text-sm">
+                        {new Date(reg.openingDate).toLocaleString('es-VE')}
+                      </TableCell>
+                      <TableCell className="text-right">${reg.initialAmt.toFixed(2)}</TableCell>
+                      <TableCell className="text-right font-semibold">${reg.currentAmt.toFixed(2)}</TableCell>
+                      <TableCell className="text-right">
+                        <Badge variant="outline">{reg._count.sales}</Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-1">
+                          <Button size="sm" variant="ghost" onClick={() => {
+                            setMovementRegId(reg.id)
+                            setShowMovement(true)
+                          }}>
+                            <ArrowDownCircle className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button size="sm" variant="ghost" className="text-red-600" onClick={() => {
+                            setCloseRegId(reg.id)
+                            setCloseActual('')
+                            setShowClose(true)
+                          }}>
+                            <Lock className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Register History */}
       <Card>
@@ -239,7 +303,7 @@ export function CashRegisterView() {
                   <TableHead>Apertura</TableHead>
                   <TableHead>Cajero</TableHead>
                   <TableHead className="text-right">Inicial</TableHead>
-                  <TableHead className="text-right hidden sm:table-cell">Actual</TableHead>
+                  <TableHead className="text-right hidden sm:table-cell">Final</TableHead>
                   <TableHead className="text-right">Ventas</TableHead>
                   <TableHead>Estado</TableHead>
                 </TableRow>
@@ -296,13 +360,33 @@ export function CashRegisterView() {
       </Dialog>
 
       {/* Movement Dialog */}
-      <Dialog open={showMovement} onOpenChange={setShowMovement}>
+      <Dialog open={showMovement} onOpenChange={(open) => {
+        if (!open) {
+          setShowMovement(false)
+          setMovementRegId(null)
+        }
+      }}>
         <DialogContent className="sm:max-w-[90vw]">
           <DialogHeader>
             <DialogTitle>Registrar Movimiento</DialogTitle>
             <DialogDescription>Registra una entrada o salida de caja</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
+            {openRegisters.length > 1 && (
+              <div className="space-y-2">
+                <Label>Caja</Label>
+                <Select value={movementRegId || ''} onValueChange={setMovementRegId}>
+                  <SelectTrigger><SelectValue placeholder="Seleccionar caja" /></SelectTrigger>
+                  <SelectContent>
+                    {openRegisters.map((reg) => (
+                      <SelectItem key={reg.id} value={reg.id}>
+                        {reg.user.name} — ${reg.currentAmt.toFixed(2)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="space-y-2">
               <Label>Tipo</Label>
               <Select value={moveType} onValueChange={setMoveType}>
@@ -336,14 +420,21 @@ export function CashRegisterView() {
             <DialogDescription>Confirma el monto real en caja para cerrar</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            {currentRegister && (
-              <div className="rounded-md bg-muted p-3 space-y-1 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Monto esperado:</span>
-                  <span className="font-medium">${currentRegister.currentAmt.toFixed(2)}</span>
+            {closeRegId && (() => {
+              const reg = registers.find(r => r.id === closeRegId)
+              return reg ? (
+                <div className="rounded-md bg-muted p-3 space-y-1 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Cajero:</span>
+                    <span className="font-medium">{reg.user.name}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Monto esperado:</span>
+                    <span className="font-medium">${reg.currentAmt.toFixed(2)}</span>
+                  </div>
                 </div>
-              </div>
-            )}
+              ) : null
+            })()}
             <div className="space-y-2">
               <Label htmlFor="closeamt">Monto Real en Caja</Label>
               <Input id="closeamt" type="number" step="0.01" value={closeActual} onChange={(e) => setCloseActual(e.target.value)} placeholder={currentRegister?.currentAmt.toFixed(2)} />

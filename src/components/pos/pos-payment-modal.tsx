@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { usePosStore } from '@/stores/use-pos-store'
 import { useAuth } from '@/hooks/use-auth'
 import { useSetting } from '@/stores/use-app-store'
@@ -29,15 +29,16 @@ interface PaymentMethod {
   label: string
   icon: React.ElementType
   needsReference?: boolean
+  isLocalCurrency?: boolean
 }
 
 const paymentMethods: PaymentMethod[] = [
-  { value: 'divisas', label: 'Divisas', icon: Banknote },
-  { value: 'efectivo', label: 'Efectivo', icon: Banknote },
-  { value: 'pago_movil', label: 'Pago Móvil', icon: Smartphone, needsReference: true },
-  { value: 'tarjeta', label: 'Tarjeta', icon: CreditCard, needsReference: true },
-  { value: 'transferencia', label: 'Transferencia', icon: ArrowLeftRight, needsReference: true },
-  { value: 'credito', label: 'Crédito', icon: Clock },
+  { value: 'divisas', label: 'Divisas', icon: Banknote, isLocalCurrency: false },
+  { value: 'efectivo', label: 'Efectivo', icon: Banknote, isLocalCurrency: true },
+  { value: 'pago_movil', label: 'Pago Móvil', icon: Smartphone, needsReference: true, isLocalCurrency: true },
+  { value: 'tarjeta', label: 'Tarjeta', icon: CreditCard, needsReference: true, isLocalCurrency: true },
+  { value: 'transferencia', label: 'Transferencia', icon: ArrowLeftRight, needsReference: true, isLocalCurrency: true },
+  { value: 'credito', label: 'Crédito', icon: Clock, isLocalCurrency: false },
 ]
 
 export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
@@ -46,7 +47,7 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
   const exchangeRate = useSetting('exchangeRate')
   const referenceCurrency = useSetting('referenceCurrency')
   const [method, setMethod] = useState('divisas')
-  const [amount, setAmount] = useState(getTotal().toFixed(2))
+  const [amount, setAmount] = useState('')
   const [reference, setReference] = useState('')
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
@@ -58,6 +59,20 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
   const totalBs = total * exchangeRate
   const currencySymbol = referenceCurrency === 'EUR' ? '€' : '$'
   const selectedMethod = paymentMethods.find(pm => pm.value === method)
+
+  // Determine if current method uses local currency (Bs.)
+  const isLocalMethod = selectedMethod?.isLocalCurrency ?? false
+
+  // When method changes, set default amount in the correct currency
+  useEffect(() => {
+    if (isLocalMethod) {
+      // Show total in Bs.
+      setAmount(totalBs.toFixed(2))
+    } else {
+      // Show total in reference currency
+      setAmount(total.toFixed(2))
+    }
+  }, [method, isLocalMethod, totalBs, total])
 
   // Load currencies and open cash register on mount
   useEffect(() => {
@@ -74,12 +89,22 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
     }).catch(() => {})
   }, [])
 
+  // Convert displayed amount to reference currency for submission
+  const amountInRefCurrency = useMemo(() => {
+    const parsed = parseFloat(amount) || 0
+    if (isLocalMethod) {
+      // Convert Bs. to reference currency
+      return exchangeRate > 0 ? Math.round((parsed / exchangeRate) * 100) / 100 : parsed
+    }
+    return parsed
+  }, [amount, isLocalMethod, exchangeRate])
+
   const handlePay = async () => {
     if (parseFloat(amount) <= 0) {
       toast.error('El monto debe ser mayor a cero')
       return
     }
-    if (parseFloat(amount) > total && method !== 'efectivo' && method !== 'divisas') {
+    if (!isLocalMethod && parseFloat(amount) > total && method !== 'divisas') {
       toast.error('El monto excede el total')
       return
     }
@@ -103,7 +128,7 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
         payments: [
           {
             method,
-            amount: Math.min(parseFloat(amount), total),
+            amount: Math.min(amountInRefCurrency, total),
             currencyId: baseCurrencyId,
             reference: reference || undefined,
           },
@@ -120,6 +145,21 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
       setLoading(false)
     }
   }
+
+  // Calculate change in the displayed currency
+  const changeAmount = useMemo(() => {
+    const parsed = parseFloat(amount) || 0
+    if (method === 'divisas' || method === 'efectivo') {
+      const limit = isLocalMethod ? totalBs : total
+      if (parsed > limit) {
+        return parsed - limit
+      }
+    }
+    return 0
+  }, [amount, method, isLocalMethod, totalBs, total])
+
+  const amountLabel = isLocalMethod ? 'Monto (Bs.)' : 'Monto'
+  const changeLabel = isLocalMethod ? 'Bs.' : currencySymbol
 
   return (
     <Dialog open onOpenChange={() => !success && onClose()}>
@@ -172,7 +212,7 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
 
             {/* Amount */}
             <div className="space-y-2">
-              <Label htmlFor="amount">Monto</Label>
+              <Label htmlFor="amount">{amountLabel}</Label>
               <Input
                 id="amount"
                 type="number"
@@ -180,9 +220,14 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
               />
-              {(method === 'efectivo' || method === 'divisas') && parseFloat(amount) > total && (
+              {isLocalMethod && exchangeRate > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Equivale a {currencySymbol}{amountInRefCurrency.toFixed(2)} (Tasa: {exchangeRate.toFixed(2)} Bs./{referenceCurrency})
+                </p>
+              )}
+              {changeAmount > 0 && (
                 <p className="text-sm text-primary font-medium">
-                  Cambio: {currencySymbol}{(parseFloat(amount) - total).toFixed(2)}
+                  Cambio: {changeLabel}{changeAmount.toFixed(2)}
                 </p>
               )}
             </div>
@@ -213,7 +258,7 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
                   Procesando...
                 </>
               ) : (
-                `Confirmar Pago ${currencySymbol}${Math.min(parseFloat(amount), total).toFixed(2)}`
+                `Confirmar Pago ${isLocalMethod ? 'Bs.' : currencySymbol}${parseFloat(amount || '0').toFixed(2)}`
               )}
             </Button>
           </div>

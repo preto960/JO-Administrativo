@@ -26,7 +26,7 @@ interface ProductWithInventory {
   active: boolean
   currency: { symbol: string }
   category: { name: string } | null
-  inventories: { stock: number; branchId: string; branch?: { id: string; name: string } }[]
+  inventories: { stock: number; branchId: string; price: number; branch?: { id: string; name: string } }[]
 }
 
 interface Category {
@@ -52,10 +52,10 @@ export function PosTerminal() {
   const fetchProducts = useCallback(() => {
     setLoading(true)
     Promise.all([
-      api.get<ProductWithInventory[]>('/api/products?active=true&allInventories=true'),
+      api.get<{ products: ProductWithInventory[] }>('/api/products?active=true&allInventories=true'),
       api.get<Category[]>('/api/categories'),
-    ]).then(([prods, cats]) => {
-      setProducts(prods)
+    ]).then(([res, cats]) => {
+      setProducts(res.products)
       setCategories(cats)
       setLoading(false)
     }).catch(() => {
@@ -80,15 +80,18 @@ export function PosTerminal() {
     return result
   }, [searchQuery, categoryFilter, products])
 
-  // Get stock for the selected branch, fallback to first inventory
-  const getBranchStock = (product: ProductWithInventory): { stock: number; branchName: string | null } => {
+  // Get stock and branch-specific price for the selected branch
+  const getBranchInfo = (product: ProductWithInventory): { stock: number; branchName: string | null; effectivePrice: number } => {
     if (selectedBranchId) {
       const branchInv = product.inventories.find(i => i.branchId === selectedBranchId)
-      if (branchInv) return { stock: branchInv.stock, branchName: null }
+      if (branchInv) {
+        const effectivePrice = branchInv.price > 0 ? branchInv.price : product.price
+        return { stock: branchInv.stock, branchName: null, effectivePrice }
+      }
     }
     // Fallback to first inventory
     const firstInv = product.inventories[0]
-    return { stock: firstInv?.stock ?? 0, branchName: firstInv?.branch?.name || null }
+    return { stock: firstInv?.stock ?? 0, branchName: firstInv?.branch?.name || null, effectivePrice: product.price }
   }
 
   const handleKeyDown = useCallback(
@@ -107,7 +110,7 @@ export function PosTerminal() {
   }, [handleKeyDown])
 
   const handleAddProduct = (product: ProductWithInventory) => {
-    const { stock } = getBranchStock(product)
+    const { stock, effectivePrice } = getBranchInfo(product)
 
     if (stock <= 0) {
       const otherBranches = product.inventories.filter(i => i.stock > 0 && i.branch)
@@ -129,7 +132,7 @@ export function PosTerminal() {
       productId: product.id,
       productName: product.name,
       quantity: 1,
-      unitPrice: product.price,
+      unitPrice: effectivePrice,
       unitCost: product.costAvg,
       currencySymbol: product.currency.symbol,
       maxStock: stock,
@@ -229,7 +232,7 @@ export function PosTerminal() {
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 p-1">
               {filteredProducts.map((product) => {
-                const { stock } = getBranchStock(product)
+                const { stock, effectivePrice } = getBranchInfo(product)
                 const outOfStock = stock <= 0
                 const currentQty = getCurrentQty(product.id)
                 const atMaxStock = currentQty >= stock
@@ -270,13 +273,8 @@ export function PosTerminal() {
                   <div className="mt-auto flex items-center justify-between w-full">
                     <div>
                       <span className="text-base font-bold text-primary dark:text-primary">
-                        {currencySymbol}{product.price.toFixed(2)}
+                        {currencySymbol}{effectivePrice.toFixed(2)}
                       </span>
-                      {exchangeRate > 0 && (
-                        <p className="text-[10px] text-muted-foreground">
-                          Bs. {(product.price * exchangeRate).toFixed(2)}
-                        </p>
-                      )}
                     </div>
                     <div className="text-right">
                       <span className={`text-[10px] ${outOfStock ? 'text-red-500 font-medium' : atMaxStock ? 'text-amber-600 font-medium' : 'text-muted-foreground'}`}>

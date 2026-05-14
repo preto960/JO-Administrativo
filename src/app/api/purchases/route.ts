@@ -48,13 +48,18 @@ export async function POST(request: NextRequest) {
 
     total = Math.round(total * 100) / 100
 
+    // Determine purchase status and paidAmount
+    const purchaseStatus = isPaidUpfront ? 'pagada' : 'recibida'
+    const paidAmt = isPaidUpfront ? total : 0
+
     const purchase = await db.$transaction(async (tx) => {
       const newPurchase = await tx.purchase.create({
         data: {
           supplierId,
           branchId,
           total,
-          status: 'recibida',
+          paidAmount: paidAmt,
+          status: purchaseStatus,
           currencyId,
           paidUpfront: isPaidUpfront,
           lines: { create: purchaseLinesData },
@@ -122,24 +127,8 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Only create debt if NOT paid upfront
-      if (!isPaidUpfront) {
-        // Update supplier balance and create AccountPayable
-        await tx.supplier.update({
-          where: { id: supplierId },
-          data: { balance: { increment: total } },
-        })
-        await tx.accountPayable.create({
-          data: {
-            supplierId,
-            purchaseId: newPurchase.id,
-            amount: total,
-            pendingBalance: total,
-            status: 'pendiente',
-            dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-          },
-        })
-      }
+      // No longer auto-creating AccountPayable or updating supplier.balance
+      // The Purchase itself tracks payment via paidAmount and status
 
       return newPurchase
     })
