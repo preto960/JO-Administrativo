@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useAppStore } from '@/stores/use-app-store'
+import { usePosStore } from '@/stores/use-pos-store'
 import { SidebarTrigger } from '@/components/ui/sidebar'
 import { Separator } from '@/components/ui/separator'
 import {
@@ -142,7 +143,10 @@ export function AppHeader() {
           <div>
             <Select
               value={selectedBranchId || ''}
-              onValueChange={(v) => setSelectedBranchId(v)}
+              onValueChange={(v) => {
+                setSelectedBranchId(v)
+                usePosStore.getState().clearCart()
+              }}
             >
               <SelectTrigger className="w-32 h-8 text-xs sm:w-40">
                 <GitBranch className="h-3 w-3 mr-1 shrink-0" />

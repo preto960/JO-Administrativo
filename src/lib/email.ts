@@ -28,7 +28,7 @@ export async function sendCashCloseEmail(data: CashCloseData): Promise<boolean> 
       return false
     }
 
-    const fromEmail = process.env.RESEND_FROM_EMAIL || 'JO-Administrativo <onboarding@resend.dev>'
+    const fromEmail = process.env.RESEND_FROM || 'JO-Administrativo <onboarding@resend.dev>'
 
     const diffText = data.difference > 0
       ? `<span style="color: green;">Sobrante: $${data.difference.toFixed(2)}</span>`
@@ -134,7 +134,7 @@ export async function sendCashCloseAllEmail(cuts: Array<{
       return false
     }
 
-    const fromEmail = process.env.RESEND_FROM_EMAIL || 'JO-Administrativo <onboarding@resend.dev>'
+    const fromEmail = process.env.RESEND_FROM || 'JO-Administrativo <onboarding@resend.dev>'
 
     const grandTotal = cuts.reduce((sum, c) => sum + c.actual, 0)
 
