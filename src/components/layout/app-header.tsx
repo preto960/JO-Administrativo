@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useAppStore } from '@/stores/use-app-store'
 import { SidebarTrigger } from '@/components/ui/sidebar'
 import { Separator } from '@/components/ui/separator'
@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Badge } from '@/components/ui/badge'
 import { Moon, Sun, LogOut, UserCircle, Settings, GitBranch } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { Button } from '@/components/ui/button'
@@ -45,23 +46,71 @@ export function AppHeader() {
   const { setTheme, theme } = useTheme()
   const { user } = useAuth()
   const [loading, setLoading] = useState(true)
+  const [cashRegisterInfo, setCashRegisterInfo] = useState<{ name: string | null; branchName: string } | null>(null)
+
+  // Cashier role check
+  const isCashier = user?.role === 'cajero'
+  // From JWT session, the branchId might be set
+  const userBranchId = (user as Record<string, unknown>)?.branchId as string | undefined
 
   // Fetch branches on mount
   useEffect(() => {
     api.get<Array<{ id: string; name: string; code: string; address: string | null; phone: string | null; active: boolean; isMain: boolean }>>('/api/branches')
       .then((data) => {
         setBranches(data)
-        // Auto-select the first active branch if none selected
-        // Use getState() to read the latest persisted value (avoid closure bug)
-        const currentBranchId = useAppStore.getState().selectedBranchId
-        if (!currentBranchId && data.length > 0) {
-          const firstActive = data.find(b => b.active)
-          if (firstActive) setSelectedBranchId(firstActive.id)
+        if (!isCashier) {
+          // For non-cashiers, auto-select the first active branch if none selected
+          const currentBranchId = useAppStore.getState().selectedBranchId
+          if (!currentBranchId && data.length > 0) {
+            const firstActive = data.find(b => b.active)
+            if (firstActive) setSelectedBranchId(firstActive.id)
+          }
+        } else {
+          // For cashiers, force their assigned branch
+          if (userBranchId) {
+            setSelectedBranchId(userBranchId)
+          } else if (data.length > 0) {
+            const firstActive = data.find(b => b.active)
+            if (firstActive) setSelectedBranchId(firstActive.id)
+          }
         }
       })
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [])
+
+  // For cashiers, fetch their assigned cash register info
+  useEffect(() => {
+    if (!isCashier || !user?.id) return
+    api.get<Array<{ id: string; status: string; name: string | null; branch: { name: string } }>>('/api/cash-register')
+      .then((regs) => {
+        const openReg = regs?.find(r => r.status === 'abierta' && r.user?.id === user.id)
+        // We can't easily filter by userId here, so just get any open register
+        // The API already filters by branch
+        if (openReg) {
+          setCashRegisterInfo({ name: openReg.name, branchName: openReg.branch?.name || '' })
+        }
+      })
+      .catch(() => {})
+  }, [isCashier, user?.id])
+
+  // For cashiers, poll for register closure every 30 seconds
+  useEffect(() => {
+    if (!isCashier || !user?.id) return
+    const interval = setInterval(() => {
+      api.get<{ wasClosed: boolean; register?: { name: string | null; branchName: string; closingDate: string; actual: number } }>(`/api/cash-register/check?userId=${user.id}`)
+        .then((result) => {
+          if (result.wasClosed) {
+            // Clear the interval and show alert
+            clearInterval(interval)
+            // Force a page reload or redirect to show the closure modal
+            window.location.reload()
+          }
+        })
+        .catch(() => {})
+    }, 30000) // 30 seconds
+    return () => clearInterval(interval)
+  }, [isCashier, user?.id])
 
   const initials = user?.name
     ? user.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
@@ -75,8 +124,21 @@ export function AppHeader() {
       <Separator orientation="vertical" className="mr-1.5 h-4 md:mr-2" />
       <h2 className="text-sm font-semibold md:text-lg truncate">{viewLabels[activeView] || 'Dashboard'}</h2>
       <div className="ml-auto flex items-center gap-1 md:gap-2">
-        {/* Branch Selector */}
-        {!loading && branches.length > 0 && (
+        {/* Branch info for cashiers (read-only badge) */}
+        {isCashier && selectedBranch && (
+          <Badge variant="outline" className="hidden sm:flex items-center gap-1 text-xs">
+            <GitBranch className="h-3 w-3" />
+            {selectedBranch.name}
+            {cashRegisterInfo?.name && (
+              <span className="ml-1 text-muted-foreground">
+                · {cashRegisterInfo.name}
+              </span>
+            )}
+          </Badge>
+        )}
+
+        {/* Branch Selector for non-cashiers */}
+        {!isCashier && !loading && branches.length > 0 && (
           <div className="hidden sm:block">
             <Select
               value={selectedBranchId || ''}
@@ -98,6 +160,15 @@ export function AppHeader() {
             </Select>
           </div>
         )}
+
+        {/* Mobile branch info for cashiers */}
+        {isCashier && selectedBranch && (
+          <Badge variant="outline" className="sm:hidden text-xs">
+            <GitBranch className="h-3 w-3 mr-1" />
+            {selectedBranch.name}
+          </Badge>
+        )}
+
         <SessionTimer />
         <NotificationBell />
         <Button

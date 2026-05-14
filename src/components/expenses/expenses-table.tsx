@@ -29,7 +29,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Plus, Search, Receipt } from 'lucide-react'
+import { Plus, Search, Receipt, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface Expense {
@@ -139,11 +139,31 @@ export function ExpensesTable() {
                     <TableCell className="text-right font-semibold text-red-600">
                       {expense.currency.symbol}{expense.amount.toFixed(2)}
                     </TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-red-400 hover:text-red-600"
+                        title="Eliminar"
+                        onClick={async () => {
+                          if (!confirm('¿Estás seguro de eliminar este gasto?')) return
+                          try {
+                            await api.del(`/api/expenses?id=${expense.id}`)
+                            toast.success('Gasto eliminado')
+                            fetchExpenses()
+                          } catch {
+                            toast.error('Error al eliminar gasto')
+                          }
+                        }}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 ))}
                 {expenses.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                       <Receipt className="mx-auto mb-2 h-8 w-8 opacity-50" />
                       No hay gastos registrados
                     </TableCell>

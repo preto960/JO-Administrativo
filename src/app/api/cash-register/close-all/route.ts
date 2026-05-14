@@ -12,6 +12,8 @@ export async function POST(request: NextRequest) {
       include: {
         sales: { where: { status: 'completada' }, include: { payments: true } },
         movements: true,
+        user: { select: { id: true, name: true, email: true } },
+        branch: { select: { id: true, name: true } },
       },
     })
 
@@ -57,13 +59,53 @@ export async function POST(request: NextRequest) {
             actual,
             difference: 0,
           },
-          include: { cashReg: { include: { user: { select: { name: true } } } } },
+          include: { cashReg: { include: { user: { select: { name: true } }, branch: { select: { name: true } } } } },
         })
 
         cuts.push(cut)
       }
       return cuts
     })
+
+    // Send email notification to admin (async)
+    const closingDate = new Date()
+    import('@/lib/email').then(({ sendCashCloseAllEmail }) => {
+      sendCashCloseAllEmail(
+        openRegisters.map(r => {
+          const totalSales = r.sales.reduce((sum, sale) => {
+            return sum + sale.payments.filter(p => p.method === 'efectivo').reduce((s, p) => s + p.amount, 0)
+          }, 0)
+          const totalExpenses = r.movements.filter(m => m.type === 'salida').reduce((sum, m) => sum + m.amount, 0)
+          const totalEntries = r.movements.filter(m => m.type === 'entrada').reduce((sum, m) => sum + m.amount, 0)
+          const expected = Math.round((r.initialAmt + totalSales + totalEntries - totalExpenses) * 100) / 100
+          return {
+            cashierName: r.user.name,
+            registerName: r.name,
+            branchName: r.branch.name,
+            openingDate: r.openingDate,
+            closingDate,
+            initialAmt: r.initialAmt,
+            expected,
+            actual: expected,
+            difference: 0,
+            totalSales,
+            totalExpenses,
+          }
+        })
+      ).catch(() => {})
+    })
+
+    // Create notifications for all cashiers whose registers were closed
+    for (const reg of openRegisters) {
+      await db.notification.create({
+        data: {
+          userId: reg.user.id,
+          title: 'Caja Cerrada',
+          message: `Todas las cajas de la sucursal "${reg.branch.name}" han sido cerradas. Tu caja "${reg.name || 'Sin nombre'}" ha sido cerrada automáticamente.`,
+          type: 'warning',
+        },
+      })
+    }
 
     return NextResponse.json({
       message: `${results.length} caja(s) cerrada(s)`,

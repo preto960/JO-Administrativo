@@ -23,7 +23,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog'
-import { Building2, Plus, Loader2, Eye, Pencil, DollarSign, CalendarDays, FileText } from 'lucide-react'
+import { Building2, Plus, Loader2, Eye, Pencil, DollarSign, CalendarDays, FileText, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface Supplier {
@@ -309,6 +309,18 @@ export function SuppliersView() {
                         </Button>
                         <Button size="sm" variant="outline" title="Agregar Deuda" onClick={() => openPayableDialog(supplier)}>
                           <Plus className="h-3 w-3" />
+                        </Button>
+                        <Button size="sm" variant="ghost" className="text-red-400 hover:text-red-600" title="Eliminar" onClick={async () => {
+                          if (!confirm(`¿Estás seguro de eliminar el proveedor "${supplier.name}"?`)) return
+                          try {
+                            await api.del(`/api/suppliers?id=${supplier.id}`)
+                            toast.success('Proveedor eliminado')
+                            fetchSuppliers()
+                          } catch {
+                            toast.error('Error al eliminar proveedor')
+                          }
+                        }}>
+                          <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       </div>
                     </TableCell>

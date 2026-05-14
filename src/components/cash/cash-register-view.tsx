@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import { api } from '@/lib/api'
+import { useAuth } from '@/hooks/use-auth'
+import { useAppStore } from '@/stores/use-app-store'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -30,8 +32,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Wallet, Plus, ArrowUpCircle, ArrowDownCircle, Lock, Eye, Loader2, UserCircle } from 'lucide-react'
-import { useAuth } from '@/hooks/use-auth'
+import { Wallet, Plus, ArrowUpCircle, ArrowDownCircle, Lock, Eye, Loader2, UserCircle, AlertTriangle, GitBranch } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface CashRegister {
@@ -43,13 +44,25 @@ interface CashRegister {
   currentAmt: number
   status: string
   user: { id: string; name: string }
+  branch: { id: string; name: string }
   _count: { sales: number; movements: number }
+}
+
+interface BranchItem {
+  id: string
+  name: string
+  isMain: boolean
+  active: boolean
 }
 
 export function CashRegisterView() {
   const { user } = useAuth()
+  const { branches, selectedBranchId, setSelectedBranchId } = useAppStore()
+  const isCashier = user?.role === 'cajero'
+
   const [registers, setRegisters] = useState<CashRegister[]>([])
   const [loading, setLoading] = useState(true)
+  const [filterBranchId, setFilterBranchId] = useState<string>(selectedBranchId || '')
   const [showOpen, setShowOpen] = useState(false)
   const [showMovement, setShowMovement] = useState(false)
   const [movementRegId, setMovementRegId] = useState<string | null>(null)
@@ -66,14 +79,25 @@ export function CashRegisterView() {
   const [closeActual, setCloseActual] = useState('')
   const [closingAll, setClosingAll] = useState(false)
 
-  const fetchData = async () => {
+  // Register closure alert for cashiers
+  const [showClosedAlert, setShowClosedAlert] = useState(false)
+  const [closedInfo, setClosedInfo] = useState<{ name: string | null; branchName: string; actual: number; cutDate: string } | null>(null)
+
+  const fetchData = async (branchOverride?: string) => {
     try {
-      const [regs, users] = await Promise.all([
-        api.get<CashRegister[]>('/api/cash-register'),
-        api.get<{ id: string; name: string; role: string; active: boolean }[]>('/api/users'),
-      ])
+      const branchParam = branchOverride || filterBranchId || selectedBranchId || ''
+      // Fetch registers for the selected branch (or all if no filter)
+      const url = branchParam
+        ? `/api/cash-register?branchId=${branchParam}`
+        : '/api/cash-register'
+      const regs = await api.get<CashRegister[]>(url)
       setRegisters(regs)
-      setAvailableUsers(users.filter(u => u.active))
+
+      // Only admin/gerente can see users list for cashier assignment
+      if (!isCashier) {
+        const users = await api.get<{ id: string; name: string; role: string; active: boolean }[]>('/api/users?role=cajero')
+        setAvailableUsers(users.filter(u => u.active))
+      }
     } catch {
       toast.error('Error al cargar caja')
     } finally {
@@ -81,7 +105,34 @@ export function CashRegisterView() {
     }
   }
 
-  useEffect(() => { fetchData() }, [])
+  // Initialize branch filter
+  useEffect(() => {
+    const mainBranch = branches.find(b => b.isMain && b.active)
+    const defaultBranch = filterBranchId || selectedBranchId || mainBranch?.id || ''
+    setFilterBranchId(defaultBranch)
+    if (!filterBranchId && !selectedBranchId && mainBranch) {
+      setSelectedBranchId(mainBranch.id)
+    }
+  }, [branches])
+
+  useEffect(() => {
+    if (filterBranchId) {
+      fetchData(filterBranchId)
+    }
+  }, [filterBranchId])
+
+  // Check if cashier's register was closed
+  useEffect(() => {
+    if (!isCashier || !user?.id) return
+    api.get<{ wasClosed: boolean; register?: { name: string | null; branchName: string; closingDate: string; actual: number; cutDate: string } }>(`/api/cash-register/check?userId=${user.id}`)
+      .then((result) => {
+        if (result.wasClosed && result.register) {
+          setClosedInfo(result.register)
+          setShowClosedAlert(true)
+        }
+      })
+      .catch(() => {})
+  }, [isCashier, user?.id])
 
   const openRegisters = registers.filter(r => r.status === 'abierta')
   const totalOpenAmt = openRegisters.reduce((sum, r) => sum + r.currentAmt, 0)
@@ -99,12 +150,13 @@ export function CashRegisterView() {
         userId: effectiveUserId,
         initialAmt: parseFloat(initialAmt) || 0,
         name: registerName.trim() || undefined,
+        branchId: filterBranchId || undefined,
       })
       toast.success('Caja abierta exitosamente')
       setShowOpen(false)
       setRegisterName('')
       setSelectedUserId('')
-      fetchData()
+      fetchData(filterBranchId)
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Error al abrir caja'
       toast.error(msg)
@@ -139,7 +191,7 @@ export function CashRegisterView() {
       setMoveAmount('')
       setMoveConcept('')
       setMovementRegId(null)
-      fetchData()
+      fetchData(filterBranchId)
     } catch {
       toast.error('Error al registrar movimiento')
     } finally {
@@ -159,7 +211,7 @@ export function CashRegisterView() {
       setShowClose(false)
       setCloseRegId(null)
       setCloseActual('')
-      fetchData()
+      fetchData(filterBranchId)
     } catch {
       toast.error('Error al cerrar caja')
     } finally {
@@ -170,9 +222,11 @@ export function CashRegisterView() {
   const closeAllRegisters = async () => {
     setClosingAll(true)
     try {
-      const result = await api.post<{ message: string }>('/api/cash-register/close-all', {})
+      const result = await api.post<{ message: string }>('/api/cash-register/close-all', {
+        branchId: filterBranchId || undefined,
+      })
       toast.success(result.message)
-      fetchData()
+      fetchData(filterBranchId)
     } catch {
       toast.error('Error al cerrar todas las cajas')
     } finally {
@@ -180,14 +234,69 @@ export function CashRegisterView() {
     }
   }
 
-  const currentRegister = registers[0]?.status === 'abierta' ? openRegisters[0] : null
-
   if (loading) {
     return <div className="h-64 rounded-lg bg-muted animate-pulse" />
   }
 
   return (
     <div className="space-y-4">
+      {/* Register Closure Alert for Cashiers */}
+      {showClosedAlert && closedInfo && (
+        <Card className="border-red-300 bg-red-50 dark:bg-red-950/30 dark:border-red-800">
+          <CardContent className="p-6 flex flex-col items-center justify-center text-center gap-4">
+            <div className="rounded-full bg-red-100 dark:bg-red-900/50 p-4">
+              <AlertTriangle className="h-10 w-10 text-red-600 dark:text-red-400" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-red-700 dark:text-red-400">Tu Caja Ha Sido Cerrada</h2>
+              <p className="text-sm text-red-600 dark:text-red-400 mt-2">
+                La caja &quot;{closedInfo.name || 'Sin nombre'}&quot; en la sucursal &quot;{closedInfo.branchName}&quot;
+                ha sido cerrada por un administrador.
+              </p>
+              <div className="mt-3 rounded-md bg-white dark:bg-gray-900 p-3 text-sm">
+                <p className="text-muted-foreground">Monto final: <span className="font-bold">${closedInfo.actual.toFixed(2)}</span></p>
+                <p className="text-muted-foreground">Fecha de cierre: {new Date(closedInfo.cutDate).toLocaleString('es-VE')}</p>
+              </div>
+            </div>
+            <Button variant="outline" onClick={() => {
+              setShowClosedAlert(false)
+              setClosedInfo(null)
+              // Refresh data
+              fetchData(filterBranchId)
+            }}>
+              Entendido
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Branch filter (non-cashier only) */}
+      {!isCashier && (
+        <div className="flex items-center gap-2">
+          <GitBranch className="h-4 w-4 text-muted-foreground" />
+          <Select value={filterBranchId} onValueChange={(v) => {
+            setFilterBranchId(v)
+            setSelectedBranchId(v)
+          }}>
+            <SelectTrigger className="w-48">
+              <SelectValue placeholder="Filtrar por sucursal" />
+            </SelectTrigger>
+            <SelectContent>
+              {branches
+                .filter(b => b.active)
+                .map((branch) => (
+                  <SelectItem key={branch.id} value={branch.id}>
+                    <span className="flex items-center gap-2">
+                      {branch.name}
+                      {branch.isMain && <span className="text-xs text-muted-foreground">(Principal)</span>}
+                    </span>
+                  </SelectItem>
+                ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
       {/* Summary Cards */}
       <div className="grid gap-3 grid-cols-1 sm:grid-cols-3">
         <Card>
@@ -227,23 +336,32 @@ export function CashRegisterView() {
             <div>
               <p className="text-xs text-muted-foreground">Acciones</p>
               <div className="flex gap-2 mt-1 flex-wrap">
-                <Button size="sm" variant="outline" onClick={() => {
-                  if (openRegisters.length === 1) {
-                    setMovementRegId(openRegisters[0].id)
-                  }
-                  setShowMovement(true)
-                }}>
-                  <ArrowDownCircle className="mr-1 h-3 w-3" /> Movimiento
-                </Button>
-                {openRegisters.length > 0 && (
-                  <Button size="sm" variant="outline" className="text-red-600" onClick={closeAllRegisters} disabled={closingAll}>
-                    {closingAll ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Lock className="mr-1 h-3 w-3" />}
-                    Cerrar Todas
-                  </Button>
+                {!isCashier && (
+                  <>
+                    <Button size="sm" variant="outline" onClick={() => {
+                      if (openRegisters.length === 1) {
+                        setMovementRegId(openRegisters[0].id)
+                      }
+                      setShowMovement(true)
+                    }}>
+                      <ArrowDownCircle className="mr-1 h-3 w-3" /> Movimiento
+                    </Button>
+                    {openRegisters.length > 0 && (
+                      <Button size="sm" variant="outline" className="text-red-600" onClick={closeAllRegisters} disabled={closingAll}>
+                        {closingAll ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Lock className="mr-1 h-3 w-3" />}
+                        Cerrar Todas
+                      </Button>
+                    )}
+                    <Button size="sm" className="bg-primary hover:bg-primary/90 text-white" onClick={() => setShowOpen(true)}>
+                      <Plus className="mr-1 h-3 w-3" /> Abrir Caja
+                    </Button>
+                  </>
                 )}
-                <Button size="sm" className="bg-primary hover:bg-primary/90 text-white" onClick={() => setShowOpen(true)}>
-                  <Plus className="mr-1 h-3 w-3" /> Abrir Caja
-                </Button>
+                {isCashier && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Modo cajero: solo lectura
+                  </p>
+                )}
               </div>
             </div>
           </CardContent>
@@ -263,11 +381,12 @@ export function CashRegisterView() {
                   <TableRow>
                     <TableHead>Caja</TableHead>
                     <TableHead>Cajero</TableHead>
+                    <TableHead>Sucursal</TableHead>
                     <TableHead>Apertura</TableHead>
                     <TableHead className="text-right">Inicial</TableHead>
                     <TableHead className="text-right">Actual</TableHead>
                     <TableHead className="text-right">Ventas</TableHead>
-                    <TableHead className="text-right">Acciones</TableHead>
+                    {!isCashier && <TableHead className="text-right">Acciones</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -276,6 +395,9 @@ export function CashRegisterView() {
                       <TableCell className="font-medium">{reg.name || '—'}</TableCell>
                       <TableCell className="text-sm">{reg.user.name}</TableCell>
                       <TableCell className="text-sm">
+                        <Badge variant="outline" className="text-xs">{reg.branch.name}</Badge>
+                      </TableCell>
+                      <TableCell className="text-sm">
                         {new Date(reg.openingDate).toLocaleString('es-VE')}
                       </TableCell>
                       <TableCell className="text-right">${reg.initialAmt.toFixed(2)}</TableCell>
@@ -283,23 +405,25 @@ export function CashRegisterView() {
                       <TableCell className="text-right">
                         <Badge variant="outline">{reg._count.sales}</Badge>
                       </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-1">
-                          <Button size="sm" variant="ghost" onClick={() => {
-                            setMovementRegId(reg.id)
-                            setShowMovement(true)
-                          }}>
-                            <ArrowDownCircle className="h-3.5 w-3.5" />
-                          </Button>
-                          <Button size="sm" variant="ghost" className="text-red-600" onClick={() => {
-                            setCloseRegId(reg.id)
-                            setCloseActual('')
-                            setShowClose(true)
-                          }}>
-                            <Lock className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                      </TableCell>
+                      {!isCashier && (
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-1">
+                            <Button size="sm" variant="ghost" onClick={() => {
+                              setMovementRegId(reg.id)
+                              setShowMovement(true)
+                            }}>
+                              <ArrowDownCircle className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button size="sm" variant="ghost" className="text-red-600" onClick={() => {
+                              setCloseRegId(reg.id)
+                              setCloseActual('')
+                              setShowClose(true)
+                            }}>
+                              <Lock className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))}
                 </TableBody>
@@ -322,6 +446,7 @@ export function CashRegisterView() {
                   <TableHead>Apertura</TableHead>
                   <TableHead>Caja</TableHead>
                   <TableHead>Cajero</TableHead>
+                  <TableHead className="hidden sm:table-cell">Sucursal</TableHead>
                   <TableHead className="text-right">Inicial</TableHead>
                   <TableHead className="text-right hidden sm:table-cell">Final</TableHead>
                   <TableHead className="text-right">Ventas</TableHead>
@@ -336,6 +461,9 @@ export function CashRegisterView() {
                     </TableCell>
                     <TableCell className="font-medium">{reg.name || '—'}</TableCell>
                     <TableCell className="font-medium">{reg.user.name}</TableCell>
+                    <TableCell className="hidden sm:table-cell text-xs">
+                      {reg.branch?.name || '—'}
+                    </TableCell>
                     <TableCell className="text-right">${reg.initialAmt.toFixed(2)}</TableCell>
                     <TableCell className="text-right font-semibold hidden sm:table-cell">${reg.currentAmt.toFixed(2)}</TableCell>
                     <TableCell className="text-right">
@@ -350,7 +478,7 @@ export function CashRegisterView() {
                 ))}
                 {registers.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                       No hay registros de caja
                     </TableCell>
                   </TableRow>
@@ -361,51 +489,47 @@ export function CashRegisterView() {
         </CardContent>
       </Card>
 
-      {/* Open Dialog */}
+      {/* Open Dialog (admin/gerente only) */}
       <Dialog open={showOpen} onOpenChange={setShowOpen}>
         <DialogContent className="sm:max-w-[90vw]">
           <DialogHeader>
             <DialogTitle>Abrir Caja</DialogTitle>
-            <DialogDescription>Ingresa el monto inicial para abrir la caja</DialogDescription>
+            <DialogDescription>Ingresa el monto inicial y selecciona el cajero</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            {(user?.role === 'admin' || user?.role === 'gerente') && availableUsers.length > 0 && (
-              <div className="space-y-2">
-                <Label>Cajero Asignado</Label>
-                <Select value={selectedUserId} onValueChange={setSelectedUserId}>
-                  <SelectTrigger><SelectValue placeholder="Seleccionar cajero" /></SelectTrigger>
-                  <SelectContent>
-                    {availableUsers.map((u) => (
-                      <SelectItem key={u.id} value={u.id}>
-                        <span className="flex items-center gap-2">
-                          <UserCircle className="h-3 w-3" />
-                          {u.name} ({u.role})
-                        </span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  {selectedUserId ? 'Cajero seleccionado' : 'Se usará tu usuario si no seleccionas uno'}
-                </p>
-              </div>
-            )}
+            {/* Cashier selection - only show cashiers */}
+            <div className="space-y-2">
+              <Label>Cajero Asignado *</Label>
+              <Select value={selectedUserId} onValueChange={setSelectedUserId}>
+                <SelectTrigger><SelectValue placeholder="Seleccionar cajero" /></SelectTrigger>
+                <SelectContent>
+                  {availableUsers.map((u) => (
+                    <SelectItem key={u.id} value={u.id}>
+                      <span className="flex items-center gap-2">
+                        <UserCircle className="h-3 w-3" />
+                        {u.name}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="space-y-2">
               <Label htmlFor="regname">Nombre de la Caja (opcional)</Label>
-              <Input id="regname" value={registerName} onChange={(e) => setRegisterName(e.target.value)} placeholder="Ej: Caja Principal, Caja 2, Caja Enfermería..." />
+              <Input id="regname" value={registerName} onChange={(e) => setRegisterName(e.target.value)} placeholder="Ej: Caja Principal, Caja 2..." />
             </div>
             <div className="space-y-2">
               <Label htmlFor="initial">Monto Inicial</Label>
               <Input id="initial" type="number" step="0.01" value={initialAmt} onChange={(e) => setInitialAmt(e.target.value)} />
             </div>
-            <Button className="w-full bg-primary hover:bg-primary/90 text-white" onClick={openRegister} disabled={saving}>
+            <Button className="w-full bg-primary hover:bg-primary/90 text-white" onClick={openRegister} disabled={saving || !selectedUserId}>
               {saving ? 'Abriendo...' : 'Abrir Caja'}
             </Button>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* Movement Dialog */}
+      {/* Movement Dialog (admin/gerente only) */}
       <Dialog open={showMovement} onOpenChange={(open) => {
         if (!open) {
           setShowMovement(false)
@@ -458,7 +582,7 @@ export function CashRegisterView() {
         </DialogContent>
       </Dialog>
 
-      {/* Close Dialog */}
+      {/* Close Dialog (admin/gerente only) */}
       <Dialog open={showClose} onOpenChange={setShowClose}>
         <DialogContent className="sm:max-w-[90vw]">
           <DialogHeader>
@@ -487,8 +611,11 @@ export function CashRegisterView() {
             })()}
             <div className="space-y-2">
               <Label htmlFor="closeamt">Monto Real en Caja</Label>
-              <Input id="closeamt" type="number" step="0.01" value={closeActual} onChange={(e) => setCloseActual(e.target.value)} placeholder={currentRegister?.currentAmt.toFixed(2)} />
+              <Input id="closeamt" type="number" step="0.01" value={closeActual} onChange={(e) => setCloseActual(e.target.value)} placeholder={openRegisters[0]?.currentAmt.toFixed(2)} />
             </div>
+            <p className="text-xs text-muted-foreground">
+              Se enviará un correo electrónico al administrador con el resumen del cierre.
+            </p>
             <Button className="w-full bg-red-600 hover:bg-red-700 text-white" onClick={closeRegister} disabled={saving}>
               {saving ? 'Cerrando...' : 'Confirmar Cierre'}
             </Button>

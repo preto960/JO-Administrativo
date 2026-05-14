@@ -15,6 +15,8 @@ export async function POST(request: NextRequest) {
       include: {
         sales: { where: { status: 'completada' }, include: { payments: true } },
         movements: true,
+        user: { select: { id: true, name: true, email: true } },
+        branch: { select: { id: true, name: true } },
       },
     })
 
@@ -45,13 +47,14 @@ export async function POST(request: NextRequest) {
     const expected = Math.round((register.initialAmt + totalSales + totalEntries - totalExpenses) * 100) / 100
     const actualAmt = actual !== undefined ? actual : expected
     const difference = Math.round((actualAmt - expected) * 100) / 100
+    const closingDate = new Date()
 
     const cut = await db.$transaction(async (tx) => {
       await tx.cashRegister.update({
         where: { id: cashRegId },
         data: {
           status: 'cerrada',
-          closingDate: new Date(),
+          closingDate,
           currentAmt: actualAmt,
         },
       })
@@ -67,6 +70,35 @@ export async function POST(request: NextRequest) {
         },
       })
     })
+
+    // Send email notification to admin (async, don't block response)
+    import('@/lib/email').then(({ sendCashCloseEmail }) => {
+      sendCashCloseEmail({
+        cashierName: register.user.name,
+        registerName: register.name,
+        branchName: register.branch.name,
+        openingDate: register.openingDate,
+        closingDate,
+        initialAmt: register.initialAmt,
+        expected,
+        actual: actualAmt,
+        difference,
+        totalSales,
+        totalExpenses,
+      }).catch(() => {})
+    })
+
+    // Create notification for the cashier whose register was closed
+    if (register.user.id) {
+      await db.notification.create({
+        data: {
+          userId: register.user.id,
+          title: 'Caja Cerrada',
+          message: `Tu caja "${register.name || 'Sin nombre'}" en la sucursal "${register.branch.name}" ha sido cerrada por un administrador. Monto final: $${actualAmt.toFixed(2)}`,
+          type: 'warning',
+        },
+      })
+    }
 
     return NextResponse.json(cut)
   } catch (error) {

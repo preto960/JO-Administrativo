@@ -1,6 +1,11 @@
 'use client'
 
-import { AppShell } from '@/components/layout/app-shell'
+import dynamic from 'next/dynamic'
+
+const AppShell = dynamic(
+  () => import('@/components/layout/app-shell').then(mod => ({ default: mod.AppShell })),
+  { ssr: false }
+)
 
 export default function Home() {
   return <AppShell />

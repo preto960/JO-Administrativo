@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
     const to = searchParams.get('to') || ''
     const branchId = await resolveBranchId(request)
 
-    const where: Record<string, unknown> = { branchId }
+    const where: Record<string, unknown> = { branchId, deletedAt: null }
     if (category) where.category = category
     if (from || to) {
       where.date = {}
@@ -51,5 +51,26 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(expense, { status: 201 })
   } catch (error) {
     return NextResponse.json({ error: 'Error al crear gasto' }, { status: 500 })
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url)
+    const id = searchParams.get('id')
+
+    if (!id) {
+      return NextResponse.json({ error: 'ID es requerido' }, { status: 400 })
+    }
+
+    // Soft delete
+    await db.expense.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    })
+
+    return NextResponse.json({ message: 'Gasto eliminado (soft delete)' })
+  } catch (error) {
+    return NextResponse.json({ error: 'Error al eliminar gasto' }, { status: 500 })
   }
 }

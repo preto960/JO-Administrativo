@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect } from 'react'
 import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar'
 import { AppSidebar } from './app-sidebar'
 import { AppHeader } from './app-header'
@@ -16,6 +17,8 @@ import { SettingsView } from '@/components/settings/settings-view'
 import { SessionProvider } from 'next-auth/react'
 import { OnboardingTutorial } from '@/components/tutorial/onboarding-tutorial'
 import { SettingsInitializer } from '@/components/settings/settings-initializer'
+import { useAuth } from '@/hooks/use-auth'
+import { canAccessView } from '@/lib/permissions'
 import type { AppView } from '@/stores/use-app-store'
 
 const viewComponents: Record<AppView, React.ComponentType> = {
@@ -30,8 +33,46 @@ const viewComponents: Record<AppView, React.ComponentType> = {
 }
 
 export function AppShell() {
-  const { activeView } = useAppStore()
+  const { activeView, setActiveView } = useAppStore()
+  const { user, isLoading } = useAuth()
+
+  // When user session loads or changes, check if current view is permitted
+  useEffect(() => {
+    if (!user || isLoading) return
+    const role = user.role || 'cajero'
+    if (!canAccessView(role, activeView)) {
+      // Redirect to the first allowed view
+      const fallback: AppView = role === 'cajero' ? 'pos'
+        : role === 'vendedor' ? 'pos'
+        : role === 'gerente' ? 'pos'
+        : 'pos'
+      setActiveView(fallback)
+    }
+  }, [user, activeView, isLoading, setActiveView])
+
+  // Clear activeView from localStorage on logout
+  useEffect(() => {
+    if (!isLoading && !user) {
+      // User logged out — the persist middleware will keep the old view
+      // Reset to pos so next login starts clean
+      localStorage.removeItem('jo-admin-store')
+    }
+  }, [isLoading, user])
+
   const ActiveComponent = viewComponents[activeView] || FinancialDashboard
+
+  // If user exists and can't access current view, show nothing while redirecting
+  if (user && !canAccessView(user.role, activeView)) {
+    return (
+      <SessionProvider>
+        <ThemeProvider attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange>
+          <div className="flex h-screen items-center justify-center">
+            <p className="text-muted-foreground">Redirigiendo...</p>
+          </div>
+        </ThemeProvider>
+      </SessionProvider>
+    )
+  }
 
   return (
     <SessionProvider>

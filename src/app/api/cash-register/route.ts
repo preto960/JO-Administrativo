@@ -4,13 +4,16 @@ import { resolveBranchId } from '@/lib/resolve-branch'
 
 export async function GET(request: NextRequest) {
   try {
-    const branchId = await resolveBranchId(request)
+    const { searchParams } = new URL(request.url)
+    const queryBranchId = searchParams.get('branchId')
+    const branchId = queryBranchId || await resolveBranchId(request)
 
     const registers = await db.cashRegister.findMany({
       where: { branchId },
       orderBy: { openingDate: 'desc' },
       include: {
         user: { select: { id: true, name: true } },
+        branch: { select: { id: true, name: true } },
         _count: { select: { sales: true, movements: true } },
       },
     })
@@ -31,8 +34,6 @@ export async function POST(request: NextRequest) {
     }
 
     const effectiveBranchId = body.branchId || await resolveBranchId()
-
-    // Allow multiple open registers per branch - removed the single-check
 
     const register = await db.cashRegister.create({
       data: {

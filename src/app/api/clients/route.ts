@@ -6,7 +6,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const search = searchParams.get('search') || ''
 
-    const where: Record<string, unknown> = {}
+    const where: Record<string, unknown> = { deletedAt: null }
     if (search) {
       where.OR = [
         { name: { contains: search } },
@@ -57,5 +57,26 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(client, { status: 201 })
   } catch (error) {
     return NextResponse.json({ error: 'Error al crear cliente' }, { status: 500 })
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url)
+    const id = searchParams.get('id')
+
+    if (!id) {
+      return NextResponse.json({ error: 'ID es requerido' }, { status: 400 })
+    }
+
+    // Soft delete
+    await db.client.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    })
+
+    return NextResponse.json({ message: 'Cliente eliminado (soft delete)' })
+  } catch (error) {
+    return NextResponse.json({ error: 'Error al eliminar cliente' }, { status: 500 })
   }
 }

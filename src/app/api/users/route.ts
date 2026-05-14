@@ -1,15 +1,27 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
+import { hashPassword } from '@/lib/password'
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const { searchParams } = new URL(request.url)
+    const role = searchParams.get('role') || ''
+
+    const where: Record<string, unknown> = {
+      deletedAt: null,
+    }
+    if (role) where.role = role
+
     const users = await db.user.findMany({
+      where,
       select: {
         id: true,
         name: true,
         email: true,
         role: true,
         active: true,
+        branchId: true,
+        branch: { select: { id: true, name: true } },
         createdAt: true,
       },
       orderBy: { createdAt: 'desc' },
@@ -23,7 +35,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { name, email, password, role } = body
+    const { name, email, password, role, branchId } = body
 
     if (!name || !email) {
       return NextResponse.json({ error: 'Nombre y email son requeridos' }, { status: 400 })
@@ -34,13 +46,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'El email ya está registrado' }, { status: 400 })
     }
 
+    // Hash password before storing
+    const hashedPassword = password ? await hashPassword(password) : await hashPassword('changeme')
+
     const user = await db.user.create({
       data: {
         name,
         email,
-        password: password || 'changeme',
+        password: hashedPassword,
         role: role || 'cajero',
         active: true,
+        branchId: branchId || null,
       },
       select: {
         id: true,
@@ -48,6 +64,8 @@ export async function POST(request: NextRequest) {
         email: true,
         role: true,
         active: true,
+        branchId: true,
+        branch: { select: { id: true, name: true } },
       },
     })
 
@@ -60,7 +78,7 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json()
-    const { id, name, email, role, active, password } = body
+    const { id, name, email, role, active, password, branchId } = body
 
     if (!id) {
       return NextResponse.json({ error: 'ID es requerido' }, { status: 400 })
@@ -71,7 +89,8 @@ export async function PUT(request: NextRequest) {
     if (email !== undefined) data.email = email
     if (role !== undefined) data.role = role
     if (active !== undefined) data.active = active
-    if (password) data.password = password
+    if (branchId !== undefined) data.branchId = branchId || null
+    if (password) data.password = await hashPassword(password)
 
     const user = await db.user.update({
       where: { id },
@@ -82,11 +101,34 @@ export async function PUT(request: NextRequest) {
         email: true,
         role: true,
         active: true,
+        branchId: true,
+        branch: { select: { id: true, name: true } },
       },
     })
 
     return NextResponse.json(user)
   } catch (error) {
     return NextResponse.json({ error: 'Error al actualizar usuario' }, { status: 500 })
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url)
+    const id = searchParams.get('id')
+
+    if (!id) {
+      return NextResponse.json({ error: 'ID es requerido' }, { status: 400 })
+    }
+
+    // Soft delete
+    await db.user.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    })
+
+    return NextResponse.json({ message: 'Usuario eliminado (soft delete)' })
+  } catch (error) {
+    return NextResponse.json({ error: 'Error al eliminar usuario' }, { status: 500 })
   }
 }

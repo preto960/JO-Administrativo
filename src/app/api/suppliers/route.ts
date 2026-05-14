@@ -1,9 +1,10 @@
 import { db } from '@/lib/db'
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 
 export async function GET() {
   try {
     const suppliers = await db.supplier.findMany({
+      where: { deletedAt: null },
       include: {
         payables: {
           where: { status: { in: ['pendiente', 'parcial'] } },
@@ -67,5 +68,26 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error('[Suppliers POST] Error:', error)
     return NextResponse.json({ error: 'Error al crear proveedor' }, { status: 500 })
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url)
+    const id = searchParams.get('id')
+
+    if (!id) {
+      return NextResponse.json({ error: 'ID es requerido' }, { status: 400 })
+    }
+
+    // Soft delete
+    await db.supplier.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    })
+
+    return NextResponse.json({ message: 'Proveedor eliminado (soft delete)' })
+  } catch (error) {
+    return NextResponse.json({ error: 'Error al eliminar proveedor' }, { status: 500 })
   }
 }

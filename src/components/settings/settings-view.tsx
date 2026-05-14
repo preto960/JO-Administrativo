@@ -128,6 +128,7 @@ export function SettingsView() {
   const [userEmail, setUserEmail] = useState('')
   const [userPassword, setUserPassword] = useState('')
   const [userRole, setUserRole] = useState('cajero')
+  const [userBranchId, setUserBranchId] = useState('')
   const [userActive, setUserActive] = useState(true)
 
   // Branches state
@@ -212,6 +213,7 @@ export function SettingsView() {
     setUserEmail('')
     setUserPassword('')
     setUserRole('cajero')
+    setUserBranchId('')
     setUserActive(true)
     setShowUserDialog(true)
   }
@@ -222,6 +224,7 @@ export function SettingsView() {
     setUserEmail(user.email)
     setUserPassword('')
     setUserRole(user.role)
+    setUserBranchId((user as Record<string, unknown>).branchId as string || '')
     setUserActive(user.active)
     setShowUserDialog(true)
   }
@@ -241,6 +244,7 @@ export function SettingsView() {
           role: userRole,
           active: userActive,
           password: userPassword || undefined,
+          branchId: userBranchId || undefined,
         })
         toast.success('Usuario actualizado')
       } else {
@@ -249,6 +253,7 @@ export function SettingsView() {
           email: userEmail,
           password: userPassword || 'changeme',
           role: userRole,
+          branchId: userBranchId || undefined,
         })
         toast.success('Usuario creado')
       }
@@ -721,6 +726,23 @@ export function SettingsView() {
                           >
                             <Edit className="h-3.5 w-3.5" />
                           </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-red-400 hover:text-red-600"
+                            onClick={async () => {
+                              if (!confirm(`¿Estás seguro de eliminar el usuario "${user.name}"?`)) return
+                              try {
+                                await api.del(`/api/users?id=${user.id}`)
+                                toast.success('Usuario eliminado')
+                                fetchSettings()
+                              } catch {
+                                toast.error('Error al eliminar usuario')
+                              }
+                            }}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -928,6 +950,29 @@ export function SettingsView() {
                 </SelectContent>
               </Select>
             </div>
+            {/* Branch assignment for non-admin roles */}
+            {userRole !== 'admin' && (
+              <div className="space-y-2">
+                <Label>Sucursal (opcional)</Label>
+                <Select value={userBranchId} onValueChange={setUserBranchId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Sin sucursal asignada" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {branches
+                      .filter(b => b.active)
+                      .map((branch) => (
+                        <SelectItem key={branch.id} value={branch.id}>
+                          {branch.name}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Asigna el usuario a una sucursal específica. Si no selecciona, el cajero deberá iniciar sesión sin sucursal asignada.
+                </p>
+              </div>
+            )}
             {editingUser && (
               <div className="flex items-center gap-2">
                 <Switch checked={userActive} onCheckedChange={setUserActive} />

@@ -8,48 +8,53 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  name      String
-  email     String   @unique
-  password  String   @default("changeme")
-  role      String   @default("cajero")
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         String    @id @default(cuid())
+  name       String
+  email      String    @unique
+  password   String    @default("changeme")
+  role       String    @default("cajero")
+  active     Boolean   @default(true)
+  branchId   String?
+  deletedAt  DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
-  sales      Sale[]
-  cashOpens  CashRegister[]
-  movements  CashMovement[]
-  adjustments InventoryAdjustment[]
-  expenses   Expense[]
-  notifications Notification[]
-  supplierPayments SupplierPayment[]
+  sales             Sale[]
+  cashOpens         CashRegister[]
+  movements         CashMovement[]
+  adjustments       InventoryAdjustment[]
+  expenses          Expense[]
+  notifications     Notification[]
+  supplierPayments  SupplierPayment[]
+  branch            Branch?           @relation(fields: [branchId], references: [id])
 }
 
 model Client {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   name      String
   phone     String?
   email     String?
   address   String?
   note      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
   sales       Sale[]
   receivables AccountReceivable[]
 }
 
 model Supplier {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   name      String
-  rif       String?  @unique
+  rif       String?   @unique
   phone     String?
   email     String?
   address   String?
-  balance   Float    @default(0)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  balance   Float     @default(0)
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
   purchases Purchase[]
   payables  AccountPayable[]
@@ -147,6 +152,7 @@ model Branch {
   cashRegisters        CashRegister[]
   expenses             Expense[]
   inventoryAdjustments InventoryAdjustment[]
+  users                User[]
 }
 
 model Inventory {
@@ -353,15 +359,16 @@ model SupplierPayment {
 }
 
 model Expense {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   branchId    String
   category    String
   description String
   amount      Float
   currencyId  String
-  date        DateTime @default(now())
+  date        DateTime  @default(now())
   userId      String
-  createdAt   DateTime @default(now())
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
 
   currency Currency @relation(fields: [currencyId], references: [id])
   user     User     @relation(fields: [userId], references: [id])

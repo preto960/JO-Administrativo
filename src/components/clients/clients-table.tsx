@@ -32,7 +32,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Plus, Search, Users, Eye, DollarSign, Loader2, Receipt, Truck, X, Banknote, CreditCard, ArrowLeftRight, Smartphone } from 'lucide-react'
+import { Plus, Search, Users, Eye, DollarSign, Loader2, Receipt, Truck, X, Banknote, CreditCard, ArrowLeftRight, Smartphone, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useSetting } from '@/stores/use-app-store'
 
@@ -197,7 +197,7 @@ export function ClientsTable() {
 
   const openPayment = (client: Client) => {
     setPaymentClient(client)
-    setPaymentMethod('efectivo')
+    setPaymentMethod('divisas')
     setPaymentReference('')
     // Set amount in reference currency by default
     setPaymentAmount(client.pendingBalance.toFixed(2))
@@ -406,6 +406,18 @@ export function ClientsTable() {
                             <DollarSign className="mr-1 h-3 w-3" /> Cobrar
                           </Button>
                         )}
+                        <Button size="sm" variant="ghost" className="text-red-400 hover:text-red-600" title="Eliminar" onClick={async () => {
+                          if (!confirm(`¿Estás seguro de eliminar el cliente "${client.name}"?`)) return
+                          try {
+                            await api.del(`/api/clients?id=${client.id}`)
+                            toast.success('Cliente eliminado')
+                            fetchClients()
+                          } catch {
+                            toast.error('Error al eliminar cliente')
+                          }
+                        }}>
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -622,7 +634,7 @@ export function ClientsTable() {
                             const isCredit = sale.payments.some(p => p.method === 'credito') || sale.receivables.some(r => r.status === 'pendiente')
                             return (
                               <TableRow key={sale.id}>
-                                <TableCell className="text-xs">
+                                <TableCell className="text-xs whitespace-nowrap pr-4">
                                   {new Date(sale.date).toLocaleDateString('es-VE')}
                                 </TableCell>
                                 <TableCell className="text-xs max-w-[150px]">
@@ -630,7 +642,7 @@ export function ClientsTable() {
                                     {sale.lines.map(l => l.product.name).join(', ')}
                                   </div>
                                 </TableCell>
-                                <TableCell className="text-sm font-medium text-right">
+                                <TableCell className="text-sm font-medium text-right whitespace-nowrap">
                                   ${sale.total.toFixed(2)}
                                 </TableCell>
                                 <TableCell className="text-xs">
