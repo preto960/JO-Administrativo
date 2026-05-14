@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Drawer, DrawerTrigger, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription } from '@/components/ui/drawer'
-import { Search, ShoppingCart } from 'lucide-react'
+import { Search, ShoppingCart, AlertTriangle } from 'lucide-react'
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { toast } from 'sonner'
@@ -26,7 +26,7 @@ interface ProductWithInventory {
   active: boolean
   currency: { symbol: string }
   category: { name: string } | null
-  inventories: { stock: number }[]
+  inventories: { stock: number; branchId: string; branch?: { id: string; name: string } }[]
 }
 
 interface Category {
@@ -51,7 +51,7 @@ export function PosTerminal() {
   const fetchProducts = useCallback(() => {
     setLoading(true)
     Promise.all([
-      api.get<ProductWithInventory[]>('/api/products?active=true'),
+      api.get<ProductWithInventory[]>('/api/products?active=true&allInventories=true'),
       api.get<Category[]>('/api/categories'),
     ]).then(([prods, cats]) => {
       setProducts(prods)
@@ -95,6 +95,16 @@ export function PosTerminal() {
   }, [handleKeyDown])
 
   const handleAddProduct = (product: ProductWithInventory) => {
+    const stock = product.inventories[0]?.stock ?? 0
+    if (stock <= 0) {
+      const otherBranches = product.inventories.filter(i => i.stock > 0 && i.branch)
+      if (otherBranches.length > 0) {
+        toast.error(`Sin stock en esta sucursal. Disponible en: ${otherBranches.map(b => b.branch!.name).join(', ')}`)
+      } else {
+        toast.error('Sin stock disponible')
+      }
+      return
+    }
     addItem({
       productId: product.id,
       productName: product.name,
@@ -193,16 +203,28 @@ export function PosTerminal() {
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 p-1">
-              {filteredProducts.map((product) => (
+              {filteredProducts.map((product) => {
+                const currentStock = product.inventories[0]?.stock ?? 0
+                const outOfStock = currentStock <= 0
+                return (
                 <button
                   key={product.id}
                   onClick={() => handleAddProduct(product)}
-                  className="group relative flex flex-col items-start gap-1 rounded-lg border bg-card p-3 text-left transition-all hover:border-primary/30 hover:shadow-md hover:bg-primary/5 dark:hover:bg-primary/10"
+                  className={`group relative flex flex-col items-start gap-1 rounded-lg border bg-card p-3 text-left transition-all hover:border-primary/30 hover:shadow-md hover:bg-primary/5 dark:hover:bg-primary/10 ${outOfStock ? 'opacity-50' : ''}`}
                 >
                   <div className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary text-white text-xs">+</span>
+                    {outOfStock ? (
+                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-white text-xs">
+                        <AlertTriangle className="h-3 w-3" />
+                      </span>
+                    ) : (
+                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary text-white text-xs">+</span>
+                    )}
                   </div>
-                  <span className="text-sm font-medium leading-tight line-clamp-2">
+                  {outOfStock && (
+                    <Badge variant="destructive" className="absolute left-2 top-2 text-[9px] px-1.5 py-0">Sin stock</Badge>
+                  )}
+                  <span className={`text-sm font-medium leading-tight line-clamp-2 ${outOfStock ? 'line-through' : ''}`}>
                     {product.name}
                   </span>
                   <span className="text-xs text-muted-foreground">
@@ -219,12 +241,13 @@ export function PosTerminal() {
                         </p>
                       )}
                     </div>
-                    <span className="text-[10px] text-muted-foreground">
-                      Stock: {product.inventories[0]?.stock ?? 0}
+                    <span className={`text-[10px] ${outOfStock ? 'text-red-500 font-medium' : 'text-muted-foreground'}`}>
+                      Stock: {currentStock}
                     </span>
                   </div>
                 </button>
-              ))}
+                )
+              })}
             </div>
           )}
         </ScrollArea>

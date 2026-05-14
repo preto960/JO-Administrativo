@@ -133,6 +133,31 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      // Low stock notification to admin users
+      const adminUsers = await tx.user.findMany({
+        where: { role: 'admin', active: true },
+        select: { id: true },
+      })
+
+      for (const admin of adminUsers) {
+        for (const line of lines) {
+          const inv = await tx.inventory.findUnique({
+            where: { productId_branchId: { productId: line.productId, branchId } },
+            include: { product: { select: { name: true } } },
+          })
+          if (inv && inv.stock <= inv.minStock && inv.minStock > 0) {
+            await tx.notification.create({
+              data: {
+                userId: admin.id,
+                title: 'Stock Bajo',
+                message: `"${inv.product.name}" tiene ${inv.stock} unidades (mín: ${inv.minStock}). Reposición necesaria.`,
+                type: 'warning',
+              },
+            })
+          }
+        }
+      }
+
       // Update cash register currentAmt if cash payment
       if (cashRegId) {
         const cashPayments = payments.filter((p: { method: string }) => p.method === 'efectivo')

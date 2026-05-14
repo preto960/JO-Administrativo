@@ -22,7 +22,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog'
-import { Building2, Plus, Loader2 } from 'lucide-react'
+import { Building2, Plus, Loader2, DollarSign } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface Supplier {
@@ -47,6 +47,14 @@ export function SuppliersView() {
   const [email, setEmail] = useState('')
   const [address, setAddress] = useState('')
 
+  // Payment dialog state
+  const [payingSupplierId, setPayingSupplierId] = useState<string | null>(null)
+  const [payingSupplierName, setPayingSupplierName] = useState('')
+  const [payingSupplierBalance, setPayingSupplierBalance] = useState(0)
+  const [paymentAmount, setPaymentAmount] = useState('')
+  const [showPaymentDialog, setShowPaymentDialog] = useState(false)
+  const [paying, setPaying] = useState(false)
+
   const fetchSuppliers = async () => {
     setLoading(true)
     try {
@@ -68,6 +76,39 @@ export function SuppliersView() {
     setEmail('')
     setAddress('')
     setShowDialog(true)
+  }
+
+  const openPaymentDialog = (supplier: Supplier) => {
+    setPayingSupplierId(supplier.id)
+    setPayingSupplierName(supplier.name)
+    setPayingSupplierBalance(supplier.balance)
+    setPaymentAmount(supplier.balance.toFixed(2))
+    setShowPaymentDialog(true)
+  }
+
+  const handlePayment = async () => {
+    if (!payingSupplierId) return
+    const amt = parseFloat(paymentAmount)
+    if (!amt || amt <= 0) {
+      toast.error('El monto debe ser mayor a 0')
+      return
+    }
+    if (amt > payingSupplierBalance) {
+      toast.error(`El monto no puede ser mayor al balance ($${payingSupplierBalance.toFixed(2)})`)
+      return
+    }
+    setPaying(true)
+    try {
+      await api.post(`/api/suppliers/${payingSupplierId}/payment`, { amount: amt })
+      toast.success(`Pago de $${amt.toFixed(2)} registrado exitosamente`)
+      setShowPaymentDialog(false)
+      fetchSuppliers()
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Error al registrar pago'
+      toast.error(msg)
+    } finally {
+      setPaying(false)
+    }
   }
 
   const handleSave = async () => {
@@ -123,6 +164,7 @@ export function SuppliersView() {
                   <TableHead className="hidden lg:table-cell">Email</TableHead>
                   <TableHead className="text-right">Balance</TableHead>
                   <TableHead className="text-right">Compras</TableHead>
+                  <TableHead className="text-right">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -140,11 +182,18 @@ export function SuppliersView() {
                     <TableCell className="text-right">
                       <Badge variant="outline">{supplier._count.purchases}</Badge>
                     </TableCell>
+                    <TableCell className="text-right">
+                      {supplier.balance > 0 && (
+                        <Button size="sm" variant="outline" className="text-primary hover:text-primary" onClick={() => openPaymentDialog(supplier)}>
+                          <DollarSign className="mr-1 h-3 w-3" /> Pagar
+                        </Button>
+                      )}
+                    </TableCell>
                   </TableRow>
                 ))}
                 {suppliers.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                       <Building2 className="mx-auto mb-2 h-8 w-8 opacity-50" />
                       No hay proveedores registrados
                     </TableCell>
@@ -214,6 +263,54 @@ export function SuppliersView() {
             >
               {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               {saving ? 'Guardando...' : 'Crear Proveedor'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Payment Dialog */}
+      <Dialog open={showPaymentDialog} onOpenChange={setShowPaymentDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Registrar Pago</DialogTitle>
+            <DialogDescription>
+              Registrar pago a {payingSupplierName}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="rounded-md bg-muted p-3 space-y-1 text-sm">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Proveedor:</span>
+                <span className="font-medium">{payingSupplierName}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Balance pendiente:</span>
+                <span className="font-medium text-amber-600">${payingSupplierBalance.toFixed(2)}</span>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="paymentAmt">Monto a Pagar</Label>
+              <Input
+                id="paymentAmt"
+                type="number"
+                step="0.01"
+                min="0"
+                max={payingSupplierBalance}
+                value={paymentAmount}
+                onChange={(e) => setPaymentAmount(e.target.value)}
+                placeholder="0.00"
+              />
+              <p className="text-xs text-muted-foreground">
+                Saldo después del pago: ${(payingSupplierBalance - (parseFloat(paymentAmount) || 0)).toFixed(2)}
+              </p>
+            </div>
+            <Button
+              className="w-full bg-primary hover:bg-primary/90 text-white"
+              onClick={handlePayment}
+              disabled={paying || !parseFloat(paymentAmount) || parseFloat(paymentAmount) <= 0}
+            >
+              {paying ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <DollarSign className="mr-2 h-4 w-4" />}
+              {paying ? 'Procesando...' : 'Registrar Pago'}
             </Button>
           </div>
         </DialogContent>

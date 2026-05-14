@@ -145,7 +145,7 @@ export function CashRegisterView() {
     setSaving(true)
     try {
       await api.post('/api/cash-register/close', {
-        registerId: openRegId,
+        cashRegId: openRegId,
         actual: closeActual ? parseFloat(closeActual) : undefined,
       })
       toast.success('Caja cerrada exitosamente')

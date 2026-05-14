@@ -27,12 +27,16 @@ export async function GET(request: NextRequest) {
     }
     // If active is 'all' or not provided, show all products (no active filter)
 
+    const allInventories = searchParams.get('allInventories') === 'true'
+
     const products = await db.product.findMany({
       where,
       include: {
         currency: true,
         category: true,
-        inventories: { where: { branchId } },
+        inventories: allInventories
+          ? { include: { branch: { select: { id: true, name: true } } } }
+          : { where: { branchId } },
       },
       orderBy: { name: 'asc' },
     })

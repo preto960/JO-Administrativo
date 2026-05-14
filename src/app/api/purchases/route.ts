@@ -74,6 +74,7 @@ export async function POST(request: NextRequest) {
         if (product) {
           const oldStock = inventory?.stock || 0
           const newStock = oldStock + line.quantity
+          const wasLowStock = inventory ? (oldStock <= inventory.minStock && inventory.minStock > 0) : false
           const newCostAvg = oldStock > 0
             ? (product.costAvg * oldStock + line.unitCost * line.quantity) / newStock
             : line.unitCost
@@ -85,7 +86,7 @@ export async function POST(request: NextRequest) {
             })
           } else {
             // Create inventory record if doesn't exist
-            await tx.inventory.create({
+            const newInv = await tx.inventory.create({
               data: {
                 productId: line.productId,
                 branchId,
@@ -93,12 +94,32 @@ export async function POST(request: NextRequest) {
                 minStock: 0,
               },
             })
+            // Check if newly created inventory is already at or below minStock
+            // (won't happen with minStock=0, but for safety)
           }
 
           await tx.product.update({
             where: { id: line.productId },
             data: { costAvg: Math.round(newCostAvg * 1000) / 1000 },
           })
+
+          // Notify admin if stock was replenished from low stock
+          if (wasLowStock && newStock > (inventory?.minStock || 0)) {
+            const adminUsers = await tx.user.findMany({
+              where: { role: 'admin', active: true },
+              select: { id: true },
+            })
+            for (const admin of adminUsers) {
+              await tx.notification.create({
+                data: {
+                  userId: admin.id,
+                  title: 'Stock Reposicionado',
+                  message: `"${product.name}" fue reposicionado a ${newStock} unidades (mín: ${inventory?.minStock || 0}).`,
+                  type: 'success',
+                },
+              })
+            }
+          }
         }
       }
 

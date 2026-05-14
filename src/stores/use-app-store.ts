@@ -41,6 +41,16 @@ export interface BranchItem {
   isMain: boolean
 }
 
+function getStoredView(): AppView {
+  if (typeof window !== 'undefined') {
+    const stored = localStorage.getItem('activeView')
+    if (stored && ['pos', 'dashboard', 'products', 'purchases', 'clients', 'suppliers', 'cash', 'expenses', 'settings'].includes(stored)) {
+      return stored as AppView
+    }
+  }
+  return 'pos'
+}
+
 interface AppState {
   activeView: AppView
   settings: AppSettings | null
@@ -73,11 +83,16 @@ const defaultSettings: AppSettings = {
 }
 
 export const useAppStore = create<AppState>((set) => ({
-  activeView: 'pos',
+  activeView: getStoredView(),
   settings: null,
   selectedBranchId: null,
   branches: [],
-  setActiveView: (view) => set({ activeView: view }),
+  setActiveView: (view) => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('activeView', view)
+    }
+    set({ activeView: view })
+  },
   setSettings: (settings) => set({ settings }),
   setSelectedBranchId: (id) => set({ selectedBranchId: id }),
   setBranches: (branches) => set({ branches }),
