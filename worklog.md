@@ -33,3 +33,79 @@ Stage Summary:
 - 1 new Prisma model (SupplierPayment)
 - 1 new field on Purchase (paidUpfront)
 - Build passing with no errors
+
+---
+Task ID: 2
+Agent: Main Agent
+Task: Implement 8 feature changes for JO-Administrativo
+
+Work Log:
+- **Change 1 (POS product cards)**: Removed Bs. conversion line from product cards in pos-terminal.tsx. Only reference currency price (e.g., €2.00) is shown. Stock remains visible.
+
+- **Change 2 (Supplier redesign)**:
+  - Removed supplier.balance increment and AccountPayable creation from purchases API
+  - Added `paidAmount Float @default(0)` to Purchase model in schema
+  - Purchase status: 'recibida' (unpaid), 'pagada' (fully paid), 'parcial' (partially paid)
+  - If paidUpfront=true, paidAmount=total and status='pagada'
+  - Rewrote suppliers-view.tsx: removed "Pagar" button and balance column
+  - Shows: supplier name, RIF, phone, total purchases count, "Ver Compras" button
+  - "Ver Compras" opens dialog showing all purchases with payment status (total, paid, pending, status badge)
+  - Kept edit/create functionality
+  - Created /api/suppliers/[id]/purchases/route.ts
+
+- **Change 3 (Payment methods currency fix)**:
+  - Rewrote pos-payment-modal.tsx
+  - Divisas/credito: amount in reference currency (EUR/USD)
+  - Efectivo/pago_móvil/tarjeta/transferencia: amount shown in Bs., converted to ref currency before sending to API
+  - Added conversion rate note: "Equivale a $XX.XX (Tasa: 36.50 Bs./USD)"
+  - Change calculation shows in correct currency
+
+- **Change 4 (Multiple cash registers)**:
+  - Removed single-register check from /api/cash-register/open/route.ts and /api/cash-register/route.ts
+  - Each user can now open their own register
+  - Rewrote cash-register-view.tsx:
+    - Shows all open registers in a separate "Cajas Abiertas" table
+    - Each register has its own close and movement buttons
+    - Summary card shows sum of all open registers' currentAmt
+    - Added "Cerrar Todas" button
+  - Created /api/cash-register/close-all/route.ts to close all open registers at once
+
+- **Change 5 (Enhance client module)**:
+  - Rewrote clients-table.tsx with full debt management:
+    - Displays each client's pending balance from AccountReceivable
+    - Shows red "Deuda" column with $ amount
+    - "Ver Historial" button shows all sales for client in dialog with summary cards
+    - "Cobrar" button (visible when debt > 0) opens payment dialog
+    - Payment supports: efectivo, transferencia, pago_movil, tarjeta, divisas
+    - Notes field included in create form
+  - Updated /api/clients/route.ts to include pendingBalance from receivables
+  - Created /api/clients/[id]/sales/route.ts for sales history
+  - Created /api/clients/[id]/payment/route.ts with FIFO payment distribution across receivables
+
+- **Change 6 (Branch-specific stock in products)**:
+  - Updated /api/products/route.ts to accept branchId query param
+  - Updated products-table.tsx to pass selectedBranchId as query param
+  - Shows stock for current branch (from useAppStore.selectedBranchId)
+  - Shows "N/A" if branch has no inventory, "Total" if no branch selected
+  - Added branch indicator badge showing current branch name
+
+- **Change 7 (Branch-specific pricing)**:
+  - Added `price Float @default(0)` to Inventory model in prisma schema
+  - Updated POS terminal to use branch-specific price (inventory.price > 0 ? inventory.price : product.price)
+  - Updated products-table to show effective price with ★ indicator for branch-overridden prices
+  - Added "Precio Sucursal" field in product create/edit dialog
+  - Updated products API to accept and save branchPrice
+
+- **Change 8 (Branch-specific reports)**: Verified dashboard API already correctly filters by branchId via resolveBranchId(request). No changes needed.
+
+- Pushed schema changes to Neon DB (prisma db push + generate)
+- Build verified: no compilation errors
+
+Stage Summary:
+- All 8 changes implemented successfully
+- 2 new Prisma fields (Purchase.paidAmount, Inventory.price)
+- 4 new API routes created
+- 3 API routes modified
+- 6 frontend components modified/rewritten
+- Build passing with no errors
+- Committed as 369caab
