@@ -32,8 +32,11 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Plus, Search, Users, Eye, DollarSign, Loader2, Receipt, Truck, X } from 'lucide-react'
+import { Plus, Search, Users, Eye, DollarSign, Loader2, Receipt, Truck, X, Banknote, CreditCard, ArrowLeftRight, Smartphone } from 'lucide-react'
 import { toast } from 'sonner'
+import { useSetting } from '@/stores/use-app-store'
+
+const localCurrencyMethods = ['efectivo', 'pago_movil', 'tarjeta', 'transferencia']
 
 interface Client {
   id: string
@@ -103,6 +106,12 @@ export function ClientsTable() {
   const [showPaymentDialog, setShowPaymentDialog] = useState(false)
   const [paying, setPaying] = useState(false)
   const [openCashRegId, setOpenCashRegId] = useState<string | null>(null)
+  const [baseCurrencyId, setBaseCurrencyId] = useState('')
+
+  const exchangeRate = useSetting('exchangeRate')
+  const referenceCurrency = useSetting('referenceCurrency')
+  const currencySymbol = referenceCurrency === 'EUR' ? '\u20ac' : '$'
+  const isLocalMethod = localCurrencyMethods.includes(paymentMethod)
 
   // Dispatch dialog
   const [dispatchClient, setDispatchClient] = useState<Client | null>(null)
@@ -188,11 +197,41 @@ export function ClientsTable() {
 
   const openPayment = (client: Client) => {
     setPaymentClient(client)
-    setPaymentAmount(client.pendingBalance.toFixed(2))
     setPaymentMethod('efectivo')
     setPaymentReference('')
+    // Set amount in reference currency by default
+    setPaymentAmount(client.pendingBalance.toFixed(2))
     setShowPaymentDialog(true)
+    // Load base currency if needed
+    api.get<{ baseCurrencyId: string }>('/api/settings')
+      .then(s => setBaseCurrencyId(s?.baseCurrencyId || ''))
+      .catch(() => {})
   }
+
+  // When payment method changes, toggle between Bs. and reference currency
+  const handlePaymentMethodChange = (method: string) => {
+    setPaymentMethod(method)
+    setPaymentReference('')
+    if (paymentClient) {
+      const isLocal = localCurrencyMethods.includes(method)
+      if (isLocal && exchangeRate > 0) {
+        // Show amount in Bs.
+        setPaymentAmount((paymentClient.pendingBalance * exchangeRate).toFixed(2))
+      } else {
+        // Show amount in reference currency
+        setPaymentAmount(paymentClient.pendingBalance.toFixed(2))
+      }
+    }
+  }
+
+  // Convert displayed amount to reference currency
+  const paymentAmountInRef = (() => {
+    const parsed = parseFloat(paymentAmount) || 0
+    if (isLocalMethod && exchangeRate > 0) {
+      return Math.round((parsed / exchangeRate) * 100) / 100
+    }
+    return parsed
+  })()
 
   const openDispatch = async (client: Client) => {
     setDispatchClient(client)
@@ -217,21 +256,22 @@ export function ClientsTable() {
       toast.error('El monto debe ser mayor a 0')
       return
     }
-    if (amt > paymentClient.pendingBalance) {
-      toast.error(`El monto no puede ser mayor al saldo pendiente ($${paymentClient.pendingBalance.toFixed(2)})`)
+    if (paymentAmountInRef > paymentClient.pendingBalance) {
+      toast.error(`El monto no puede ser mayor al saldo pendiente (${currencySymbol}${paymentClient.pendingBalance.toFixed(2)})`)
       return
     }
     setPaying(true)
     try {
       await api.post(`/api/clients/${paymentClient.id}/payment`, {
-        amount: amt,
+        amount: paymentAmountInRef,
         method: paymentMethod,
         reference: paymentReference || undefined,
         cashRegId: openCashRegId || undefined,
         userId: user?.id || '',
-        currencyId: '',
+        currencyId: baseCurrencyId || undefined,
       })
-      toast.success(`Cobro de $${amt.toFixed(2)} registrado exitosamente`)
+      const displayLabel = isLocalMethod ? `Bs. ${parseFloat(paymentAmount).toFixed(2)}` : `${currencySymbol}${paymentAmountInRef.toFixed(2)}`
+      toast.success(`Cobro de ${displayLabel} registrado exitosamente`)
       setShowPaymentDialog(false)
       fetchClients()
     } catch (error) {
@@ -338,7 +378,6 @@ export function ClientsTable() {
                   <TableHead>Nombre</TableHead>
                   <TableHead className="hidden sm:table-cell">Teléfono</TableHead>
                   <TableHead className="hidden md:table-cell">Email</TableHead>
-                  <TableHead className="text-right">Compras</TableHead>
                   <TableHead className="text-right">Deuda</TableHead>
                   <TableHead className="text-right">Acciones</TableHead>
                 </TableRow>
@@ -349,9 +388,6 @@ export function ClientsTable() {
                     <TableCell className="font-medium">{client.name}</TableCell>
                     <TableCell className="hidden sm:table-cell">{client.phone || '—'}</TableCell>
                     <TableCell className="hidden md:table-cell">{client.email || '—'}</TableCell>
-                    <TableCell className="text-right">
-                      <Badge variant="outline">{client._count.sales}</Badge>
-                    </TableCell>
                     <TableCell className="text-right">
                       <span className={client.pendingBalance > 0 ? 'text-red-600 font-medium' : 'text-primary'}>
                         ${client.pendingBalance.toFixed(2)}
@@ -376,7 +412,7 @@ export function ClientsTable() {
                 ))}
                 {filtered.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
                       <Users className="mx-auto mb-2 h-8 w-8 opacity-50" />
                       No se encontraron clientes
                     </TableCell>
@@ -651,34 +687,38 @@ export function ClientsTable() {
             )}
             <div className="space-y-2">
               <Label>Método de Pago</Label>
-              <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+              <Select value={paymentMethod} onValueChange={handlePaymentMethodChange}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="efectivo">Efectivo</SelectItem>
-                  <SelectItem value="transferencia">Transferencia</SelectItem>
-                  <SelectItem value="pago_movil">Pago Móvil</SelectItem>
-                  <SelectItem value="tarjeta">Tarjeta</SelectItem>
-                  <SelectItem value="divisas">Divisas</SelectItem>
+                  <SelectItem value="divisas">Divisas ({currencySymbol})</SelectItem>
+                  <SelectItem value="efectivo">Efectivo (Bs.)</SelectItem>
+                  <SelectItem value="pago_movil">Pago Móvil (Bs.)</SelectItem>
+                  <SelectItem value="tarjeta">Tarjeta (Bs.)</SelectItem>
+                  <SelectItem value="transferencia">Transferencia (Bs.)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="cpaymentAmt">Monto a Cobrar</Label>
+              <Label htmlFor="cpaymentAmt">Monto a Cobrar {isLocalMethod ? '(Bs.)' : `(${currencySymbol})`}</Label>
               <Input
                 id="cpaymentAmt"
                 type="number"
                 step="0.01"
                 min="0"
-                max={paymentClient?.pendingBalance}
                 value={paymentAmount}
                 onChange={(e) => setPaymentAmount(e.target.value)}
                 placeholder="0.00"
               />
+              {isLocalMethod && exchangeRate > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Equivale a {currencySymbol}{paymentAmountInRef.toFixed(2)} (Tasa: {exchangeRate.toFixed(2)} Bs./{referenceCurrency})
+                </p>
+              )}
               <p className="text-xs text-muted-foreground">
-                Saldo después del cobro: ${((paymentClient?.pendingBalance || 0) - (parseFloat(paymentAmount) || 0)).toFixed(2)}
+                Saldo después del cobro: {currencySymbol}{((paymentClient?.pendingBalance || 0) - paymentAmountInRef).toFixed(2)}
               </p>
             </div>
-            {paymentMethod !== 'efectivo' && (
+            {(paymentMethod === 'pago_movil' || paymentMethod === 'tarjeta' || paymentMethod === 'transferencia') && (
               <div className="space-y-2">
                 <Label>Referencia</Label>
                 <Input

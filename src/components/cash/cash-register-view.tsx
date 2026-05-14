@@ -30,7 +30,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Wallet, Plus, ArrowUpCircle, ArrowDownCircle, Lock, Eye, Loader2 } from 'lucide-react'
+import { Wallet, Plus, ArrowUpCircle, ArrowDownCircle, Lock, Eye, Loader2, UserCircle } from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth'
 import { toast } from 'sonner'
 
@@ -57,6 +57,8 @@ export function CashRegisterView() {
   const [closeRegId, setCloseRegId] = useState<string | null>(null)
   const [initialAmt, setInitialAmt] = useState('100')
   const [registerName, setRegisterName] = useState('')
+  const [selectedUserId, setSelectedUserId] = useState('')
+  const [availableUsers, setAvailableUsers] = useState<{ id: string; name: string; role: string }[]>([])
   const [moveType, setMoveType] = useState('entrada')
   const [moveAmount, setMoveAmount] = useState('')
   const [moveConcept, setMoveConcept] = useState('')
@@ -66,8 +68,12 @@ export function CashRegisterView() {
 
   const fetchData = async () => {
     try {
-      const data = await api.get<CashRegister[]>('/api/cash-register')
-      setRegisters(data)
+      const [regs, users] = await Promise.all([
+        api.get<CashRegister[]>('/api/cash-register'),
+        api.get<{ id: string; name: string; role: string; active: boolean }[]>('/api/users'),
+      ])
+      setRegisters(regs)
+      setAvailableUsers(users.filter(u => u.active))
     } catch {
       toast.error('Error al cargar caja')
     } finally {
@@ -83,14 +89,21 @@ export function CashRegisterView() {
   const openRegister = async () => {
     setSaving(true)
     try {
+      const effectiveUserId = selectedUserId || user?.id || ''
+      if (!effectiveUserId) {
+        toast.error('Debe seleccionar un cajero')
+        setSaving(false)
+        return
+      }
       await api.post('/api/cash-register/open', {
-        userId: user?.id || '',
+        userId: effectiveUserId,
         initialAmt: parseFloat(initialAmt) || 0,
         name: registerName.trim() || undefined,
       })
       toast.success('Caja abierta exitosamente')
       setShowOpen(false)
       setRegisterName('')
+      setSelectedUserId('')
       fetchData()
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Error al abrir caja'
@@ -356,6 +369,27 @@ export function CashRegisterView() {
             <DialogDescription>Ingresa el monto inicial para abrir la caja</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
+            {(user?.role === 'admin' || user?.role === 'gerente') && availableUsers.length > 0 && (
+              <div className="space-y-2">
+                <Label>Cajero Asignado</Label>
+                <Select value={selectedUserId} onValueChange={setSelectedUserId}>
+                  <SelectTrigger><SelectValue placeholder="Seleccionar cajero" /></SelectTrigger>
+                  <SelectContent>
+                    {availableUsers.map((u) => (
+                      <SelectItem key={u.id} value={u.id}>
+                        <span className="flex items-center gap-2">
+                          <UserCircle className="h-3 w-3" />
+                          {u.name} ({u.role})
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  {selectedUserId ? 'Cajero seleccionado' : 'Se usará tu usuario si no seleccionas uno'}
+                </p>
+              </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="regname">Nombre de la Caja (opcional)</Label>
               <Input id="regname" value={registerName} onChange={(e) => setRegisterName(e.target.value)} placeholder="Ej: Caja Principal, Caja 2, Caja Enfermería..." />

@@ -5,7 +5,6 @@ export type AppView =
   | 'pos'
   | 'dashboard'
   | 'products'
-  | 'purchases'
   | 'clients'
   | 'suppliers'
   | 'cash'
@@ -42,7 +41,7 @@ export interface BranchItem {
   isMain: boolean
 }
 
-const VALID_VIEWS: AppView[] = ['pos', 'dashboard', 'products', 'purchases', 'clients', 'suppliers', 'cash', 'expenses', 'settings']
+const VALID_VIEWS: AppView[] = ['pos', 'dashboard', 'products', 'clients', 'suppliers', 'cash', 'expenses', 'settings']
 
 interface AppState {
   activeView: AppView

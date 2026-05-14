@@ -5,56 +5,95 @@ import { resolveBranchId } from '@/lib/resolve-branch'
 export async function GET(request: NextRequest) {
   try {
     const branchId = await resolveBranchId(request)
+    const { searchParams } = new URL(request.url)
+    const period = searchParams.get('period') || 'month' // today, week, month, year
+
     const today = new Date()
     today.setHours(0, 0, 0, 0)
-    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1)
 
-    // Sales today
-    const salesToday = await db.sale.findMany({
-      where: { date: { gte: today }, status: 'completada', branchId },
+    // Calculate date range based on period
+    let startDate: Date
+    let chartDays: number
+    let chartLabel: string
+
+    switch (period) {
+      case 'today':
+        startDate = new Date(today)
+        chartDays = 1
+        chartLabel = 'Hoy'
+        break
+      case 'week':
+        startDate = new Date(today)
+        startDate.setDate(startDate.getDate() - 7)
+        chartDays = 7
+        chartLabel = '7 días'
+        break
+      case 'year':
+        startDate = new Date(today.getFullYear(), 0, 1)
+        chartDays = 12 // Show monthly for year view
+        chartLabel = '12 meses'
+        break
+      case 'month':
+      default:
+        startDate = new Date(today.getFullYear(), today.getMonth(), 1)
+        chartDays = 7
+        chartLabel = '7 días'
+        break
+    }
+
+    const now = new Date()
+
+    // Sales in period
+    const salesPeriod = await db.sale.findMany({
+      where: { date: { gte: startDate, lte: now }, status: 'completada', branchId },
       include: { lines: { include: { product: { select: { name: true } } } }, payments: true },
     })
 
-    // Sales this month
-    const salesMonth = await db.sale.findMany({
-      where: { date: { gte: monthStart }, status: 'completada', branchId },
-      include: { lines: { include: { product: { select: { name: true } } } }, payments: true },
-    })
+    // Expenses in period
+    const expensesPeriod = await db.expense.findMany({ where: { date: { gte: startDate, lte: now }, branchId } })
 
-    // Expenses today & month
-    const expensesToday = await db.expense.findMany({ where: { date: { gte: today }, branchId } })
-    const expensesMonth = await db.expense.findMany({ where: { date: { gte: monthStart }, branchId } })
-
-    // Adjustments this month (losses)
-    const adjustmentsMonth = await db.inventoryAdjustment.findMany({
-      where: {
-        createdAt: { gte: monthStart },
-        branchId,
-      },
+    // Adjustments in period (losses)
+    const adjustmentsPeriod = await db.inventoryAdjustment.findMany({
+      where: { createdAt: { gte: startDate }, branchId },
       include: { product: true },
     })
 
+    // Sales today (always for KPI)
+    const salesToday = await db.sale.findMany({
+      where: { date: { gte: today }, status: 'completada', branchId },
+    })
+    const expensesToday = await db.expense.findMany({ where: { date: { gte: today }, branchId } })
+
+    // Sales this month (always for KPI)
+    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1)
+    const salesMonth = await db.sale.findMany({
+      where: { date: { gte: monthStart }, status: 'completada', branchId },
+      include: { lines: { include: { product: { select: { name: true } } } } },
+    })
+    const expensesMonth = await db.expense.findMany({ where: { date: { gte: monthStart }, branchId } })
+
     // Calculate KPIs
     const ingresosHoy = salesToday.reduce((s, sale) => s + sale.total, 0)
-    const ingresosMes = salesMonth.reduce((s, sale) => s + sale.total, 0)
     const gastosHoy = expensesToday.reduce((s, e) => s + e.amount, 0)
+    const ingresosMes = salesMonth.reduce((s, sale) => s + sale.total, 0)
     const gastosMes = expensesMonth.reduce((s, e) => s + e.amount, 0)
 
-    const costoVentasHoy = salesToday.reduce((s, sale) =>
-      s + sale.lines.reduce((ls, l) => ls + (l.unitCost * l.quantity), 0), 0)
     const costoVentasMes = salesMonth.reduce((s, sale) =>
       s + sale.lines.reduce((ls, l) => ls + (l.unitCost * l.quantity), 0), 0)
-
     const utilidadBrutaMes = ingresosMes - costoVentasMes
-    const perdidasMes = adjustmentsMonth.reduce((s, a) => {
+    const perdidasMes = adjustmentsPeriod.reduce((s, a) => {
       const prod = a.product
       return s + (a.quantity * (prod?.costAvg || 0))
     }, 0)
     const utilidadNetaMes = utilidadBrutaMes - gastosMes - perdidasMes
 
-    // Top 5 products by revenue
+    // Period totals
+    const ingresosPeriodo = salesPeriod.reduce((s, sale) => s + sale.total, 0)
+    const gastosPeriodo = expensesPeriod.reduce((s, e) => s + e.amount, 0)
+
+    // Top 5 products by revenue (from period sales)
     const productRevenue: Record<string, { name: string; revenue: number; qty: number }> = {}
-    salesMonth.forEach(sale => {
+    salesPeriod.forEach(sale => {
       sale.lines.forEach(line => {
         const key = line.productId
         if (!productRevenue[key]) {
@@ -111,25 +150,67 @@ export async function GET(request: NextRequest) {
       dueDate: p.dueDate,
     }))
 
-    // Sales chart data (last 7 days)
+    // Chart data based on period
     const chartData: { date: string; total: number; count: number }[] = []
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date()
-      d.setDate(d.getDate() - i)
-      d.setHours(0, 0, 0, 0)
-      const nextD = new Date(d)
-      nextD.setDate(nextD.getDate() + 1)
 
-      const daySales = await db.sale.findMany({
-        where: { date: { gte: d, lt: nextD }, status: 'completada', branchId },
-      })
-      const dayTotal = daySales.reduce((s, sale) => s + sale.total, 0)
+    if (period === 'year') {
+      // Monthly chart for year view
+      for (let i = 11; i >= 0; i--) {
+        const mStart = new Date(today.getFullYear(), today.getMonth() - i, 1)
+        const mEnd = new Date(today.getFullYear(), today.getMonth() - i + 1, 1)
 
-      chartData.push({
-        date: d.toLocaleDateString('es-VE', { weekday: 'short', day: 'numeric' }),
-        total: Math.round(dayTotal * 100) / 100,
-        count: daySales.length,
-      })
+        const monthSales = await db.sale.findMany({
+          where: { date: { gte: mStart, lt: mEnd }, status: 'completada', branchId },
+        })
+        const monthTotal = monthSales.reduce((s, sale) => s + sale.total, 0)
+
+        chartData.push({
+          date: mStart.toLocaleDateString('es-VE', { month: 'short' }),
+          total: Math.round(monthTotal * 100) / 100,
+          count: monthSales.length,
+        })
+      }
+    } else if (period === 'today') {
+      // Hourly chart for today
+      for (let h = 0; h < 24; h++) {
+        const hStart = new Date(today)
+        hStart.setHours(h, 0, 0, 0)
+        const hEnd = new Date(today)
+        hEnd.setHours(h + 1, 0, 0, 0)
+
+        const hourSales = await db.sale.findMany({
+          where: { date: { gte: hStart, lt: hEnd }, status: 'completada', branchId },
+        })
+        const hourTotal = hourSales.reduce((s, sale) => s + sale.total, 0)
+
+        if (hourTotal > 0 || h <= now.getHours()) {
+          chartData.push({
+            date: `${h}:00`,
+            total: Math.round(hourTotal * 100) / 100,
+            count: hourSales.length,
+          })
+        }
+      }
+    } else {
+      // Daily chart for week/month (last chartDays days)
+      for (let i = chartDays - 1; i >= 0; i--) {
+        const d = new Date()
+        d.setDate(d.getDate() - i)
+        d.setHours(0, 0, 0, 0)
+        const nextD = new Date(d)
+        nextD.setDate(nextD.getDate() + 1)
+
+        const daySales = await db.sale.findMany({
+          where: { date: { gte: d, lt: nextD }, status: 'completada', branchId },
+        })
+        const dayTotal = daySales.reduce((s, sale) => s + sale.total, 0)
+
+        chartData.push({
+          date: d.toLocaleDateString('es-VE', { weekday: 'short', day: 'numeric' }),
+          total: Math.round(dayTotal * 100) / 100,
+          count: daySales.length,
+        })
+      }
     }
 
     // Open cash register
@@ -146,6 +227,8 @@ export async function GET(request: NextRequest) {
       ingresosMes: Math.round(ingresosMes * 100) / 100,
       gastosHoy: Math.round(gastosHoy * 100) / 100,
       gastosMes: Math.round(gastosMes * 100) / 100,
+      ingresosPeriodo: Math.round(ingresosPeriodo * 100) / 100,
+      gastosPeriodo: Math.round(gastosPeriodo * 100) / 100,
       utilidadBrutaMes: Math.round(utilidadBrutaMes * 100) / 100,
       utilidadNetaMes: Math.round(utilidadNetaMes * 100) / 100,
       topProducts,
@@ -154,6 +237,8 @@ export async function GET(request: NextRequest) {
       overdueAlerts,
       overduePayableAlerts,
       chartData,
+      chartLabel,
+      period,
       openRegister,
     })
   } catch (error) {

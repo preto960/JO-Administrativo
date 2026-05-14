@@ -33,7 +33,6 @@ const viewLabels: Record<string, string> = {
   pos: 'Punto de Venta',
   dashboard: 'Dashboard',
   products: 'Productos',
-  purchases: 'Compras',
   clients: 'Clientes',
   suppliers: 'Proveedores',
   cash: 'Caja',

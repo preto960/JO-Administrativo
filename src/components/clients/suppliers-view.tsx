@@ -23,7 +23,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog'
-import { Building2, Plus, Loader2, Eye, Pencil, ShoppingBag, DollarSign, FileText, CalendarDays } from 'lucide-react'
+import { Building2, Plus, Loader2, Eye, Pencil, DollarSign, CalendarDays, FileText } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface Supplier {
@@ -34,16 +34,7 @@ interface Supplier {
   email: string | null
   address: string | null
   balance: number
-  _count: { purchases: number }
-}
-
-interface PurchaseRecord {
-  id: string
-  date: string
-  total: number
-  paidAmount: number
-  status: string
-  currency: { symbol: string; code: string }
+  nextDueDate: string | null
 }
 
 interface PayableRecord {
@@ -73,12 +64,6 @@ export function SuppliersView() {
   const [phone, setPhone] = useState('')
   const [email, setEmail] = useState('')
   const [address, setAddress] = useState('')
-
-  // Purchases dialog state
-  const [purchasesSupplier, setPurchasesSupplier] = useState<Supplier | null>(null)
-  const [purchases, setPurchases] = useState<PurchaseRecord[]>([])
-  const [loadingPurchases, setLoadingPurchases] = useState(false)
-  const [showPurchasesDialog, setShowPurchasesDialog] = useState(false)
 
   // Edit dialog state
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null)
@@ -126,20 +111,6 @@ export function SuppliersView() {
     setEmail('')
     setAddress('')
     setShowDialog(true)
-  }
-
-  const openPurchasesDialog = async (supplier: Supplier) => {
-    setPurchasesSupplier(supplier)
-    setShowPurchasesDialog(true)
-    setLoadingPurchases(true)
-    try {
-      const data = await api.get<{ purchases: PurchaseRecord[] }>(`/api/suppliers/${supplier.id}/purchases`)
-      setPurchases(data.purchases)
-    } catch {
-      toast.error('Error al cargar compras')
-    } finally {
-      setLoadingPurchases(false)
-    }
   }
 
   const openEditDialog = (supplier: Supplier) => {
@@ -250,6 +221,35 @@ export function SuppliersView() {
     }
   }
 
+  const getDueDateBadge = (dueDate: string | null) => {
+    if (!dueDate) return <span className="text-muted-foreground">—</span>
+    const now = new Date()
+    const due = new Date(dueDate)
+    const diffDays = Math.ceil((due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+    if (diffDays < 0) {
+      return (
+        <Badge variant="destructive" className="text-xs">
+          <CalendarDays className="mr-1 h-3 w-3" />
+          Vencida
+        </Badge>
+      )
+    }
+    if (diffDays <= 3) {
+      return (
+        <Badge variant="outline" className="text-xs border-red-300 text-red-600">
+          <CalendarDays className="mr-1 h-3 w-3" />
+          {due.toLocaleDateString('es-VE')}
+        </Badge>
+      )
+    }
+    return (
+      <span className="text-xs text-muted-foreground flex items-center gap-1">
+        <CalendarDays className="h-3 w-3" />
+        {due.toLocaleDateString('es-VE')}
+      </span>
+    )
+  }
+
   if (loading) {
     return <div className="h-64 rounded-lg bg-muted animate-pulse" />
   }
@@ -274,8 +274,8 @@ export function SuppliersView() {
                 <TableRow>
                   <TableHead>Proveedor</TableHead>
                   <TableHead className="hidden sm:table-cell">RIF</TableHead>
-                  <TableHead className="text-right hidden md:table-cell">Compras</TableHead>
                   <TableHead className="text-right">Deuda</TableHead>
+                  <TableHead className="hidden md:table-cell">Próximo Vencimiento</TableHead>
                   <TableHead className="text-right">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
@@ -291,13 +291,13 @@ export function SuppliersView() {
                       </div>
                     </TableCell>
                     <TableCell className="hidden sm:table-cell">{supplier.rif || '—'}</TableCell>
-                    <TableCell className="text-right hidden md:table-cell">
-                      <Badge variant="outline">{supplier._count.purchases}</Badge>
-                    </TableCell>
                     <TableCell className="text-right">
                       <span className={supplier.balance > 0 ? 'text-red-600 font-medium' : 'text-primary'}>
                         ${supplier.balance.toFixed(2)}
                       </span>
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell">
+                      {getDueDateBadge(supplier.nextDueDate)}
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1">
@@ -309,9 +309,6 @@ export function SuppliersView() {
                         </Button>
                         <Button size="sm" variant="outline" title="Agregar Deuda" onClick={() => openPayableDialog(supplier)}>
                           <Plus className="h-3 w-3" />
-                        </Button>
-                        <Button size="sm" variant="outline" title="Ver Compras" onClick={() => openPurchasesDialog(supplier)}>
-                          <ShoppingBag className="mr-1 h-3 w-3" />
                         </Button>
                       </div>
                     </TableCell>
@@ -551,95 +548,6 @@ export function SuppliersView() {
                               </TableCell>
                             </TableRow>
                           ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* Purchases Dialog */}
-      <Dialog open={showPurchasesDialog} onOpenChange={setShowPurchasesDialog}>
-        <DialogContent className="sm:max-w-2xl max-h-[80vh]">
-          <DialogHeader>
-            <DialogTitle>Compras de {purchasesSupplier?.name}</DialogTitle>
-            <DialogDescription>Historial de compras realizadas a este proveedor</DialogDescription>
-          </DialogHeader>
-          {loadingPurchases ? (
-            <div className="h-48 rounded-lg bg-muted animate-pulse" />
-          ) : (
-            <div className="space-y-4 max-h-[60vh] overflow-y-auto">
-              {/* Summary */}
-              <div className="grid grid-cols-2 gap-3">
-                <Card>
-                  <CardContent className="p-3 text-center">
-                    <p className="text-xs text-muted-foreground">Total Compras</p>
-                    <p className="text-xl font-bold">{purchases.length}</p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="p-3 text-center">
-                    <p className="text-xs text-muted-foreground">Total Gastado</p>
-                    <p className="text-xl font-bold">
-                      {purchases.length > 0 ? `${purchases[0]?.currency?.symbol || '$'}${purchases.reduce((s, p) => s + p.total, 0).toFixed(2)}` : '$0.00'}
-                    </p>
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* Purchases Table */}
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm">Detalle de Compras</CardTitle>
-                </CardHeader>
-                <CardContent className="p-0">
-                  {purchases.length === 0 ? (
-                    <p className="text-sm text-muted-foreground p-4 text-center">Sin compras registradas</p>
-                  ) : (
-                    <div className="overflow-x-auto">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Fecha</TableHead>
-                            <TableHead>Total</TableHead>
-                            <TableHead>Pagado</TableHead>
-                            <TableHead>Pendiente</TableHead>
-                            <TableHead>Estado</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {purchases.map((p) => {
-                            const pending = p.total - p.paidAmount
-                            return (
-                              <TableRow key={p.id}>
-                                <TableCell className="text-xs">
-                                  {new Date(p.date).toLocaleDateString('es-VE')}
-                                </TableCell>
-                                <TableCell className="text-sm">
-                                  {p.currency?.symbol || '$'}{p.total.toFixed(2)}
-                                </TableCell>
-                                <TableCell className="text-sm">
-                                  {p.currency?.symbol || '$'}{p.paidAmount.toFixed(2)}
-                                </TableCell>
-                                <TableCell className="text-sm font-medium text-amber-600">
-                                  {pending > 0 ? `${p.currency?.symbol || '$'}${pending.toFixed(2)}` : '—'}
-                                </TableCell>
-                                <TableCell>
-                                  <Badge variant={
-                                    p.status === 'pagada' ? 'default' :
-                                    p.status === 'parcial' ? 'outline' : 'secondary'
-                                  }>
-                                    {p.status === 'pagada' ? 'Pagada' :
-                                     p.status === 'parcial' ? 'Parcial' : 'Recibida'}
-                                  </Badge>
-                                </TableCell>
-                              </TableRow>
-                            )
-                          })}
                         </TableBody>
                       </Table>
                     </div>

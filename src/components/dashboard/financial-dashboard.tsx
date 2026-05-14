@@ -5,7 +5,8 @@ import { api } from '@/lib/api'
 import { useAppStore } from '@/stores/use-app-store'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { TrendingUp, TrendingDown, DollarSign, ShoppingCart, Target, PiggyBank, Package, Users, Receipt } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { TrendingUp, TrendingDown, DollarSign, ShoppingCart, Target, PiggyBank, Package, Users, Receipt, Filter } from 'lucide-react'
 import {
   AreaChart,
   Area,
@@ -21,8 +22,10 @@ import {
 interface DashboardData {
   ingresosHoy: number
   ingresosMes: number
+  ingresosPeriodo: number
   gastosHoy: number
   gastosMes: number
+  gastosPeriodo: number
   utilidadBrutaMes: number
   utilidadNetaMes: number
   topProducts: { name: string; revenue: number; qty: number }[]
@@ -38,7 +41,18 @@ interface DashboardData {
   overdueAlerts: Array<{ clientName: string; pendingBalance: number; dueDate: string }>
   overduePayableAlerts: Array<{ supplierName: string; pendingBalance: number; dueDate: string }>
   chartData: Array<{ date: string; total: number; count: number }>
+  chartLabel: string
+  period: string
 }
+
+type PeriodOption = 'today' | 'week' | 'month' | 'year'
+
+const periodOptions: { value: PeriodOption; label: string }[] = [
+  { value: 'today', label: 'Hoy' },
+  { value: 'week', label: 'Semana' },
+  { value: 'month', label: 'Mes' },
+  { value: 'year', label: 'Año' },
+]
 
 function KpiCard({
   title,
@@ -88,15 +102,23 @@ export function FinancialDashboard() {
   const selectedBranchId = useAppStore((s) => s.selectedBranchId)
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [period, setPeriod] = useState<PeriodOption>('month')
 
   useEffect(() => {
     setLoading(true)
-    const branchParam = selectedBranchId ? `?branchId=${selectedBranchId}` : ''
-    api.get<DashboardData>(`/api/dashboard${branchParam}`)
+    const branchParam = selectedBranchId ? `?branchId=${selectedBranchId}` : '?'
+    const periodParam = `period=${period}`
+    const query = selectedBranchId
+      ? `?branchId=${selectedBranchId}&period=${period}`
+      : `?period=${period}`
+    api.get<DashboardData>(`/api/dashboard${query}`)
       .then(setData)
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [selectedBranchId])
+  }, [selectedBranchId, period])
+
+  const totalProducts = data?.topProducts.length || 0
+  const totalClients = new Set(data?.recentSales.map(s => s.client?.name).filter(Boolean)).size || 0
 
   if (loading) {
     return (
@@ -110,12 +132,25 @@ export function FinancialDashboard() {
 
   if (!data) return null
 
-  // Derived KPIs for second row
-  const totalProducts = data.topProducts.length
-  const totalClients = new Set(data.recentSales.map(s => s.client?.name).filter(Boolean)).size
-
   return (
     <div className="space-y-6">
+      {/* Period Filter */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <Filter className="h-4 w-4 text-muted-foreground" />
+        <span className="text-sm text-muted-foreground">Filtrar:</span>
+        {periodOptions.map((opt) => (
+          <Button
+            key={opt.value}
+            size="sm"
+            variant={period === opt.value ? 'default' : 'outline'}
+            className={period === opt.value ? 'bg-primary hover:bg-primary/90 text-white' : ''}
+            onClick={() => setPeriod(opt.value)}
+          >
+            {opt.label}
+          </Button>
+        ))}
+      </div>
+
       {/* KPI Cards - Row 1 */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KpiCard
@@ -149,9 +184,16 @@ export function FinancialDashboard() {
       {/* KPI Cards - Row 2 */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KpiCard
-          title="Ventas del Mes"
+          title={`Ventas del Período (${data.chartLabel})`}
           value={data.chartData.reduce((s, d) => s + d.count, 0).toString()}
           icon={Receipt}
+          trend="up"
+          color="primary"
+        />
+        <KpiCard
+          title={`Ingresos (${data.chartLabel})`}
+          value={`$${data.ingresosPeriodo.toFixed(2)}`}
+          icon={DollarSign}
           trend="up"
           color="primary"
         />
@@ -167,20 +209,13 @@ export function FinancialDashboard() {
           icon={Users}
           color="amber"
         />
-        <KpiCard
-          title="Ingresos Mes"
-          value={`$${data.ingresosMes.toFixed(2)}`}
-          icon={DollarSign}
-          trend="up"
-          color="primary"
-        />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Sales Chart */}
         <Card className="lg:col-span-2">
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">Tendencia de Ventas (7 días)</CardTitle>
+            <CardTitle className="text-base">Tendencia de Ventas ({data.chartLabel})</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="h-64">
@@ -219,7 +254,7 @@ export function FinancialDashboard() {
           </CardHeader>
           <CardContent className="space-y-3">
             {data.topProducts.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Sin ventas este mes</p>
+              <p className="text-sm text-muted-foreground">Sin ventas en este período</p>
             ) : (
               data.topProducts.map((product, i) => (
                 <div key={i} className="flex items-center gap-3">

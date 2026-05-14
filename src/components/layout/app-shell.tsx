@@ -8,7 +8,6 @@ import { useAppStore } from '@/stores/use-app-store'
 import { PosTerminal } from '@/components/pos/pos-terminal'
 import { FinancialDashboard } from '@/components/dashboard/financial-dashboard'
 import { ProductsTable } from '@/components/products/products-table'
-import { PurchasesTable } from '@/components/purchases/purchases-table'
 import { ClientsTable } from '@/components/clients/clients-table'
 import { SuppliersView } from '@/components/clients/suppliers-view'
 import { CashRegisterView } from '@/components/cash/cash-register-view'
@@ -23,7 +22,6 @@ const viewComponents: Record<AppView, React.ComponentType> = {
   pos: PosTerminal,
   dashboard: FinancialDashboard,
   products: ProductsTable,
-  purchases: PurchasesTable,
   clients: ClientsTable,
   suppliers: SuppliersView,
   cash: CashRegisterView,

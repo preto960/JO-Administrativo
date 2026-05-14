@@ -40,6 +40,27 @@ export function NotificationBell() {
   const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications(user?.id)
   const [open, setOpen] = useState(false)
 
+  // Check for approaching deadlines every 5 minutes
+  useEffect(() => {
+    if (!user?.id || !['admin', 'gerente'].includes(user.role || '')) return
+
+    // Check immediately on mount
+    fetch('/api/notifications/check-deadlines', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    }).catch(() => {})
+
+    // Then check every 5 minutes
+    const interval = setInterval(() => {
+      fetch('/api/notifications/check-deadlines', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      }).catch(() => {})
+    }, 5 * 60 * 1000)
+
+    return () => clearInterval(interval)
+  }, [user?.id, user?.role])
+
   const handleNewNotification = (notification: { title: string; message: string; type: string }) => {
     toast(notification.title, {
       description: notification.message,
