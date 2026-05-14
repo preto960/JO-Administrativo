@@ -5,6 +5,7 @@ import { api } from '@/lib/api'
 import { useAppStore } from '@/stores/use-app-store'
 import { applyBothColors } from '@/components/settings/color-picker'
 import { setCustomPermissions, type UserPermissions } from '@/lib/permissions'
+import { useTheme } from 'next-themes'
 import type { AppSettings } from '@/stores/use-app-store'
 
 interface SettingsData {
@@ -33,6 +34,7 @@ interface SettingsData {
  */
 export function SettingsInitializer() {
   const setSettings = useAppStore((s) => s.setSettings)
+  const { setTheme } = useTheme()
 
   useEffect(() => {
     async function loadAndApplySettings() {
@@ -44,11 +46,15 @@ export function SettingsInitializer() {
           // Apply both colors at once via <style> injection (reliable method)
           applyBothColors(s.primaryColor || 'blue', s.secondaryColor || 'slate')
 
-          // Apply theme (light/dark) if saved
-          if (s.theme === 'dark') {
-            document.documentElement.classList.add('dark')
-          } else {
-            document.documentElement.classList.remove('dark')
+          // Apply theme from DB only if next-themes hasn't already set one
+          // next-themes reads from localStorage key "theme" on its own
+          const nextThemesValue = localStorage.getItem('theme')
+          if (nextThemesValue) {
+            // User has a theme preference saved — let next-themes handle it
+            setTheme(nextThemesValue)
+          } else if (s.theme) {
+            // No localStorage yet (first visit) — use DB value
+            setTheme(s.theme)
           }
 
           // Update page title
