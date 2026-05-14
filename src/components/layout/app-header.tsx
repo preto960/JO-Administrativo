@@ -21,7 +21,7 @@ import {
 } from '@/components/ui/select'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
-import { Moon, Sun, LogOut, UserCircle, Settings, GitBranch } from 'lucide-react'
+import { Moon, Sun, LogOut, Settings, GitBranch } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { Button } from '@/components/ui/button'
 import { NotificationBell } from '@/components/layout/notification-bell'
@@ -139,12 +139,12 @@ export function AppHeader() {
 
         {/* Branch Selector for non-cashiers */}
         {!isCashier && !loading && branches.length > 0 && (
-          <div className="hidden sm:block">
+          <div>
             <Select
               value={selectedBranchId || ''}
               onValueChange={(v) => setSelectedBranchId(v)}
             >
-              <SelectTrigger className="w-40 h-8 text-xs">
+              <SelectTrigger className="w-32 h-8 text-xs sm:w-40">
                 <GitBranch className="h-3 w-3 mr-1 shrink-0" />
                 <SelectValue placeholder="Sucursal" />
               </SelectTrigger>
@@ -211,10 +211,6 @@ export function AppHeader() {
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>
-              <UserCircle className="mr-2 h-4 w-4" />
-              Perfil
-            </DropdownMenuItem>
             {user?.role === 'admin' && (
               <DropdownMenuItem onClick={() => setActiveView('settings')}>
                 <Settings className="mr-2 h-4 w-4" />
