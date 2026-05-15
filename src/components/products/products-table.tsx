@@ -43,6 +43,8 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { Plus, Search, Edit, Trash2, Package, Eye, EyeOff, Upload, ImageIcon, X, Loader2, FileDown, Barcode, Printer } from 'lucide-react'
 import { toast } from 'sonner'
+import { useIsMobile } from '@/hooks/use-mobile'
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription } from '@/components/ui/drawer'
 import { ProductImportDialog } from './product-import-dialog'
 import { BarcodeLabelSelector } from './barcode-label-selector'
 
@@ -99,6 +101,7 @@ function fmtStock(n: number): string {
 export function ProductsTable() {
   const selectedBranchId = useAppStore((s) => s.selectedBranchId)
   const branches = useAppStore((s) => s.branches)
+  const isMobile = useIsMobile()
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [currencies, setCurrencies] = useState<Currency[]>([])
@@ -859,21 +862,40 @@ export function ProductsTable() {
         onImportComplete={fetchData}
       />
 
-      {/* Barcode Labels Dialog */}
-      <Dialog open={showBarcodeDialog} onOpenChange={setShowBarcodeDialog}>
-        <DialogContent className="sm:max-w-2xl max-h-[80vh] flex flex-col">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Barcode className="h-5 w-5 text-amber-600" />
-              Generar Etiquetas
-            </DialogTitle>
-            <DialogDescription>
-              Selecciona productos y la cantidad de etiquetas por producto
-            </DialogDescription>
-          </DialogHeader>
-          <BarcodeLabelSelector products={filteredProducts} onClose={() => setShowBarcodeDialog(false)} />
-        </DialogContent>
-      </Dialog>
+      {/* Barcode Labels Dialog / Drawer */}
+      {isMobile ? (
+        <Drawer open={showBarcodeDialog} onOpenChange={setShowBarcodeDialog}>
+          <DrawerContent>
+            <DrawerHeader>
+              <DrawerTitle className="flex items-center gap-2">
+                <Barcode className="h-5 w-5 text-amber-600" />
+                Generar Etiquetas
+              </DrawerTitle>
+              <DrawerDescription>
+                Selecciona productos y la cantidad de etiquetas por producto
+              </DrawerDescription>
+            </DrawerHeader>
+            <div className="px-4 pb-4 overflow-auto flex-1" style={{ maxHeight: '70vh' }}>
+              <BarcodeLabelSelector products={filteredProducts} onClose={() => setShowBarcodeDialog(false)} />
+            </div>
+          </DrawerContent>
+        </Drawer>
+      ) : (
+        <Dialog open={showBarcodeDialog} onOpenChange={setShowBarcodeDialog}>
+          <DialogContent className="sm:max-w-2xl max-h-[80vh] flex flex-col">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Barcode className="h-5 w-5 text-amber-600" />
+                Generar Etiquetas
+              </DialogTitle>
+              <DialogDescription>
+                Selecciona productos y la cantidad de etiquetas por producto
+              </DialogDescription>
+            </DialogHeader>
+            <BarcodeLabelSelector products={filteredProducts} onClose={() => setShowBarcodeDialog(false)} />
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   )
 }
