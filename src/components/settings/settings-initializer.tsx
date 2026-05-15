@@ -63,31 +63,10 @@ export function SettingsInitializer() {
           }
         }
 
-        // Auto-fetch BCV exchange rates in the background (non-blocking)
-        api.get<{ rates: Array<{ currency: string; rate: number; source: string }> }>('/api/exchange-rates')
-          .then((data) => {
-            if (data?.rates && data.rates.length > 0) {
-              const currentSettings = useAppStore.getState().settings
-              if (!currentSettings) return
-              const usdRate = data.rates.find(r => r.currency === 'USD')
-              const eurRate = data.rates.find(r => r.currency === 'EUR')
-              const updates: Partial<AppSettings> = {}
-              if (usdRate) updates.usdRate = usdRate.rate
-              if (eurRate) updates.eurRate = eurRate.rate
-              // Update effective rate only if no custom rate is set
-              if (!currentSettings.customRate) {
-                const refCurrency = currentSettings.referenceCurrency || 'USD'
-                const refRate = data.rates.find(r => r.currency === refCurrency) || usdRate
-                if (refRate) updates.exchangeRate = refRate.rate
-              }
-              if (Object.keys(updates).length > 0) {
-                setSettings({ ...currentSettings, ...updates })
-              }
-            }
-          })
-          .catch(() => {
-            // Silently fail - rates will be fetched on next load
-          })
+        // NOTE: We do NOT auto-fetch BCV exchange rates on page load anymore.
+        // The GET /api/exchange-rates endpoint is now read-only and does NOT
+        // write to the Settings table. Rates are only updated when the user
+        // explicitly clicks "Actualizar" in Configuración > Moneda.
 
         // Load custom role permissions from the database
         api.get<{ permissions: Record<string, UserPermissions> }>('/api/role-permissions')

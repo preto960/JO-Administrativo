@@ -161,36 +161,7 @@ export function SettingsView() {
     api.get<Branch[]>('/api/branches').then(setBranches).catch(() => {})
   }, [])
 
-  // Auto-fetch BCV rates on page load
-  const autoFetchRates = useCallback(async () => {
-    try {
-      const data = await api.get<{ rates: Array<{ currency: string; rate: number; source: string }> }>('/api/exchange-rates')
-      if (data?.rates && data.rates.length > 0) {
-        setSettings(prev => {
-          if (!prev) return prev
-          const usdRate = data.rates.find(r => r.currency === 'USD')
-          const eurRate = data.rates.find(r => r.currency === 'EUR')
-          const updates: Record<string, number> = {}
-          if (usdRate) updates.usdRate = usdRate.rate
-          if (eurRate) updates.eurRate = eurRate.rate
-          // Update effective rate only if no custom rate
-          if (!prev.customRate) {
-            const refCurrency = prev.referenceCurrency || 'USD'
-            const refRate = data.rates.find(r => r.currency === refCurrency) || usdRate
-            if (refRate) updates.exchangeRate = refRate.rate
-          }
-          const merged = { ...prev, ...updates }
-          setAppSettings(merged as AppSettings)
-          return merged
-        })
-      }
-    } catch {
-      // Silent fail
-    }
-  }, [])
-
   useEffect(() => { fetchSettings() }, [fetchSettings])
-  useEffect(() => { autoFetchRates() }, [autoFetchRates])
 
   const saveSettings = async (updates: Partial<Settings>) => {
     setSaving(true)
@@ -514,9 +485,19 @@ export function SettingsView() {
                               updates.exchangeRate = usdRate
                             }
                           }
-                          setSettings({ ...settings, ...updates })
-                          setAppSettings({ ...settings, ...updates } as AppSettings)
-                          toast.success(`Tasas actualizadas (${usedSource})`)
+                          const updatedSettings = { ...settings, ...updates }
+                          setSettings(updatedSettings)
+                          setAppSettings(updatedSettings as AppSettings)
+                          // Persist to database immediately
+                          await saveSettings({
+                            referenceCurrency: settings.referenceCurrency,
+                            baseCurrencyId: settings.baseCurrencyId,
+                            usdRate: updates.usdRate ?? settings.usdRate,
+                            eurRate: updates.eurRate ?? settings.eurRate,
+                            customRate: settings.customRate,
+                            exchangeRate: updates.exchangeRate ?? settings.exchangeRate,
+                          })
+                          toast.success(`Tasas actualizadas y guardadas (${usedSource})`)
                         } else {
                           toast.error('No se pudieron obtener las tasas')
                         }

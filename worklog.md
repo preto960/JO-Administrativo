@@ -177,3 +177,34 @@ Stage Summary:
 - cash-register-view.tsx updated with Retiro and Arqueo dialogs + buttons
 - close/route.ts and close-all/route.ts updated with totalRetiros tracking
 - Build passing with no errors
+
+---
+Task ID: 7
+Agent: Main Agent
+Task: Fix exchange rate update not persisting after page reload
+
+Work Log:
+- Investigated root cause: GET /api/exchange-rates endpoint unconditionally overwrote Settings table (usdRate, eurRate, exchangeRate) on every call
+- Two components auto-triggered this endpoint on every page load: SettingsInitializer and settings-view.tsx (autoFetchRates)
+- This meant any user-saved rates were immediately overwritten by BCV scraped values on reload
+
+- Fix 1: Removed DB write side-effect from GET /api/exchange-rates (route.ts lines 389-410)
+  - The endpoint now only updates the ExchangeRate history table (upsert), not Settings
+  - Settings are only written via PUT /api/settings
+
+- Fix 2: Removed autoFetchRates useEffect from settings-view.tsx
+  - No longer auto-fetches BCV rates on settings page mount
+  - Prevents race condition with fetchSettings overwriting DB values
+
+- Fix 3: Made "Actualizar" button in settings-view.tsx persist to DB immediately
+  - After fetching BCV rates, now calls saveSettings() to persist via PUT /api/settings
+  - Toast changed to "Tasas actualizadas y guardadas desde el BCV"
+
+- Fix 4: Removed auto-fetch BCV rates from SettingsInitializer
+  - Rates are no longer fetched on every page load
+  - Users must explicitly click "Actualizar" in Configuración > Moneda
+
+Stage Summary:
+- Exchange rates now persist correctly after update and reload
+- The flow is: User clicks "Actualizar" → BCV rates fetched → saved to DB via PUT /api/settings → on reload, GET /api/settings returns the saved values
+- No automatic rate fetching on page load (prevents overwriting user-saved values)

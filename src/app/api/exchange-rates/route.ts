@@ -509,26 +509,10 @@ export async function GET() {
       await upsertRate(eurCurrency.id, vesCurrency.id, eurRate.rate)
     }
 
-    // Update Settings
-    const settings = await db.settings.findFirst()
-    if (settings) {
-      const updateData: Record<string, number> = {}
-      if (usdRate) updateData.usdRate = usdRate.rate
-      if (eurRate) updateData.eurRate = eurRate.rate
-
-      const refCurrency = settings.referenceCurrency || 'USD'
-      const refRate = rates.find(r => r.currency === refCurrency) || usdRate
-      if (refRate && !settings.customRate) {
-        updateData.exchangeRate = refRate.rate
-      }
-
-      if (Object.keys(updateData).length > 0) {
-        await db.settings.update({
-          where: { id: settings.id },
-          data: updateData,
-        })
-      }
-    }
+    // NOTE: GET endpoint does NOT write to Settings table.
+    // Writing here caused rates to be overwritten on every page load,
+    // reverting user-saved values. Rates are persisted via POST handler
+    // (when user clicks "Actualizar") or PUT /api/settings.
 
     return NextResponse.json({ rates, timestamp: new Date().toISOString() })
   } catch (error) {
