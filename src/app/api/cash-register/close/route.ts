@@ -104,6 +104,8 @@ export async function POST(request: NextRequest) {
           settings?.phone || '',
           settings?.exchangeRate || 0,
           settings?.referenceCurrency || 'USD',
+          settings?.ivaEnabled || false,
+          settings?.ivaRate || 0,
         )
         const pdfBuffer = await generateCashClosePDF(report)
         await sendCashCloseEmailWithPDF({
@@ -120,6 +122,8 @@ export async function POST(request: NextRequest) {
           totalExpenses,
           totalRetiros,
           salesCount: register.sales.length,
+          ivaEnabled: settings?.ivaEnabled || false,
+          ivaRate: settings?.ivaRate || 0,
           pdfBuffer,
         })
       } catch (e) {

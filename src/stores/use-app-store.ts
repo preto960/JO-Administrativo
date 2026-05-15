@@ -26,6 +26,8 @@ export interface AppSettings {
   exchangeRate: number
   sessionDuration: number
   notificationsEnabled: boolean
+  ivaEnabled: boolean
+  ivaRate: number
   primaryColor: string
   secondaryColor: string
   theme: string
@@ -69,6 +71,8 @@ const defaultSettings: AppSettings = {
   exchangeRate: 36.50,
   sessionDuration: 28800,
   notificationsEnabled: true,
+  ivaEnabled: false,
+  ivaRate: 16.00,
   primaryColor: 'blue',
   secondaryColor: 'slate',
   theme: 'light',

@@ -47,6 +47,8 @@ export interface CashCloseReport {
   entries: { concept: string; amount: number; date: Date }[]
   exchangeRate: number
   referenceCurrency: string
+  ivaEnabled: boolean
+  ivaRate: number
 }
 
 // ─── Colors ───────────────────────────────────────────────────────────────────
@@ -167,17 +169,26 @@ function drawFinancialSummary(doc: jsPDF, report: CashCloseReport, startY: numbe
   y += 6
 
   // Summary table
+  // Build summary body rows
+  const summaryBody: string[][] = [
+    ['Monto de Apertura', `${symbol}${fmt(report.initialAmt)}`],
+    ['+ Ventas en Efectivo', `${symbol}${fmt(report.totalSales)}`],
+    ['+ Entradas de Efectivo', `${symbol}${fmt(report.totalEntries)}`],
+    ['- Gastos / Salidas', `${symbol}${fmt(report.totalExpenses)}`],
+    ['- Retiros de Excedente', `${symbol}${fmt(report.totalRetiros)}`],
+  ]
+
+  // Add IVA row if enabled
+  if (report.ivaEnabled && report.ivaRate > 0) {
+    const ivaCollected = report.totalSales * (report.ivaRate / 100)
+    summaryBody.push([`+ I.V.A. Recaudado (${report.ivaRate}%)`, `${symbol}${fmt(ivaCollected)}`])
+  }
+
   autoTable(doc, {
     startY: y,
     theme: 'plain',
     margin: { left: 45, right: 45 },
-    body: [
-      ['Monto de Apertura', `${symbol}${fmt(report.initialAmt)}`],
-      ['+ Ventas en Efectivo', `${symbol}${fmt(report.totalSales)}`],
-      ['+ Entradas de Efectivo', `${symbol}${fmt(report.totalEntries)}`],
-      ['- Gastos / Salidas', `${symbol}${fmt(report.totalExpenses)}`],
-      ['- Retiros de Excedente', `${symbol}${fmt(report.totalRetiros)}`],
-    ],
+    body: summaryBody,
     styles: {
       fontSize: 9,
       cellPadding: 4,
@@ -795,6 +806,8 @@ export async function buildReportFromRegister(
   businessPhone: string,
   exchangeRate: number,
   referenceCurrency: string,
+  ivaEnabled: boolean,
+  ivaRate: number,
 ): Promise<CashCloseReport> {
   const sales: SaleDetail[] = register.sales.map(s => ({
     id: s.id,
@@ -847,5 +860,7 @@ export async function buildReportFromRegister(
     entries,
     exchangeRate,
     referenceCurrency,
+    ivaEnabled,
+    ivaRate,
   }
 }

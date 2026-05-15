@@ -43,7 +43,11 @@ export function PosCart({ onPayment }: PosCartProps) {
   const count = getItemCount()
   const exchangeRate = useSetting('exchangeRate')
   const referenceCurrency = useSetting('referenceCurrency')
-  const totalBs = total * exchangeRate
+  const ivaEnabled = useSetting('ivaEnabled')
+  const ivaRate = useSetting('ivaRate')
+  const ivaAmount = ivaEnabled ? total * (ivaRate / 100) : 0
+  const totalWithIva = total + ivaAmount
+  const totalBs = (ivaEnabled ? totalWithIva : total) * exchangeRate
   const currencySymbol = referenceCurrency === 'EUR' ? '\u20ac' : '$'
 
   const [showPaused, setShowPaused] = useState(false)
@@ -186,12 +190,30 @@ export function PosCart({ onPayment }: PosCartProps) {
       </ScrollArea>
 
       {/* Footer */}
-      <div className="border-t p-3 space-y-3">
+      <div className="border-t p-3 space-y-2">
         <div className="space-y-1">
+          {ivaEnabled && (
+            <>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">Subtotal</span>
+                <span className="text-sm font-medium">
+                  {currencySymbol}{total.toFixed(2)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">I.V.A. ({ivaRate.toFixed(2)}%)</span>
+                <span className="text-sm font-medium text-blue-600">
+                  +{currencySymbol}{ivaAmount.toFixed(2)}
+                </span>
+              </div>
+            </>
+          )}
           <div className="flex items-center justify-between">
-            <span className="text-sm text-muted-foreground">Total ({referenceCurrency})</span>
+            <span className="text-sm text-muted-foreground">
+              Total {ivaEnabled ? '(con I.V.A.)' : `(${referenceCurrency})`}
+            </span>
             <span className="text-2xl font-bold text-primary dark:text-primary">
-              {currencySymbol}{total.toFixed(2)}
+              {currencySymbol}{(ivaEnabled ? totalWithIva : total).toFixed(2)}
             </span>
           </div>
           {exchangeRate > 0 && (
@@ -220,7 +242,7 @@ export function PosCart({ onPayment }: PosCartProps) {
             disabled={items.length === 0}
             onClick={onPayment}
           >
-            Cobrar {currencySymbol}{total.toFixed(2)}
+            Cobrar {currencySymbol}{(ivaEnabled ? totalWithIva : total).toFixed(2)}
           </Button>
         </div>
       </div>

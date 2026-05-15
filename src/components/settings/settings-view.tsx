@@ -91,6 +91,8 @@ interface Settings {
   exchangeRate: number
   sessionDuration: number
   notificationsEnabled: boolean
+  ivaEnabled: boolean
+  ivaRate: number
   primaryColor: string
   secondaryColor: string
   theme: string
@@ -646,11 +648,88 @@ export function SettingsView() {
                     eurRate: settings.eurRate,
                     customRate: settings.customRate,
                     exchangeRate: settings.exchangeRate,
+                    ivaEnabled: settings.ivaEnabled,
+                    ivaRate: settings.ivaRate,
                   })}
                   disabled={saving}
                 >
                   {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                   Guardar
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* IVA Card */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">I.V.A. (Impuesto al Valor Agregado)</CardTitle>
+                <CardDescription>Configura el porcentaje de IVA que se aplica a las ventas</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium">Activar IVA</p>
+                    <p className="text-sm text-muted-foreground">Incluir IVA en el carrito, facturas y cierres de caja</p>
+                  </div>
+                  <Switch
+                    checked={settings.ivaEnabled}
+                    onCheckedChange={(v) => setSettings({ ...settings, ivaEnabled: v })}
+                  />
+                </div>
+
+                <Separator />
+
+                <div className="space-y-2">
+                  <Label>Porcentaje de IVA (%)</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="100"
+                      value={settings.ivaRate.toFixed(2)}
+                      onChange={(e) => setSettings({ ...settings, ivaRate: parseFloat(e.target.value) || 0 })}
+                      disabled={!settings.ivaEnabled}
+                      className="w-32"
+                    />
+                    <span className="text-sm text-muted-foreground">%</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    En Venezuela el IVA general es 16%. Ajusta según tu actividad económica.
+                  </p>
+                </div>
+
+                {settings.ivaEnabled && (
+                  <>
+                    <Separator />
+                    <div className="rounded-lg border bg-muted/50 p-4 space-y-2">
+                      <p className="text-sm font-medium text-muted-foreground">Ejemplo de cálculo:</p>
+                      <div className="flex items-center justify-between text-sm">
+                        <span>Subtotal:</span>
+                        <span>$100.00</span>
+                      </div>
+                      <div className="flex items-center justify-between text-sm">
+                        <span>I.V.A. ({settings.ivaRate.toFixed(2)}%):</span>
+                        <span className="text-blue-600 font-medium">${(100 * settings.ivaRate / 100).toFixed(2)}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-sm font-bold border-t pt-2 mt-2">
+                        <span>Total con IVA:</span>
+                        <span className="text-primary">${(100 * (1 + settings.ivaRate / 100)).toFixed(2)}</span>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                <Button
+                  className="bg-primary hover:bg-primary/90 text-white"
+                  onClick={() => saveSettings({
+                    ivaEnabled: settings.ivaEnabled,
+                    ivaRate: settings.ivaRate,
+                  })}
+                  disabled={saving}
+                >
+                  {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                  Guardar IVA
                 </Button>
               </CardContent>
             </Card>

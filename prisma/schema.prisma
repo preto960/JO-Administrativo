@@ -411,6 +411,8 @@ model Settings {
   exchangeRate          Float    @default(36.50)
   sessionDuration       Int      @default(28800)
   notificationsEnabled  Boolean  @default(true)
+  ivaEnabled            Boolean  @default(false)
+  ivaRate               Float    @default(16.00)
   primaryColor          String   @default("blue")
   secondaryColor        String   @default("slate")
   theme                 String   @default("light")

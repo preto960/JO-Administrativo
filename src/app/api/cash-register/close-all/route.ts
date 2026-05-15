@@ -91,6 +91,8 @@ export async function POST(request: NextRequest) {
         const businessPhone = settings?.phone || ''
         const exchangeRate = settings?.exchangeRate || 0
         const referenceCurrency = settings?.referenceCurrency || 'USD'
+        const ivaEnabled = settings?.ivaEnabled || false
+        const ivaRate = settings?.ivaRate || 0
 
         const reports: CashCloseReport[] = []
         for (const r of openRegisters) {
@@ -118,6 +120,8 @@ export async function POST(request: NextRequest) {
             businessPhone,
             exchangeRate,
             referenceCurrency,
+            ivaEnabled,
+            ivaRate,
           ))
         }
 
@@ -146,6 +150,8 @@ export async function POST(request: NextRequest) {
               totalExpenses,
               totalRetiros,
               salesCount: r.sales.length,
+              ivaEnabled,
+              ivaRate,
             }
           }),
           pdfBuffer,

@@ -18,6 +18,8 @@ interface CashCloseData {
   totalExpenses: number
   totalRetiros: number
   salesCount?: number
+  ivaEnabled?: boolean
+  ivaRate?: number
 }
 
 interface CashCloseDataWithPDF extends CashCloseData {
@@ -108,6 +110,11 @@ export async function sendCashCloseEmailWithPDF(data: CashCloseDataWithPDF): Pro
                 <td style="padding: 6px 0;">Total Ventas (efectivo):</td>
                 <td style="padding: 6px 0; text-align: right; font-weight: bold; color: green;">+$${data.totalSales.toFixed(2)}</td>
               </tr>
+              ${data.ivaEnabled && data.ivaRate && data.ivaRate > 0 ? `
+              <tr>
+                <td style="padding: 6px 0;">I.V.A. Recaudado (${data.ivaRate}%):</td>
+                <td style="padding: 6px 0; text-align: right; font-weight: bold; color: #2563eb;">+$${(data.totalSales * data.ivaRate / 100).toFixed(2)}</td>
+              </tr>` : ''}
               <tr>
                 <td style="padding: 6px 0;">Total Gastos:</td>
                 <td style="padding: 6px 0; text-align: right; font-weight: bold; color: red;">-$${data.totalExpenses.toFixed(2)}</td>
