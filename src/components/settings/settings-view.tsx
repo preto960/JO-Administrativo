@@ -412,21 +412,52 @@ export function SettingsView() {
                     onClick={async () => {
                       setFetchingRate(true)
                       try {
-                        const data = await api.get<{ rates: Array<{ currency: string; rate: number; source: string }> }>('/api/exchange-rates')
-                        if (data?.rates && data.rates.length > 0) {
-                          const usdRate = data.rates.find(r => r.currency === 'USD')
-                          const eurRate = data.rates.find(r => r.currency === 'EUR')
-                          const updates: Record<string, number> = {}
-                          if (usdRate) updates.usdRate = usdRate.rate
-                          if (eurRate) updates.eurRate = eurRate.rate
+                        let usdRate: number | undefined
+                        let eurRate: number | undefined
+                        let usedSource = ''
+
+                        // 1st: Try client-side BCV scraping (from user's browser in Venezuela)
+                        try {
+                          const { scrapeBcvFromClient } = await import('@/lib/scrape-bcv-client')
+                          const clientRates = await scrapeBcvFromClient()
+                          if (clientRates) {
+                            usdRate = clientRates.usd
+                            eurRate = clientRates.eur
+                            usedSource = clientRates.source
+                          }
+                        } catch {
+                          console.warn('[Rates] Client-side BCV scraping failed, falling back to server')
+                        }
+
+                        // 2nd: If client scraping failed, send rates to server for persistence
+                        if (usdRate) {
+                          // Save client-fetched rates via POST
+                          await api.post('/api/exchange-rates', { usd: usdRate, eur: eurRate, source: usedSource })
+                        } else {
+                          // Fallback: let server fetch (uses dolarapi + other sources)
+                          const data = await api.get<{ rates: Array<{ currency: string; rate: number; source: string }> }>('/api/exchange-rates')
+                          if (data?.rates && data.rates.length > 0) {
+                            const foundUsd = data.rates.find(r => r.currency === 'USD')
+                            const foundEur = data.rates.find(r => r.currency === 'EUR')
+                            if (foundUsd) { usdRate = foundUsd.rate; usedSource = foundUsd.source }
+                            if (foundEur) eurRate = foundEur.rate
+                          }
+                        }
+
+                        if (usdRate) {
+                          const updates: Record<string, number> = { usdRate }
+                          if (eurRate) updates.eurRate = eurRate
                           if (!settings.customRate) {
                             const refCurrency = settings.referenceCurrency || 'USD'
-                            const refRate = data.rates.find(r => r.currency === refCurrency) || usdRate
-                            if (refRate) updates.exchangeRate = refRate.rate
+                            if (refCurrency === 'EUR' && eurRate) {
+                              updates.exchangeRate = eurRate
+                            } else {
+                              updates.exchangeRate = usdRate
+                            }
                           }
                           setSettings({ ...settings, ...updates })
                           setAppSettings({ ...settings, ...updates } as AppSettings)
-                          toast.success('Tasas actualizadas desde el BCV')
+                          toast.success(`Tasas actualizadas (${usedSource})`)
                         } else {
                           toast.error('No se pudieron obtener las tasas')
                         }

@@ -393,6 +393,87 @@ async function fetchBcvRates(): Promise<BcvRate[]> {
   return rates
 }
 
+// POST /api/exchange-rates — Receive client-fetched BCV rates and persist to DB
+export async function POST(request: Request) {
+  try {
+    const body = await request.json()
+    const { usd, eur, source } = body
+
+    if (!usd || typeof usd !== 'number' || !isValidRate(usd)) {
+      return NextResponse.json({ error: 'Tasa USD inválida' }, { status: 400 })
+    }
+
+    const rates: BcvRate[] = [{
+      currency: 'USD',
+      rate: usd,
+      source: source || 'BCV (cliente)',
+      fetchedAt: new Date().toISOString(),
+    }]
+
+    if (eur && isValidRate(eur)) {
+      rates.push({
+        currency: 'EUR',
+        rate: eur,
+        source: source || 'BCV (cliente)',
+        fetchedAt: new Date().toISOString(),
+      })
+    }
+
+    // Same persistence logic as GET
+    const usdCurrency = await db.currency.findUnique({ where: { code: 'USD' } })
+    const eurCurrency = await db.currency.findUnique({ where: { code: 'EUR' } })
+    const vesCurrency = await db.currency.findUnique({ where: { code: 'VES' } })
+
+    async function upsertRate(fromId: string, toId: string, rate: number) {
+      if (!fromId || !toId) return
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+
+      const existing = await db.exchangeRate.findFirst({
+        where: { fromCurrencyId: fromId, toCurrencyId: toId, date: { gte: today } },
+      })
+
+      if (existing) {
+        await db.exchangeRate.update({ where: { id: existing.id }, data: { rate } })
+      } else {
+        await db.exchangeRate.create({ data: { fromCurrencyId: fromId, toCurrencyId: toId, rate, date: new Date() } })
+      }
+    }
+
+    if (usdCurrency && vesCurrency) {
+      await upsertRate(usdCurrency.id, vesCurrency.id, usd)
+    }
+    if (eur && eurCurrency && vesCurrency) {
+      await upsertRate(eurCurrency.id, vesCurrency.id, eur)
+    }
+
+    // Update Settings
+    const settings = await db.settings.findFirst()
+    if (settings) {
+      const updateData: Record<string, number> = {
+        usdRate: usd,
+      }
+      if (eur) updateData.eurRate = eur
+
+      const refCurrency = settings.referenceCurrency || 'USD'
+      const refRate = rates.find(r => r.currency === refCurrency) || rates[0]
+      if (refRate && !settings.customRate) {
+        updateData.exchangeRate = refRate.rate
+      }
+
+      await db.settings.update({
+        where: { id: settings.id },
+        data: updateData,
+      })
+    }
+
+    return NextResponse.json({ rates, timestamp: new Date().toISOString() })
+  } catch (error) {
+    console.error('[Exchange Rates API] POST Error:', error)
+    return NextResponse.json({ error: 'Error al guardar tasas de cambio' }, { status: 500 })
+  }
+}
+
 // GET /api/exchange-rates
 export async function GET() {
   try {
