@@ -44,6 +44,7 @@ import {
   Plus,
   Edit,
   Trash2,
+  Percent,
   Loader2,
   RefreshCw,
   Shield,
@@ -284,6 +285,10 @@ export function SettingsView() {
           <TabsTrigger value="moneda" className="gap-1.5">
             <DollarSign className="h-3.5 w-3.5 hidden sm:block" />
             <span>Moneda</span>
+          </TabsTrigger>
+          <TabsTrigger value="iva" className="gap-1.5">
+            <Percent className="h-3.5 w-3.5 hidden sm:block" />
+            <span>I.V.A.</span>
           </TabsTrigger>
           <TabsTrigger value="sucursales" className="gap-1.5">
             <GitBranch className="h-3.5 w-3.5 hidden sm:block" />
@@ -648,8 +653,6 @@ export function SettingsView() {
                     eurRate: settings.eurRate,
                     customRate: settings.customRate,
                     exchangeRate: settings.exchangeRate,
-                    ivaEnabled: settings.ivaEnabled,
-                    ivaRate: settings.ivaRate,
                   })}
                   disabled={saving}
                 >
@@ -658,82 +661,103 @@ export function SettingsView() {
                 </Button>
               </CardContent>
             </Card>
+          </div>
+        </TabsContent>
 
-            {/* IVA Card */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">I.V.A. (Impuesto al Valor Agregado)</CardTitle>
-                <CardDescription>Configura el porcentaje de IVA que se aplica a las ventas</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium">Activar IVA</p>
-                    <p className="text-sm text-muted-foreground">Incluir IVA en el carrito, facturas y cierres de caja</p>
-                  </div>
-                  <Switch
-                    checked={settings.ivaEnabled}
-                    onCheckedChange={(v) => setSettings({ ...settings, ivaEnabled: v })}
-                  />
+        {/* ── I.V.A. Tab ──────────────────────────────────── */}
+        <TabsContent value="iva">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">I.V.A. (Impuesto al Valor Agregado)</CardTitle>
+              <CardDescription>Configura el porcentaje de IVA que se aplica a las ventas</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium">Activar IVA</p>
+                  <p className="text-sm text-muted-foreground">Incluir IVA en el carrito, facturas y cierres de caja</p>
                 </div>
+                <Switch
+                  checked={settings.ivaEnabled}
+                  onCheckedChange={(v) => setSettings({ ...settings, ivaEnabled: v })}
+                />
+              </div>
 
-                <Separator />
+              <Separator />
 
-                <div className="space-y-2">
-                  <Label>Porcentaje de IVA (%)</Label>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      max="100"
-                      value={(settings.ivaRate ?? 0).toFixed(2)}
-                      onChange={(e) => setSettings({ ...settings, ivaRate: parseFloat(e.target.value) || 0 })}
-                      disabled={!settings.ivaEnabled}
-                      className="w-32"
-                    />
-                    <span className="text-sm text-muted-foreground">%</span>
+              <div className="space-y-2">
+                <Label>Porcentaje de IVA (%)</Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max="100"
+                    value={(settings.ivaRate ?? 0).toFixed(2)}
+                    onChange={(e) => setSettings({ ...settings, ivaRate: parseFloat(e.target.value) || 0 })}
+                    disabled={!settings.ivaEnabled}
+                    className="w-32"
+                  />
+                  <span className="text-sm text-muted-foreground">%</span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  En Venezuela el IVA general es 16%. Ajusta segun tu actividad economica.
+                </p>
+              </div>
+
+              <Separator />
+
+              <div className="space-y-2">
+                <Label>Base de calculo</Label>
+                <div className="rounded-lg border bg-muted/50 p-4 space-y-1">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">El IVA se calcula sobre:</span>
+                    <span className="font-medium">Monto en Bolivares (Bs.)</span>
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    En Venezuela el IVA general es 16%. Ajusta según tu actividad económica.
+                  <p className="text-xs text-muted-foreground mt-1">
+                    El subtotal de la venta se convierte a Bs. usando la tasa del dia, y sobre ese monto se aplica el porcentaje de IVA.
                   </p>
                 </div>
+              </div>
 
-                {settings.ivaEnabled && (
-                  <>
-                    <Separator />
-                    <div className="rounded-lg border bg-muted/50 p-4 space-y-2">
-                      <p className="text-sm font-medium text-muted-foreground">Ejemplo de cálculo:</p>
-                      <div className="flex items-center justify-between text-sm">
-                        <span>Subtotal:</span>
-                        <span>$100.00</span>
-                      </div>
-                      <div className="flex items-center justify-between text-sm">
-                        <span>I.V.A. ({(settings.ivaRate ?? 0).toFixed(2)}%):</span>
-                        <span className="text-blue-600 font-medium">${(100 * (settings.ivaRate ?? 0) / 100).toFixed(2)}</span>
-                      </div>
-                      <div className="flex items-center justify-between text-sm font-bold border-t pt-2 mt-2">
-                        <span>Total con IVA:</span>
-                        <span className="text-primary">${(100 * (1 + (settings.ivaRate ?? 0) / 100)).toFixed(2)}</span>
-                      </div>
+              {settings.ivaEnabled && (
+                <>
+                  <Separator />
+                  <div className="rounded-lg border bg-muted/50 p-4 space-y-2">
+                    <p className="text-sm font-medium text-muted-foreground">Ejemplo de calculo:</p>
+                    <div className="flex items-center justify-between text-sm">
+                      <span>Subtotal (USD):</span>
+                      <span>$100.00</span>
                     </div>
-                  </>
-                )}
+                    <div className="flex items-center justify-between text-sm">
+                      <span>Subtotal (Bs.) al 36.50:</span>
+                      <span>Bs. 3,650.00</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span>I.V.A. ({(settings.ivaRate ?? 0).toFixed(2)}% sobre Bs.):</span>
+                      <span className="text-blue-600 font-medium">Bs. {(3650 * (settings.ivaRate ?? 0) / 100).toFixed(2)}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm font-bold border-t pt-2 mt-2">
+                      <span>Total con IVA (Bs.):</span>
+                      <span className="text-primary">Bs. {(3650 * (1 + (settings.ivaRate ?? 0) / 100)).toFixed(2)}</span>
+                    </div>
+                  </div>
+                </>
+              )}
 
-                <Button
-                  className="bg-primary hover:bg-primary/90 text-white"
-                  onClick={() => saveSettings({
-                    ivaEnabled: settings.ivaEnabled,
-                    ivaRate: settings.ivaRate,
-                  })}
-                  disabled={saving}
-                >
-                  {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                  Guardar IVA
-                </Button>
-              </CardContent>
-            </Card>
-          </div>
+              <Button
+                className="bg-primary hover:bg-primary/90 text-white"
+                onClick={() => saveSettings({
+                  ivaEnabled: settings.ivaEnabled,
+                  ivaRate: settings.ivaRate,
+                })}
+                disabled={saving}
+              >
+                {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                Guardar IVA
+              </Button>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* ── Sucursales Tab ─────────────────────────────── */}
