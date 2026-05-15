@@ -82,6 +82,7 @@ export function CashRegisterView() {
   const [closeRegId, setCloseRegId] = useState<string | null>(null)
   const [initialAmt, setInitialAmt] = useState('100')
   const [registerName, setRegisterName] = useState('')
+  const [openBranchId, setOpenBranchId] = useState<string>('')
   const [selectedUserId, setSelectedUserId] = useState('')
   const [availableUsers, setAvailableUsers] = useState<{ id: string; name: string; role: string }[]>([])
   const [moveType, setMoveType] = useState('entrada')
@@ -171,17 +172,28 @@ export function CashRegisterView() {
         setSaving(false)
         return
       }
+      if (!openBranchId) {
+        toast.error('Debe seleccionar una sucursal')
+        setSaving(false)
+        return
+      }
       await api.post('/api/cash-register/open', {
         userId: effectiveUserId,
         initialAmt: parseFloat(initialAmt) || 0,
         name: registerName.trim() || undefined,
-        branchId: filterBranchId || undefined,
+        branchId: openBranchId,
       })
       toast.success('Caja abierta exitosamente')
       setShowOpen(false)
+      // Save branch before clearing dialog state
+      const openedBranchId = openBranchId
       setRegisterName('')
       setSelectedUserId('')
-      fetchData(filterBranchId)
+      setOpenBranchId('')
+      // Switch filter to the branch where the register was opened
+      setFilterBranchId(openedBranchId)
+      setSelectedBranchId(openedBranchId)
+      fetchData(openedBranchId)
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Error al abrir caja'
       toast.error(msg)
@@ -455,7 +467,10 @@ export function CashRegisterView() {
                         Cerrar Todas
                       </Button>
                     )}
-                    <Button size="sm" className="bg-primary hover:bg-primary/90 text-white" onClick={() => setShowOpen(true)}>
+                    <Button size="sm" className="bg-primary hover:bg-primary/90 text-white" onClick={() => {
+                      setOpenBranchId(filterBranchId || selectedBranchId || '')
+                      setShowOpen(true)
+                    }}>
                       <Plus className="mr-1 h-3 w-3" /> Abrir Caja
                     </Button>
                   </>
@@ -631,10 +646,30 @@ export function CashRegisterView() {
         <DialogContent className="sm:max-w-[90vw]">
           <DialogHeader>
             <DialogTitle>Abrir Caja</DialogTitle>
-            <DialogDescription>Ingresa el monto inicial y selecciona el cajero</DialogDescription>
+            <DialogDescription>Selecciona la sucursal, cajero y monto inicial</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            {/* Cashier selection - only show cashiers */}
+            {/* Branch selection */}
+            <div className="space-y-2">
+              <Label>Sucursal *</Label>
+              <Select value={openBranchId} onValueChange={setOpenBranchId}>
+                <SelectTrigger><SelectValue placeholder="Seleccionar sucursal" /></SelectTrigger>
+                <SelectContent>
+                  {branches
+                    .filter(b => b.active)
+                    .map((branch) => (
+                      <SelectItem key={branch.id} value={branch.id}>
+                        <span className="flex items-center gap-2">
+                          <GitBranch className="h-3 w-3" />
+                          {branch.name}
+                          {branch.isMain && <span className="text-xs text-muted-foreground">(Principal)</span>}
+                        </span>
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {/* Cashier selection */}
             <div className="space-y-2">
               <Label>Cajero Asignado *</Label>
               <Select value={selectedUserId} onValueChange={setSelectedUserId}>
@@ -659,7 +694,7 @@ export function CashRegisterView() {
               <Label htmlFor="initial">Monto Inicial</Label>
               <Input id="initial" type="number" step="0.01" value={initialAmt} onChange={(e) => setInitialAmt(e.target.value)} />
             </div>
-            <Button className="w-full bg-primary hover:bg-primary/90 text-white" onClick={openRegister} disabled={saving || !selectedUserId}>
+            <Button className="w-full bg-primary hover:bg-primary/90 text-white" onClick={openRegister} disabled={saving || !selectedUserId || !openBranchId}>
               {saving ? 'Abriendo...' : 'Abrir Caja'}
             </Button>
           </div>
