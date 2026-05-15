@@ -2,6 +2,8 @@ import { Resend } from 'resend'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 
+// ─── Types ────────────────────────────────────────────────────────────────────
+
 interface CashCloseData {
   cashierName: string
   registerName: string | null
@@ -14,27 +16,250 @@ interface CashCloseData {
   difference: number
   totalSales: number
   totalExpenses: number
+  totalRetiros: number
+  salesCount?: number
 }
 
-export async function sendCashCloseEmail(data: CashCloseData): Promise<boolean> {
-  try {
-    // Get admin email from settings
-    const { db } = await import('@/lib/db')
-    const settings = await db.settings.findFirst()
-    const adminEmail = settings?.email || process.env.ADMIN_EMAIL
+interface CashCloseDataWithPDF extends CashCloseData {
+  pdfBuffer: Buffer
+}
 
+interface CashCloseAllData {
+  registersCount: number
+  cuts: CashCloseData[]
+  pdfBuffer: Buffer
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+async function getAdminEmail(): Promise<string | null> {
+  const { db } = await import('@/lib/db')
+  const settings = await db.settings.findFirst()
+  return settings?.email || process.env.ADMIN_EMAIL || null
+}
+
+function getFromEmail(): string {
+  return process.env.RESEND_FROM || 'JO-Administrativo <onboarding@resend.dev>'
+}
+
+function fmtDiff(difference: number): string {
+  if (difference > 0) return `<span style="color: green;">Sobrante: $${difference.toFixed(2)}</span>`
+  if (difference < 0) return `<span style="color: red;">Faltante: $${Math.abs(difference).toFixed(2)}</span>`
+  return `<span style="color: green;">Cuadrado</span>`
+}
+
+// ─── Single Register Close Email with PDF ────────────────────────────────────
+
+export async function sendCashCloseEmailWithPDF(data: CashCloseDataWithPDF): Promise<boolean> {
+  try {
+    const adminEmail = await getAdminEmail()
     if (!adminEmail) {
       console.log('[Email] No admin email configured, skipping cash close notification')
       return false
     }
 
-    const fromEmail = process.env.RESEND_FROM || 'JO-Administrativo <onboarding@resend.dev>'
+    const fromEmail = getFromEmail()
+    const diffText = fmtDiff(data.difference)
+    const dateStr = data.closingDate.toLocaleDateString('es-VE')
+    const registerLabel = data.registerName || 'Caja'
+    const salesInfo = data.salesCount ? `<tr><td style="padding: 6px 0; font-weight: bold;">Ventas realizadas:</td><td style="padding: 6px 0; text-align: right; font-weight: bold;">${data.salesCount}</td></tr>` : ''
 
-    const diffText = data.difference > 0
-      ? `<span style="color: green;">Sobrante: $${data.difference.toFixed(2)}</span>`
-      : data.difference < 0
-        ? `<span style="color: red;">Faltante: $${Math.abs(data.difference).toFixed(2)}</span>`
-        : `<span style="color: green;">Cuadrado</span>`
+    const filename = `Cierre_${registerLabel.replace(/\s+/g, '_')}_${data.cashierName.replace(/\s+/g, '_')}_${dateStr.replace(/\//g, '-')}.pdf`
+
+    await resend.emails.send({
+      from: fromEmail,
+      to: [adminEmail],
+      subject: `[Cierre de Caja] ${registerLabel} - ${data.cashierName} - ${dateStr}`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <div style="background: #1e40af; padding: 20px; border-radius: 8px 8px 0 0;">
+            <h2 style="color: white; margin: 0;">Cierre de Caja</h2>
+            <p style="color: #d1d5db; margin: 5px 0 0 0;">Reporte adjunto en PDF con detalle completo</p>
+          </div>
+          <div style="background: #f5f5f5; padding: 20px; border-radius: 0 0 8px 8px;">
+            <table style="width: 100%; border-collapse: collapse;">
+              <tr>
+                <td style="padding: 8px 0; font-weight: bold;">Cajero:</td>
+                <td style="padding: 8px 0;">${data.cashierName}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 0; font-weight: bold;">Caja:</td>
+                <td style="padding: 8px 0;">${registerLabel}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 0; font-weight: bold;">Sucursal:</td>
+                <td style="padding: 8px 0;">${data.branchName}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 0; font-weight: bold;">Cierre:</td>
+                <td style="padding: 8px 0;">${data.closingDate.toLocaleString('es-VE')}</td>
+              </tr>
+            </table>
+          </div>
+          <div style="margin-top: 16px; background: #fff; padding: 20px; border: 1px solid #ddd; border-radius: 8px;">
+            <h3 style="margin: 0 0 12px 0; color: #333;">Resumen</h3>
+            <table style="width: 100%; border-collapse: collapse;">
+              <tr>
+                <td style="padding: 6px 0;">Monto Inicial:</td>
+                <td style="padding: 6px 0; text-align: right; font-weight: bold;">$${data.initialAmt.toFixed(2)}</td>
+              </tr>
+              ${salesInfo}
+              <tr>
+                <td style="padding: 6px 0;">Total Ventas (efectivo):</td>
+                <td style="padding: 6px 0; text-align: right; font-weight: bold; color: green;">+$${data.totalSales.toFixed(2)}</td>
+              </tr>
+              <tr>
+                <td style="padding: 6px 0;">Total Gastos:</td>
+                <td style="padding: 6px 0; text-align: right; font-weight: bold; color: red;">-$${data.totalExpenses.toFixed(2)}</td>
+              </tr>
+              <tr style="border-top: 2px solid #333;">
+                <td style="padding: 6px 0; font-weight: bold;">Esperado:</td>
+                <td style="padding: 6px 0; text-align: right; font-weight: bold;">$${data.expected.toFixed(2)}</td>
+              </tr>
+              <tr>
+                <td style="padding: 6px 0; font-weight: bold;">Real:</td>
+                <td style="padding: 6px 0; text-align: right; font-weight: bold;">$${data.actual.toFixed(2)}</td>
+              </tr>
+              <tr style="border-top: 2px solid #333;">
+                <td style="padding: 6px 0; font-weight: bold;">Resultado:</td>
+                <td style="padding: 6px 0; text-align: right; font-weight: bold;">${diffText}</td>
+              </tr>
+            </table>
+          </div>
+          <div style="margin-top: 16px; background: #f0f5ff; padding: 16px; border-radius: 8px; text-align: center; border: 1px dashed #3b82f6;">
+            <p style="margin: 0; color: #1e40af; font-weight: bold;">PDF adjunto con detalle completo</p>
+            <p style="margin: 4px 0 0 0; color: #6b7280; font-size: 12px;">Productos vendidos, metodos de pago, gastos, entradas y mas</p>
+          </div>
+          <p style="margin-top: 16px; color: #999; font-size: 12px; text-align: center;">
+            JO-Administrativo - Sistema de Gestion
+          </p>
+        </div>
+      `,
+      attachments: [
+        {
+          filename,
+          content: data.pdfBuffer,
+        },
+      ],
+    })
+
+    console.log(`[Email] Cash close notification with PDF sent to ${adminEmail}`)
+    return true
+  } catch (error) {
+    console.error('[Email] Failed to send cash close notification:', error)
+    return false
+  }
+}
+
+// ─── Mass Close Email with PDF ───────────────────────────────────────────────
+
+export async function sendCashCloseAllEmailWithPDF(data: CashCloseAllData): Promise<boolean> {
+  try {
+    const adminEmail = await getAdminEmail()
+    if (!adminEmail) {
+      console.log('[Email] No admin email configured, skipping mass cash close notification')
+      return false
+    }
+
+    const fromEmail = getFromEmail()
+    const dateStr = new Date().toLocaleDateString('es-VE')
+    const grandTotal = data.cuts.reduce((sum, c) => sum + c.actual, 0)
+
+    const rows = data.cuts.map(c => {
+      const diffText = c.difference > 0
+        ? `<span style="color: green;">+$${c.difference.toFixed(2)}</span>`
+        : c.difference < 0
+          ? `<span style="color: red;">-$${Math.abs(c.difference).toFixed(2)}</span>`
+          : `Cuadrado`
+      const salesCol = c.salesCount
+        ? `<td style="padding: 8px; text-align: center;">${c.salesCount}</td>`
+        : ''
+      return `
+        <tr style="border-bottom: 1px solid #eee;">
+          <td style="padding: 8px;">${c.cashierName}</td>
+          <td style="padding: 8px;">${c.registerName || '—'}</td>
+          ${salesCol}
+          <td style="padding: 8px; text-align: right;">$${c.totalSales.toFixed(2)}</td>
+          <td style="padding: 8px; text-align: right;">$${c.actual.toFixed(2)}</td>
+          <td style="padding: 8px; text-align: center;">${diffText}</td>
+        </tr>
+      `
+    }).join('')
+
+    const salesHeader = data.cuts.some(c => c.salesCount !== undefined)
+      ? `<th style="padding: 10px; text-align: center;">Ventas</th>`
+      : ''
+
+    const filename = `Cierre_Masivo_${data.registersCount}_cajas_${dateStr.replace(/\//g, '-')}.pdf`
+
+    await resend.emails.send({
+      from: fromEmail,
+      to: [adminEmail],
+      subject: `[Cierre Masivo] ${data.registersCount} cajas cerradas - ${dateStr}`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 700px; margin: 0 auto;">
+          <div style="background: #1e40af; padding: 20px; border-radius: 8px 8px 0 0;">
+            <h2 style="color: white; margin: 0;">Cierre Masivo de Cajas</h2>
+            <p style="color: #d1d5db; margin: 5px 0 0 0;">Reporte adjunto en PDF con detalle completo de cada caja</p>
+          </div>
+          <p style="padding: 16px 0 8px 0;">${data.registersCount} caja(s) han sido cerradas.</p>
+          <table style="width: 100%; border-collapse: collapse; border: 1px solid #ddd; border-radius: 8px;">
+            <thead>
+              <tr style="background: #f5f5f5;">
+                <th style="padding: 10px; text-align: left;">Cajero</th>
+                <th style="padding: 10px; text-align: left;">Caja</th>
+                ${salesHeader}
+                <th style="padding: 10px; text-align: right;">Ventas</th>
+                <th style="padding: 10px; text-align: right;">Total</th>
+                <th style="padding: 10px; text-align: center;">Diferencia</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows}
+              <tr style="border-top: 2px solid #333; font-weight: bold;">
+                <td colspan="${salesHeader ? '4' : '3'}" style="padding: 10px; text-align: right;">Total General:</td>
+                <td style="padding: 10px; text-align: right;">$${grandTotal.toFixed(2)}</td>
+                <td></td>
+              </tr>
+            </tbody>
+          </table>
+          <div style="margin-top: 16px; background: #f0f5ff; padding: 16px; border-radius: 8px; text-align: center; border: 1px dashed #3b82f6;">
+            <p style="margin: 0; color: #1e40af; font-weight: bold;">PDF adjunto con detalle completo de cada caja</p>
+            <p style="margin: 4px 0 0 0; color: #6b7280; font-size: 12px;">Productos vendidos, metodos de pago, gastos, entradas y mas por cada caja cerrada</p>
+          </div>
+          <p style="margin-top: 16px; color: #999; font-size: 12px; text-align: center;">
+            JO-Administrativo - Sistema de Gestion
+          </p>
+        </div>
+      `,
+      attachments: [
+        {
+          filename,
+          content: data.pdfBuffer,
+        },
+      ],
+    })
+
+    console.log(`[Email] Mass cash close notification with PDF sent to ${adminEmail}`)
+    return true
+  } catch (error) {
+    console.error('[Email] Failed to send mass cash close notification:', error)
+    return false
+  }
+}
+
+// ─── Legacy functions (kept for backward compatibility) ───────────────────────
+
+export async function sendCashCloseEmail(data: CashCloseData): Promise<boolean> {
+  try {
+    const adminEmail = await getAdminEmail()
+    if (!adminEmail) {
+      console.log('[Email] No admin email configured, skipping cash close notification')
+      return false
+    }
+
+    const fromEmail = getFromEmail()
+    const diffText = fmtDiff(data.difference)
 
     await resend.emails.send({
       from: fromEmail,
@@ -123,19 +348,16 @@ export async function sendCashCloseAllEmail(cuts: Array<{
   difference: number
   totalSales: number
   totalExpenses: number
+  totalRetiros: number
 }>): Promise<boolean> {
   try {
-    const { db } = await import('@/lib/db')
-    const settings = await db.settings.findFirst()
-    const adminEmail = settings?.email || process.env.ADMIN_EMAIL
-
+    const adminEmail = await getAdminEmail()
     if (!adminEmail) {
       console.log('[Email] No admin email configured, skipping cash close notification')
       return false
     }
 
-    const fromEmail = process.env.RESEND_FROM || 'JO-Administrativo <onboarding@resend.dev>'
-
+    const fromEmail = getFromEmail()
     const grandTotal = cuts.reduce((sum, c) => sum + c.actual, 0)
 
     const rows = cuts.map(c => {

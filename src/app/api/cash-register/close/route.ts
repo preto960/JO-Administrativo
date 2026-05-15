@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
+import { buildReportFromRegister, generateCashClosePDF } from '@/lib/cash-close-pdf'
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,7 +14,14 @@ export async function POST(request: NextRequest) {
     const register = await db.cashRegister.findUnique({
       where: { id: cashRegId },
       include: {
-        sales: { where: { status: 'completada' }, include: { payments: true } },
+        sales: {
+          where: { status: 'completada' },
+          include: {
+            payments: { include: { currency: { select: { code: true } } } },
+            lines: { include: { product: { select: { name: true } } } },
+            client: { select: { name: true } },
+          },
+        },
         movements: true,
         user: { select: { id: true, name: true, email: true } },
         branch: { select: { id: true, name: true } },
@@ -76,22 +84,47 @@ export async function POST(request: NextRequest) {
       })
     })
 
-    // Send email notification to admin (async, don't block response)
-    import('@/lib/email').then(({ sendCashCloseEmail }) => {
-      sendCashCloseEmail({
-        cashierName: register.user.name,
-        registerName: register.name,
-        branchName: register.branch.name,
-        openingDate: register.openingDate,
-        closingDate,
-        initialAmt: register.initialAmt,
-        expected,
-        actual: actualAmt,
-        difference,
-        totalSales,
-        totalExpenses,
-        totalRetiros,
-      }).catch(() => {})
+    // Send email with PDF report to admin (async, don't block response)
+    import('@/lib/email').then(async ({ sendCashCloseEmailWithPDF }) => {
+      try {
+        const settings = await db.settings.findFirst()
+        const report = await buildReportFromRegister(
+          register as any,
+          closingDate,
+          actualAmt,
+          expected,
+          difference,
+          totalSales,
+          totalExpenses,
+          totalEntries,
+          totalRetiros,
+          settings?.businessName || 'JO-Administrativo',
+          settings?.rif || '',
+          settings?.address || '',
+          settings?.phone || '',
+          settings?.exchangeRate || 0,
+          settings?.referenceCurrency || 'USD',
+        )
+        const pdfBuffer = await generateCashClosePDF(report)
+        await sendCashCloseEmailWithPDF({
+          cashierName: register.user.name,
+          registerName: register.name,
+          branchName: register.branch.name,
+          openingDate: register.openingDate,
+          closingDate,
+          initialAmt: register.initialAmt,
+          expected,
+          actual: actualAmt,
+          difference,
+          totalSales,
+          totalExpenses,
+          totalRetiros,
+          salesCount: register.sales.length,
+          pdfBuffer,
+        })
+      } catch (e) {
+        console.error('[Email] Failed to generate/send PDF for cash close:', e)
+      }
     })
 
     // Create notification for the cashier whose register was closed

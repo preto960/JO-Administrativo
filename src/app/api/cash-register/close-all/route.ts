@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { resolveBranchId } from '@/lib/resolve-branch'
+import { buildReportFromRegister, generateMultiCashClosePDF, type CashCloseReport } from '@/lib/cash-close-pdf'
 
 export async function POST(request: NextRequest) {
   try {
@@ -10,7 +11,14 @@ export async function POST(request: NextRequest) {
     const openRegisters = await db.cashRegister.findMany({
       where: { branchId, status: 'abierta' },
       include: {
-        sales: { where: { status: 'completada' }, include: { payments: true } },
+        sales: {
+          where: { status: 'completada' },
+          include: {
+            payments: { include: { currency: { select: { code: true } } } },
+            lines: { include: { product: { select: { name: true } } } },
+            client: { select: { name: true } },
+          },
+        },
         movements: true,
         user: { select: { id: true, name: true, email: true } },
         branch: { select: { id: true, name: true } },
@@ -22,7 +30,7 @@ export async function POST(request: NextRequest) {
     }
 
     const results = await db.$transaction(async (tx) => {
-      const cuts = []
+      const cuts: any[] = []
       for (const register of openRegisters) {
         const totalSales = register.sales.reduce((sum, sale) => {
           return sum + sale.payments
@@ -72,11 +80,20 @@ export async function POST(request: NextRequest) {
       return cuts
     })
 
-    // Send email notification to admin (async)
+    // Send email with PDF report to admin (async)
     const closingDate = new Date()
-    import('@/lib/email').then(({ sendCashCloseAllEmail }) => {
-      sendCashCloseAllEmail(
-        openRegisters.map(r => {
+    import('@/lib/email').then(async ({ sendCashCloseAllEmailWithPDF }) => {
+      try {
+        const settings = await db.settings.findFirst()
+        const businessName = settings?.businessName || 'JO-Administrativo'
+        const businessRif = settings?.rif || ''
+        const businessAddress = settings?.address || ''
+        const businessPhone = settings?.phone || ''
+        const exchangeRate = settings?.exchangeRate || 0
+        const referenceCurrency = settings?.referenceCurrency || 'USD'
+
+        const reports: CashCloseReport[] = []
+        for (const r of openRegisters) {
           const totalSales = r.sales.reduce((sum, sale) => {
             return sum + sale.payments.filter(p => p.method === 'efectivo').reduce((s, p) => s + p.amount, 0)
           }, 0)
@@ -84,22 +101,58 @@ export async function POST(request: NextRequest) {
           const totalEntries = r.movements.filter(m => m.type === 'entrada').reduce((sum, m) => sum + m.amount, 0)
           const totalRetiros = r.movements.filter(m => m.type === 'retiro_excedente').reduce((sum, m) => sum + m.amount, 0)
           const expected = Math.round((r.initialAmt + totalSales + totalEntries - totalExpenses - totalRetiros) * 100) / 100
-          return {
-            cashierName: r.user.name,
-            registerName: r.name,
-            branchName: r.branch.name,
-            openingDate: r.openingDate,
+
+          reports.push(await buildReportFromRegister(
+            r as any,
             closingDate,
-            initialAmt: r.initialAmt,
             expected,
-            actual: expected,
-            difference: 0,
+            expected,
+            0,
             totalSales,
             totalExpenses,
+            totalEntries,
             totalRetiros,
-          }
+            businessName,
+            businessRif,
+            businessAddress,
+            businessPhone,
+            exchangeRate,
+            referenceCurrency,
+          ))
+        }
+
+        const pdfBuffer = await generateMultiCashClosePDF(reports)
+        await sendCashCloseAllEmailWithPDF({
+          registersCount: openRegisters.length,
+          cuts: openRegisters.map(r => {
+            const totalSales = r.sales.reduce((sum, sale) => {
+              return sum + sale.payments.filter(p => p.method === 'efectivo').reduce((s, p) => s + p.amount, 0)
+            }, 0)
+            const totalExpenses = r.movements.filter(m => m.type === 'salida').reduce((sum, m) => sum + m.amount, 0)
+            const totalEntries = r.movements.filter(m => m.type === 'entrada').reduce((sum, m) => sum + m.amount, 0)
+            const totalRetiros = r.movements.filter(m => m.type === 'retiro_excedente').reduce((sum, m) => sum + m.amount, 0)
+            const expected = Math.round((r.initialAmt + totalSales + totalEntries - totalExpenses - totalRetiros) * 100) / 100
+            return {
+              cashierName: r.user.name,
+              registerName: r.name,
+              branchName: r.branch.name,
+              openingDate: r.openingDate,
+              closingDate,
+              initialAmt: r.initialAmt,
+              expected,
+              actual: expected,
+              difference: 0,
+              totalSales,
+              totalExpenses,
+              totalRetiros,
+              salesCount: r.sales.length,
+            }
+          }),
+          pdfBuffer,
         })
-      ).catch(() => {})
+      } catch (e) {
+        console.error('[Email] Failed to generate/send PDF for mass cash close:', e)
+      }
     })
 
     // Create notifications for all cashiers whose registers were closed
