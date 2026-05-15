@@ -41,8 +41,9 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import { Plus, Search, Edit, Trash2, Package, Eye, EyeOff } from 'lucide-react'
+import { Plus, Search, Edit, Trash2, Package, Eye, EyeOff, Upload } from 'lucide-react'
 import { toast } from 'sonner'
+import { ProductImportDialog } from './product-import-dialog'
 
 // ── Interfaces ──────────────────────────────────────────────────────────────
 
@@ -107,6 +108,7 @@ export function ProductsTable() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [productToDelete, setProductToDelete] = useState<Product | null>(null)
   const [editProduct, setEditProduct] = useState<Product | null>(null)
+  const [importOpen, setImportOpen] = useState(false)
 
   // Form state
   const [formName, setFormName] = useState('')
@@ -381,6 +383,12 @@ export function ProductsTable() {
             className="bg-primary hover:bg-primary/90 text-white"
           >
             <Plus className="mr-2 h-4 w-4" /> Nuevo
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => setImportOpen(true)}
+          >
+            <Upload className="mr-2 h-4 w-4" /> Importar
           </Button>
         </div>
       </div>
@@ -695,6 +703,13 @@ export function ProductsTable() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Import Dialog */}
+      <ProductImportDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        onImportComplete={fetchData}
+      />
     </div>
   )
 }
