@@ -28,15 +28,16 @@ import {
 } from '@/components/ui/sidebar'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useAuth } from '@/hooks/use-auth'
+import { canAccessView } from '@/lib/permissions'
 
-const navItems: { view: AppView; label: string; icon: React.ElementType; roles: string[] }[] = [
-  { view: 'pos', label: 'Punto de Venta', icon: ShoppingCart, roles: ['admin', 'gerente', 'cajero', 'vendedor'] },
-  { view: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['admin', 'gerente'] },
-  { view: 'products', label: 'Productos', icon: Package, roles: ['admin', 'gerente', 'vendedor'] },
-  { view: 'clients', label: 'Clientes', icon: Users, roles: ['admin', 'gerente', 'vendedor'] },
-  { view: 'suppliers', label: 'Proveedores', icon: Building2, roles: ['admin', 'gerente'] },
-  { view: 'cash', label: 'Caja', icon: Wallet, roles: ['admin', 'gerente', 'cajero'] },
-  { view: 'expenses', label: 'Gastos', icon: Receipt, roles: ['admin', 'gerente'] },
+const navItems: { view: AppView; label: string; icon: React.ElementType }[] = [
+  { view: 'pos', label: 'Punto de Venta', icon: ShoppingCart },
+  { view: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { view: 'products', label: 'Productos', icon: Package },
+  { view: 'clients', label: 'Clientes', icon: Users },
+  { view: 'suppliers', label: 'Proveedores', icon: Building2 },
+  { view: 'cash', label: 'Caja', icon: Wallet },
+  { view: 'expenses', label: 'Gastos', icon: Receipt },
 ]
 
 export function AppSidebar() {
@@ -48,7 +49,7 @@ export function AppSidebar() {
   const logoUrl = useSetting('logoUrl')
   const { setOpenMobile } = useSidebar()
 
-  const visibleItems = navItems.filter(item => item.roles.includes(userRole))
+  const visibleItems = navItems.filter(item => canAccessView(userRole, item.view))
 
   const handleNavClick = (view: AppView) => {
     setActiveView(view)
@@ -94,7 +95,7 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
       <SidebarFooter>
-        {(userRole === 'admin') && (
+        {canAccessView(userRole, 'settings') && (
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton
