@@ -875,7 +875,7 @@ export function ProductsTable() {
                 Selecciona productos y la cantidad de etiquetas por producto
               </DrawerDescription>
             </DrawerHeader>
-            <div className="px-4 pb-4 overflow-auto flex-1" style={{ maxHeight: '70vh' }}>
+            <div className="px-4 pb-4 flex flex-col" style={{ height: 'calc(70vh - 80px)', minHeight: '300px' }}>
               <BarcodeLabelSelector products={filteredProducts} onClose={() => setShowBarcodeDialog(false)} />
             </div>
           </DrawerContent>

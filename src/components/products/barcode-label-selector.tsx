@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Loader2, Printer, X } from 'lucide-react'
+import { Loader2, Printer, X, CheckCheck } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface ProductItem {
@@ -94,33 +94,42 @@ export function BarcodeLabelSelector({ products, onClose }: BarcodeLabelSelector
   }
 
   return (
-    <div className="flex flex-col gap-3 flex-1 min-h-0">
-      {/* Controls */}
-      <div className="flex items-center gap-3">
-        <div className="flex items-center gap-2">
-          <label className="text-sm text-muted-foreground">Cant. por defecto:</label>
-          <Input
-            type="number"
-            min="1"
-            max="100"
-            value={defaultQty}
-            onChange={(e) => setDefaultQty(e.target.value)}
-            className="w-20 h-8"
-          />
+    <div className="flex flex-col gap-3 flex-1 min-h-0 overflow-hidden">
+      {/* Controls — responsive: stack on mobile, row on desktop */}
+      <div className="space-y-2">
+        {/* Top row: default qty + counter */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-2">
+            <label className="text-xs sm:text-sm text-muted-foreground whitespace-nowrap">Cant. por defecto:</label>
+            <Input
+              type="number"
+              min="1"
+              max="100"
+              value={defaultQty}
+              onChange={(e) => setDefaultQty(e.target.value)}
+              className="w-16 h-8 text-sm"
+            />
+          </div>
+          <span className="ml-auto text-xs sm:text-sm text-muted-foreground font-medium">
+            {selected.size} producto{selected.size !== 1 ? 's' : ''} &middot; {totalLabels} etiqueta{totalLabels !== 1 ? 's' : ''}
+          </span>
         </div>
-        <Button variant="outline" size="sm" onClick={selectAll}>
-          Seleccionar todos
-        </Button>
-        <Button variant="outline" size="sm" onClick={clearAll}>
-          <X className="mr-1 h-3 w-3" /> Limpiar
-        </Button>
-        <div className="ml-auto text-sm text-muted-foreground">
-          {selected.size} producto{selected.size !== 1 ? 's' : ''} · {totalLabels} etiquetas
+
+        {/* Bottom row: action buttons — full width on mobile */}
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={selectAll} className="flex-1 sm:flex-none">
+            <CheckCheck className="h-3.5 w-3.5 sm:mr-1.5" />
+            <span className="sm:inline">Todos</span>
+          </Button>
+          <Button variant="outline" size="sm" onClick={clearAll} className="flex-1 sm:flex-none">
+            <X className="h-3.5 w-3.5 sm:mr-1.5" />
+            <span className="sm:inline">Limpiar</span>
+          </Button>
         </div>
       </div>
 
       {/* Product list */}
-      <ScrollArea className="flex-1 border rounded-lg">
+      <ScrollArea className="flex-1 border rounded-lg min-h-0">
         <div className="p-2 space-y-1">
           {products.filter(p => p.active).map((product) => {
             const isSelected = selected.has(product.id)
@@ -128,7 +137,7 @@ export function BarcodeLabelSelector({ products, onClose }: BarcodeLabelSelector
             return (
               <div
                 key={product.id}
-                className={`flex items-center gap-3 p-2 rounded-md cursor-pointer transition-colors ${
+                className={`flex items-center gap-2 sm:gap-3 p-2 rounded-md cursor-pointer transition-colors ${
                   isSelected ? 'bg-primary/5 border border-primary/20' : 'hover:bg-muted/50'
                 }`}
                 onClick={() => toggleProduct(product.id)}
@@ -137,11 +146,11 @@ export function BarcodeLabelSelector({ products, onClose }: BarcodeLabelSelector
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate">{product.name}</p>
                   <p className="text-xs text-muted-foreground">
-                    {product.sku || 'Sin SKU'} · {product.currency.symbol}{product.price.toFixed(2)}
+                    {product.sku || 'Sin SKU'} &middot; {product.currency.symbol}{product.price.toFixed(2)}
                   </p>
                 </div>
                 {isSelected && (
-                  <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
                     <Button
                       variant="outline"
                       size="sm"
