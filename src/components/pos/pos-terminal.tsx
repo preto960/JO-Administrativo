@@ -10,10 +10,11 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Drawer, DrawerTrigger, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription } from '@/components/ui/drawer'
-import { Search, ShoppingCart, AlertTriangle, ScanBarcode, X } from 'lucide-react'
+import { Search, ShoppingCart, AlertTriangle, ScanBarcode, X, Camera } from 'lucide-react'
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { toast } from 'sonner'
+import { BarcodeScannerDialog } from './barcode-scanner-dialog'
 
 interface ProductWithInventory {
   id: string
@@ -48,6 +49,7 @@ export function PosTerminal() {
   const [cartOpen, setCartOpen] = useState(false)
   const [showBarcodeInput, setShowBarcodeInput] = useState(false)
   const [barcodeValue, setBarcodeValue] = useState('')
+  const [showCameraScanner, setShowCameraScanner] = useState(false)
   const searchRef = useRef<HTMLInputElement>(null)
   const barcodeRef = useRef<HTMLInputElement>(null)
   const isMobile = useIsMobile()
@@ -270,11 +272,21 @@ export function PosTerminal() {
               size="icon"
               className="h-10 w-10 shrink-0 border-primary/30 hover:bg-primary/10 hover:text-primary"
               onClick={toggleBarcodeInput}
-              title="Escanear código de barras (busca por SKU)"
+              title="Escanear con lector externo (SKU)"
             >
               <ScanBarcode className="h-4 w-4" />
             </Button>
           )}
+          {/* Camera barcode scanner button */}
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-10 w-10 shrink-0 border-emerald-300 hover:bg-emerald-50 hover:text-emerald-600 dark:border-emerald-700 dark:hover:bg-emerald-950/30 dark:hover:text-emerald-400"
+            onClick={() => setShowCameraScanner(true)}
+            title="Escanear con camara"
+          >
+            <Camera className="h-4 w-4" />
+          </Button>
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -426,6 +438,13 @@ export function PosTerminal() {
 
       {/* Payment Modal */}
       {showPayment && <PosPaymentModal onClose={handlePaymentSuccess} />}
+
+      {/* Camera Barcode Scanner */}
+      <BarcodeScannerDialog
+        open={showCameraScanner}
+        onClose={() => setShowCameraScanner(false)}
+        onScan={handleBarcodeScan}
+      />
     </div>
   )
 }

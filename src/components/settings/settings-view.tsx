@@ -687,7 +687,7 @@ export function SettingsView() {
                       step="0.01"
                       min="0"
                       max="100"
-                      value={settings.ivaRate.toFixed(2)}
+                      value={(settings.ivaRate ?? 0).toFixed(2)}
                       onChange={(e) => setSettings({ ...settings, ivaRate: parseFloat(e.target.value) || 0 })}
                       disabled={!settings.ivaEnabled}
                       className="w-32"
@@ -709,12 +709,12 @@ export function SettingsView() {
                         <span>$100.00</span>
                       </div>
                       <div className="flex items-center justify-between text-sm">
-                        <span>I.V.A. ({settings.ivaRate.toFixed(2)}%):</span>
-                        <span className="text-blue-600 font-medium">${(100 * settings.ivaRate / 100).toFixed(2)}</span>
+                        <span>I.V.A. ({(settings.ivaRate ?? 0).toFixed(2)}%):</span>
+                        <span className="text-blue-600 font-medium">${(100 * (settings.ivaRate ?? 0) / 100).toFixed(2)}</span>
                       </div>
                       <div className="flex items-center justify-between text-sm font-bold border-t pt-2 mt-2">
                         <span>Total con IVA:</span>
-                        <span className="text-primary">${(100 * (1 + settings.ivaRate / 100)).toFixed(2)}</span>
+                        <span className="text-primary">${(100 * (1 + (settings.ivaRate ?? 0) / 100)).toFixed(2)}</span>
                       </div>
                     </div>
                   </>
