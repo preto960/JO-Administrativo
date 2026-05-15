@@ -1,7 +1,7 @@
 /**
  * Client-side BCV scraper.
- * Fetches bcv.org.ve directly from the user's browser (Venezuela IP),
- * which avoids server-side network restrictions.
+ * Uses Next.js rewrites proxy (/bcv-proxy/) to bypass CORS,
+ * then extracts rates from the BCV HTML.
  */
 
 const MIN_RATE = 1
@@ -184,9 +184,11 @@ export async function scrapeBcvFromClient(): Promise<{
 } | null> {
   const results: RawRate[] = []
 
+  // Use Next.js rewrite proxy to bypass CORS (requests go through our own server)
+  const proxyBase = '/bcv-proxy'
   const endpoints = [
-    'https://www.bcv.org.ve/',
-    'https://www.bcv.org.ve/tasas-informativas-sistema-bancario',
+    `${proxyBase}/`,
+    `${proxyBase}/tasas-informativas-sistema-bancario`,
   ]
 
   for (const url of endpoints) {

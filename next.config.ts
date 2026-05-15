@@ -15,6 +15,14 @@ const nextConfig: NextConfig = {
       ? process.env.DATABASE_URL
       : "postgresql://neondb_owner:npg_ICHtoF39sBOg@ep-flat-salad-apfgfrde-pooler.c-7.us-east-1.aws.neon.tech/neondb?channel_binding=require&sslmode=require",
   },
+  async rewrites() {
+    return [
+      {
+        source: "/bcv-proxy/:path*",
+        destination: "https://www.bcv.org.ve/:path*",
+      },
+    ]
+  },
 };
 
 export default nextConfig;
