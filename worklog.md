@@ -227,3 +227,27 @@ Stage Summary:
 - Commit f1692e1 pushed to https://github.com/preto960/JO-Administrativo.git
 - Exchange rate flow: User clicks "Actualizar" → client-side BCV scrape → POST to server → saved to Settings table → on reload, GET /api/settings returns saved values
 - No auto-fetch on page load (prevents overwriting)
+
+---
+Task ID: 1
+Agent: Main Agent
+Task: Rediseñar vista de Caja para ser más intuitiva
+
+Work Log:
+- Analicé la imagen enviada por el usuario (captura de pantalla de la vista de Caja actual)
+- Leí el archivo completo cash-register-view.tsx (990 líneas)
+- Rediseñé completamente el layout de la vista:
+  - **Header principal**: Tarjeta grande con resumen de efectivo total, cantidad de cajas abiertas, ventas totales y estado operativo. Panel lateral con botones de acción (Abrir Caja, Movimiento, Cerrar Todas).
+  - **Cajas Abiertas**: Reemplacé la tabla densa con tarjetas visuales individuales. Cada tarjeta muestra nombre, cajero, montos (inicial/actual/diferencia), hora de apertura, sucursal, ventas, y botones de acción con tooltips.
+  - **Historial**: Reemplacé la tabla con filas colapsables/expandibles. Cada fila muestra resumen y al expandir muestra detalles completos.
+  - **Estado vacío**: Agregué pantallas amigables cuando no hay cajas abiertas (con diferentes mensajes para admin vs cajero).
+  - **Diálogos**: Mejoré todos los diálogos con iconos, loaders en botones y tamaños más compactos.
+  - Agregué tooltips a los botones de acción de las tarjetas.
+  - Separé registros cerrados de abiertos en la lógica.
+- Verificé compilación exitosa con `next build`
+
+Stage Summary:
+- Archivo modificado: src/components/cash/cash-register-view.tsx
+- Build exitoso sin errores
+- La vista ahora es más visual e intuitiva con tarjetas, tooltips y mejor jerarquía
+

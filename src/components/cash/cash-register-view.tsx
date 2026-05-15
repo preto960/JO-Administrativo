@@ -33,7 +33,18 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Wallet, Plus, ArrowUpCircle, ArrowDownCircle, Lock, Eye, Loader2, UserCircle, AlertTriangle, Banknote, ClipboardCheck, CheckCircle2 } from 'lucide-react'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
+import {
+  Wallet, Plus, ArrowUpCircle, ArrowDownCircle, Lock, Eye, Loader2,
+  UserCircle, AlertTriangle, Banknote, ClipboardCheck, CheckCircle2,
+  Clock, ShoppingCart, Building2, TrendingUp, CircleDollarSign,
+  ChevronDown, ChevronRight,
+} from 'lucide-react'
 import { toast } from 'sonner'
 
 interface CashRegister {
@@ -90,6 +101,7 @@ export function CashRegisterView() {
   const [saving, setSaving] = useState(false)
   const [closeActual, setCloseActual] = useState('')
   const [closingAll, setClosingAll] = useState(false)
+  const [expandedHistory, setExpandedHistory] = useState<string | null>(null)
 
   // Retiro de Excedente state
   const [showWithdrawal, setShowWithdrawal] = useState(false)
@@ -111,14 +123,12 @@ export function CashRegisterView() {
   const fetchData = async (branchOverride?: string) => {
     try {
       const branchParam = branchOverride || filterBranchId || selectedBranchId || ''
-      // Fetch registers for the selected branch (or all if no filter)
       const url = branchParam
         ? `/api/cash-register?branchId=${branchParam}`
         : '/api/cash-register'
       const regs = await api.get<CashRegister[]>(url)
       setRegisters(regs)
 
-      // Only admin/gerente can see users list for cashier assignment
       if (!isCashier) {
         const users = await api.get<{ id: string; name: string; role: string; active: boolean }[]>('/api/users?role=cajero')
         setAvailableUsers(users.filter(u => u.active))
@@ -130,7 +140,6 @@ export function CashRegisterView() {
     }
   }
 
-  // Sync local filter with store branch — react to header branch changes
   useEffect(() => {
     const mainBranch = branches.find(b => b.isMain && b.active)
     const targetBranch = selectedBranchId || mainBranch?.id || ''
@@ -139,7 +148,6 @@ export function CashRegisterView() {
     }
   }, [selectedBranchId, branches])
 
-  // Initialize branch filter on mount
   useEffect(() => {
     const mainBranch = branches.find(b => b.isMain && b.active)
     const defaultBranch = selectedBranchId || mainBranch?.id || ''
@@ -152,7 +160,6 @@ export function CashRegisterView() {
     }
   }, [filterBranchId])
 
-  // Check if cashier's register was closed
   useEffect(() => {
     if (!isCashier || !user?.id) return
     api.get<{ wasClosed: boolean; register?: { name: string | null; branchName: string; closingDate: string; actual: number; cutDate: string } }>(`/api/cash-register/check?userId=${user.id}`)
@@ -166,7 +173,9 @@ export function CashRegisterView() {
   }, [isCashier, user?.id])
 
   const openRegisters = registers.filter(r => r.status === 'abierta')
+  const closedRegisters = registers.filter(r => r.status === 'cerrada')
   const totalOpenAmt = openRegisters.reduce((sum, r) => sum + r.currentAmt, 0)
+  const totalSales = openRegisters.reduce((sum, r) => sum + r._count.sales, 0)
 
   const openRegister = async () => {
     setSaving(true)
@@ -349,12 +358,31 @@ export function CashRegisterView() {
     }
   }
 
+  const formatTime = (dateStr: string) => {
+    return new Date(dateStr).toLocaleString('es-VE', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  }
+
+  const formatTimeShort = (dateStr: string) => {
+    return new Date(dateStr).toLocaleString('es-VE', {
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  }
+
   if (loading) {
     return <div className="h-64 rounded-lg bg-muted animate-pulse" />
   }
 
   return (
-    <div className="space-y-4">
+    <TooltipProvider delayDuration={300}>
+    <div className="space-y-5">
+
       {/* Register Closure Alert for Cashiers */}
       {showClosedAlert && closedInfo && (
         <Card className="border-red-300 bg-red-50 dark:bg-red-950/30 dark:border-red-800">
@@ -376,7 +404,6 @@ export function CashRegisterView() {
             <Button variant="outline" onClick={() => {
               setShowClosedAlert(false)
               setClosedInfo(null)
-              // Refresh data
               fetchData(filterBranchId)
             }}>
               Entendido
@@ -385,243 +412,371 @@ export function CashRegisterView() {
         </Card>
       )}
 
-
-
-      {/* Summary Cards */}
-      <div className="grid gap-3 grid-cols-1 sm:grid-cols-3">
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="rounded-full bg-primary/10 p-2 dark:bg-primary/10">
-              <Wallet className="h-5 w-5 text-primary dark:text-primary" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">
-                {openRegisters.length > 1 ? `Total (${openRegisters.length} cajas)` : 'Caja Actual'}
-              </p>
-              <p className="text-2xl font-bold text-primary dark:text-primary">
-                ${totalOpenAmt.toFixed(2)}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="rounded-full bg-amber-100 p-2 dark:bg-amber-900/30">
-              <ArrowUpCircle className="h-5 w-5 text-amber-700 dark:text-amber-400" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Estado</p>
-              <p className="text-lg font-bold">
-                {openRegisters.length > 0 ? (
-                  <Badge className="bg-primary">{openRegisters.length} Abierta{openRegisters.length > 1 ? 's' : ''}</Badge>
-                ) : (
-                  <Badge variant="secondary">Cerrada</Badge>
-                )}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 flex items-center justify-between">
-            <div>
-              <p className="text-xs text-muted-foreground">Acciones</p>
-              <div className="flex gap-2 mt-1 flex-wrap">
-                {!isCashier && (
-                  <>
-                    <Button size="sm" variant="outline" onClick={() => {
-                      if (openRegisters.length === 1) {
-                        setMovementRegId(openRegisters[0].id)
-                      }
-                      setShowMovement(true)
-                    }}>
-                      <ArrowDownCircle className="mr-1 h-3 w-3" /> Movimiento
-                    </Button>
-                    {openRegisters.length > 0 && (
-                      <Button size="sm" variant="outline" className="text-red-600" onClick={closeAllRegisters} disabled={closingAll}>
-                        {closingAll ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Lock className="mr-1 h-3 w-3" />}
-                        Cerrar Todas
-                      </Button>
-                    )}
-                    <Button size="sm" className="bg-primary hover:bg-primary/90 text-white" onClick={() => setShowOpen(true)}>
-                      <Plus className="mr-1 h-3 w-3" /> Abrir Caja
-                    </Button>
-                  </>
-                )}
-                {isCashier && (
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Modo cajero
-                  </p>
-                )}
-                {openRegisters.length > 0 && (
-                  <>
-                    <Button size="sm" variant="outline" className="text-orange-600 border-orange-300 hover:bg-orange-50" onClick={() => {
-                      if (openRegisters.length === 1) {
-                        setWithdrawalRegId(openRegisters[0].id)
-                      }
-                      setShowWithdrawal(true)
-                    }}>
-                      <Banknote className="mr-1 h-3 w-3" /> Retiro
-                    </Button>
-                    <Button size="sm" variant="outline" className="text-emerald-600 border-emerald-300 hover:bg-emerald-50" onClick={() => {
-                      if (openRegisters.length === 1) {
-                        setAuditRegId(openRegisters[0].id)
-                      }
-                      setShowAudit(true)
-                    }}>
-                      <ClipboardCheck className="mr-1 h-3 w-3" /> Arqueo
-                    </Button>
-                  </>
-                )}
+      {/* ===== MAIN HEADER: Summary + Actions ===== */}
+      <Card className="overflow-hidden">
+        <div className="flex flex-col lg:flex-row">
+          {/* Left: Main summary */}
+          <div className="flex-1 bg-gradient-to-br from-primary/5 via-primary/[0.02] to-transparent p-5 lg:p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="rounded-xl bg-primary/10 p-2.5">
+                <Wallet className="h-6 w-6 text-primary" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground font-medium">Efectivo en Caja</p>
+                <p className="text-3xl font-bold tracking-tight text-primary">
+                  ${totalOpenAmt.toFixed(2)}
+                </p>
               </div>
             </div>
-          </CardContent>
-        </Card>
-      </div>
+            <div className="flex flex-wrap gap-4 text-sm">
+              <div className="flex items-center gap-1.5 text-muted-foreground">
+                <CircleDollarSign className="h-4 w-4" />
+                <span>
+                  {openRegisters.length > 0
+                    ? `${openRegisters.length} caja${openRegisters.length > 1 ? 's' : ''} abierta${openRegisters.length > 1 ? 's' : ''}`
+                    : 'Sin cajas abiertas'}
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 text-muted-foreground">
+                <ShoppingCart className="h-4 w-4" />
+                <span>{totalSales} venta{totalSales !== 1 ? 's' : ''}</span>
+              </div>
+              {openRegisters.length > 0 && (
+                <div className={`flex items-center gap-1.5 font-medium ${openRegisters.length > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}`}>
+                  <div className={`h-2 w-2 rounded-full ${openRegisters.length > 0 ? 'bg-emerald-500 animate-pulse' : 'bg-muted-foreground'}`} />
+                  Operativa
+                </div>
+              )}
+            </div>
+          </div>
 
-      {/* Open Registers */}
+          {/* Right: Actions */}
+          <div className="border-t lg:border-t-0 lg:border-l p-4 lg:p-6 bg-muted/30 flex flex-col gap-2 justify-center min-w-[200px]">
+            {!isCashier && (
+              <>
+                <Button className="w-full justify-start gap-2 bg-primary hover:bg-primary/90 text-white" onClick={() => setShowOpen(true)}>
+                  <Plus className="h-4 w-4" /> Abrir Caja
+                </Button>
+                {openRegisters.length > 0 && (
+                  <>
+                    <Button variant="outline" className="w-full justify-start gap-2" onClick={() => {
+                      if (openRegisters.length === 1) setMovementRegId(openRegisters[0].id)
+                      setShowMovement(true)
+                    }}>
+                      <ArrowDownCircle className="h-4 w-4" /> Movimiento
+                    </Button>
+                    <Button variant="outline" className="w-full justify-start gap-2 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30" onClick={closeAllRegisters} disabled={closingAll}>
+                      {closingAll ? <Loader2 className="h-4 w-4 animate-spin" /> : <Lock className="h-4 w-4" />}
+                      Cerrar Todas
+                    </Button>
+                  </>
+                )}
+              </>
+            )}
+            {isCashier && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground py-1">
+                <UserCircle className="h-4 w-4" />
+                Modo cajero - solo lectura
+              </div>
+            )}
+          </div>
+        </div>
+      </Card>
+
+      {/* ===== OPEN REGISTERS (Card layout) ===== */}
       {openRegisters.length > 0 && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">Cajas Abiertas</CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Caja</TableHead>
-                    <TableHead>Cajero</TableHead>
-                    <TableHead>Sucursal</TableHead>
-                    <TableHead>Apertura</TableHead>
-                    <TableHead className="text-right">Inicial</TableHead>
-                    <TableHead className="text-right">Actual</TableHead>
-                    <TableHead className="text-right">Ventas</TableHead>
-                    <TableHead className="text-right">Acciones</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {openRegisters.map((reg) => (
-                    <TableRow key={reg.id}>
-                      <TableCell className="font-medium">{reg.name || '—'}</TableCell>
-                      <TableCell className="text-sm">{reg.user.name}</TableCell>
-                      <TableCell className="text-sm">
-                        <Badge variant="outline" className="text-xs">{reg.branch.name}</Badge>
-                      </TableCell>
-                      <TableCell className="text-sm">
-                        {new Date(reg.openingDate).toLocaleString('es-VE')}
-                      </TableCell>
-                      <TableCell className="text-right">${reg.initialAmt.toFixed(2)}</TableCell>
-                      <TableCell className="text-right font-semibold">${reg.currentAmt.toFixed(2)}</TableCell>
-                      <TableCell className="text-right">
-                        <Badge variant="outline">{reg._count.sales}</Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-1">
-                          {!isCashier && (
-                            <>
-                              <Button size="sm" variant="ghost" onClick={() => {
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+              Cajas Abiertas
+            </h2>
+          </div>
+          <div className="grid gap-3 grid-cols-1 md:grid-cols-2 xl:grid-cols-3">
+            {openRegisters.map((reg) => {
+              const earnings = reg.currentAmt - reg.initialAmt
+              const isPositive = earnings >= 0
+              return (
+                <Card key={reg.id} className="relative overflow-hidden border-l-4 border-l-emerald-500">
+                  <CardContent className="p-4 space-y-3">
+                    {/* Header */}
+                    <div className="flex items-start justify-between">
+                      <div className="min-w-0 flex-1">
+                        <h3 className="font-semibold text-base truncate">
+                          {reg.name || 'Sin nombre'}
+                        </h3>
+                        <div className="flex items-center gap-1.5 mt-1 text-sm text-muted-foreground">
+                          <UserCircle className="h-3.5 w-3.5 shrink-0" />
+                          <span className="truncate">{reg.user.name}</span>
+                        </div>
+                      </div>
+                      <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-800 shrink-0">
+                        Abierta
+                      </Badge>
+                    </div>
+
+                    {/* Amounts */}
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="text-center">
+                        <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Inicial</p>
+                        <p className="text-sm font-semibold">${reg.initialAmt.toFixed(2)}</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Actual</p>
+                        <p className="text-lg font-bold text-primary">${reg.currentAmt.toFixed(2)}</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-[11px] text-muted-foreground uppercase tracking-wide">
+                          <TrendingUp className="h-3 w-3 inline" />
+                        </p>
+                        <p className={`text-sm font-semibold ${isPositive ? 'text-emerald-600' : 'text-red-600'}`}>
+                          {isPositive ? '+' : ''}{earnings.toFixed(2)}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Meta info */}
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                      <div className="flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        Apertura: {formatTimeShort(reg.openingDate)}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Building2 className="h-3 w-3" />
+                        {reg.branch.name}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <ShoppingCart className="h-3 w-3" />
+                        {reg._count.sales} venta{reg._count.sales !== 1 ? 's' : ''}
+                      </div>
+                    </div>
+
+                    {/* Action buttons */}
+                    <Separator />
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {!isCashier && (
+                        <>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button size="sm" variant="ghost" className="h-8 px-2.5 text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950/30" onClick={() => {
                                 setMovementRegId(reg.id)
                                 setShowMovement(true)
                               }}>
-                                <ArrowDownCircle className="h-3.5 w-3.5" />
+                                <ArrowDownCircle className="h-4 w-4" />
                               </Button>
-                              <Button size="sm" variant="ghost" className="text-red-600" onClick={() => {
+                            </TooltipTrigger>
+                            <TooltipContent>Movimiento</TooltipContent>
+                          </Tooltip>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button size="sm" variant="ghost" className="h-8 px-2.5 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30" onClick={() => {
                                 setCloseRegId(reg.id)
                                 setCloseActual('')
                                 setShowClose(true)
                               }}>
-                                <Lock className="h-3.5 w-3.5" />
+                                <Lock className="h-4 w-4" />
                               </Button>
-                            </>
-                          )}
-                          <Button size="sm" variant="ghost" className="text-orange-600" onClick={() => {
+                            </TooltipTrigger>
+                            <TooltipContent>Cerrar Caja</TooltipContent>
+                          </Tooltip>
+                        </>
+                      )}
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button size="sm" variant="ghost" className="h-8 px-2.5 text-orange-600 hover:text-orange-700 hover:bg-orange-50 dark:hover:bg-orange-950/30" onClick={() => {
                             setWithdrawalRegId(reg.id)
                             setShowWithdrawal(true)
-                          }} title="Retiro de Excedente">
-                            <Banknote className="h-3.5 w-3.5" />
+                          }}>
+                            <Banknote className="h-4 w-4" />
                           </Button>
-                          <Button size="sm" variant="ghost" className="text-emerald-600" onClick={() => {
+                        </TooltipTrigger>
+                        <TooltipContent>Retiro de Excedente</TooltipContent>
+                      </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button size="sm" variant="ghost" className="h-8 px-2.5 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/30" onClick={() => {
                             setAuditRegId(reg.id)
                             setShowAudit(true)
-                          }} title="Arqueo de Caja">
-                            <ClipboardCheck className="h-3.5 w-3.5" />
+                          }}>
+                            <ClipboardCheck className="h-4 w-4" />
                           </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                        </TooltipTrigger>
+                        <TooltipContent>Arqueo de Caja</TooltipContent>
+                      </Tooltip>
+                    </div>
+                  </CardContent>
+                </Card>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* No registers open - Empty state */}
+      {openRegisters.length === 0 && !isCashier && (
+        <Card className="border-dashed">
+          <CardContent className="p-10 flex flex-col items-center justify-center text-center gap-3">
+            <div className="rounded-full bg-muted p-4">
+              <Wallet className="h-10 w-10 text-muted-foreground" />
+            </div>
+            <div>
+              <p className="font-medium text-muted-foreground">No hay cajas abiertas</p>
+              <p className="text-sm text-muted-foreground mt-1">
+                Abre una nueva caja para comenzar a registrar ventas y movimientos.
+              </p>
+            </div>
+            <Button className="bg-primary hover:bg-primary/90 text-white" onClick={() => setShowOpen(true)}>
+              <Plus className="mr-2 h-4 w-4" /> Abrir Caja
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {openRegisters.length === 0 && isCashier && (
+        <Card className="border-dashed">
+          <CardContent className="p-10 flex flex-col items-center justify-center text-center gap-3">
+            <div className="rounded-full bg-muted p-4">
+              <Wallet className="h-10 w-10 text-muted-foreground" />
+            </div>
+            <div>
+              <p className="font-medium text-muted-foreground">No hay cajas abiertas</p>
+              <p className="text-sm text-muted-foreground mt-1">
+                Un administrador debe abrir una caja para que puedas operar.
+              </p>
             </div>
           </CardContent>
         </Card>
       )}
 
-      {/* Register History */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">Historial de Cajas</CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Apertura</TableHead>
-                  <TableHead>Caja</TableHead>
-                  <TableHead>Cajero</TableHead>
-                  <TableHead className="hidden sm:table-cell">Sucursal</TableHead>
-                  <TableHead className="text-right">Inicial</TableHead>
-                  <TableHead className="text-right hidden sm:table-cell">Final</TableHead>
-                  <TableHead className="text-right">Ventas</TableHead>
-                  <TableHead>Estado</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {registers.map((reg) => (
-                  <TableRow key={reg.id}>
-                    <TableCell className="text-sm">
-                      {new Date(reg.openingDate).toLocaleString('es-VE')}
-                    </TableCell>
-                    <TableCell className="font-medium">{reg.name || '—'}</TableCell>
-                    <TableCell className="font-medium">{reg.user.name}</TableCell>
-                    <TableCell className="hidden sm:table-cell text-xs">
-                      {reg.branch?.name || '—'}
-                    </TableCell>
-                    <TableCell className="text-right">${reg.initialAmt.toFixed(2)}</TableCell>
-                    <TableCell className="text-right font-semibold hidden sm:table-cell">${reg.currentAmt.toFixed(2)}</TableCell>
-                    <TableCell className="text-right">
-                      <Badge variant="outline">{reg._count.sales}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={reg.status === 'abierta' ? 'default' : 'secondary'}>
-                        {reg.status}
-                      </Badge>
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {registers.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
-                      No hay registros de caja
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
+      {/* ===== HISTORY ===== */}
+      {closedRegisters.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+              Historial de Cajas
+            </h2>
+            <Badge variant="secondary" className="text-xs">
+              {closedRegisters.length} registro{closedRegisters.length !== 1 ? 's' : ''}
+            </Badge>
           </div>
-        </CardContent>
-      </Card>
+          <Card>
+            <CardContent className="p-0">
+              <div className="divide-y">
+                {closedRegisters.map((reg) => {
+                  const isExpanded = expandedHistory === reg.id
+                  const earnings = reg.currentAmt - reg.initialAmt
+                  const isPositive = earnings >= 0
+                  return (
+                    <div key={reg.id}>
+                      {/* Collapsible header */}
+                      <button
+                        className="w-full flex items-center gap-3 p-3 hover:bg-muted/50 transition-colors text-left"
+                        onClick={() => setExpandedHistory(isExpanded ? null : reg.id)}
+                      >
+                        {isExpanded
+                          ? <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
+                          : <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                        }
+                        <div className="flex-1 min-w-0 grid grid-cols-2 sm:grid-cols-4 gap-2 items-center">
+                          <div className="min-w-0">
+                            <p className="font-medium text-sm truncate">{reg.name || 'Sin nombre'}</p>
+                            <p className="text-xs text-muted-foreground">{reg.user.name}</p>
+                          </div>
+                          <div className="hidden sm:block text-xs text-muted-foreground">
+                            <Clock className="h-3 w-3 inline mr-1" />
+                            {formatTime(reg.openingDate)}
+                          </div>
+                          <div className="text-right">
+                            <p className="text-sm font-semibold">${reg.currentAmt.toFixed(2)}</p>
+                            <p className={`text-xs ${isPositive ? 'text-emerald-600' : 'text-red-600'}`}>
+                              {isPositive ? '+' : ''}{earnings.toFixed(2)}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <Badge variant="outline" className="bg-slate-50 text-slate-600 border-slate-200 dark:bg-slate-900/50 dark:text-slate-400 dark:border-slate-700">
+                              {reg.branch?.name || '—'}
+                            </Badge>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              <ShoppingCart className="h-3 w-3 inline mr-1" />
+                              {reg._count.sales} venta{reg._count.sales !== 1 ? 's' : ''}
+                            </p>
+                          </div>
+                        </div>
+                      </button>
 
-      {/* Open Dialog (admin/gerente only) */}
+                      {/* Expanded details */}
+                      {isExpanded && (
+                        <div className="px-3 pb-3 pl-10">
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3 rounded-md bg-muted/50 text-sm">
+                            <div>
+                              <p className="text-xs text-muted-foreground">Cajero</p>
+                              <p className="font-medium">{reg.user.name}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-muted-foreground">Sucursal</p>
+                              <p className="font-medium">{reg.branch?.name || '—'}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-muted-foreground">Apertura</p>
+                              <p className="font-medium">{formatTime(reg.openingDate)}</p>
+                            </div>
+                            {reg.closingDate && (
+                              <div>
+                                <p className="text-xs text-muted-foreground">Cierre</p>
+                                <p className="font-medium">{formatTime(reg.closingDate)}</p>
+                              </div>
+                            )}
+                            <div>
+                              <p className="text-xs text-muted-foreground">Monto Inicial</p>
+                              <p className="font-medium">${reg.initialAmt.toFixed(2)}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-muted-foreground">Monto Final</p>
+                              <p className="font-bold">${reg.currentAmt.toFixed(2)}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-muted-foreground">Diferencia</p>
+                              <p className={`font-bold ${isPositive ? 'text-emerald-600' : 'text-red-600'}`}>
+                                {isPositive ? '+' : ''}{earnings.toFixed(2)}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-muted-foreground">Ventas</p>
+                              <p className="font-medium">{reg._count.sales}</p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Show all in table if there are no closed registers but there are registers */}
+      {closedRegisters.length === 0 && registers.length === 0 && (
+        <Card className="border-dashed">
+          <CardContent className="p-8 text-center text-muted-foreground text-sm">
+            No hay registros de caja
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ===== DIALOGS ===== */}
+
+      {/* Open Dialog */}
       <Dialog open={showOpen} onOpenChange={setShowOpen}>
-        <DialogContent className="sm:max-w-[90vw]">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Abrir Caja</DialogTitle>
-            <DialogDescription>Selecciona el cajero y el monto inicial</DialogDescription>
+            <DialogTitle className="flex items-center gap-2">
+              <Plus className="h-5 w-5 text-primary" />
+              Abrir Caja
+            </DialogTitle>
+            <DialogDescription>Selecciona el cajero y el monto inicial para abrir una nueva caja.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            {/* Cashier selection */}
             <div className="space-y-2">
               <Label>Cajero Asignado *</Label>
               <Select value={selectedUserId} onValueChange={setSelectedUserId}>
@@ -647,23 +802,26 @@ export function CashRegisterView() {
               <Input id="initial" type="number" step="0.01" value={initialAmt} onChange={(e) => setInitialAmt(e.target.value)} />
             </div>
             <Button className="w-full bg-primary hover:bg-primary/90 text-white" onClick={openRegister} disabled={saving || !selectedUserId}>
-              {saving ? 'Abriendo...' : 'Abrir Caja'}
+              {saving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Abriendo...</> : 'Abrir Caja'}
             </Button>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* Movement Dialog (admin/gerente only) */}
+      {/* Movement Dialog */}
       <Dialog open={showMovement} onOpenChange={(open) => {
         if (!open) {
           setShowMovement(false)
           setMovementRegId(null)
         }
       }}>
-        <DialogContent className="sm:max-w-[90vw]">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Registrar Movimiento</DialogTitle>
-            <DialogDescription>Registra una entrada o salida de caja</DialogDescription>
+            <DialogTitle className="flex items-center gap-2">
+              <ArrowDownCircle className="h-5 w-5 text-blue-600" />
+              Registrar Movimiento
+            </DialogTitle>
+            <DialogDescription>Registra una entrada o salida de efectivo.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             {openRegisters.length > 1 && (
@@ -686,8 +844,16 @@ export function CashRegisterView() {
               <Select value={moveType} onValueChange={setMoveType}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="entrada">Entrada</SelectItem>
-                  <SelectItem value="salida">Salida</SelectItem>
+                  <SelectItem value="entrada">
+                    <span className="flex items-center gap-2">
+                      <ArrowUpCircle className="h-3 w-3 text-emerald-600" /> Entrada
+                    </span>
+                  </SelectItem>
+                  <SelectItem value="salida">
+                    <span className="flex items-center gap-2">
+                      <ArrowDownCircle className="h-3 w-3 text-red-600" /> Salida
+                    </span>
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -700,24 +866,27 @@ export function CashRegisterView() {
               <Input id="mconcept" value={moveConcept} onChange={(e) => setMoveConcept(e.target.value)} placeholder="Descripción del movimiento" />
             </div>
             <Button className="w-full bg-primary hover:bg-primary/90 text-white" onClick={addMovement} disabled={saving}>
-              {saving ? 'Registrando...' : 'Registrar'}
+              {saving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Registrando...</> : 'Registrar'}
             </Button>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* Close Dialog (admin/gerente only) */}
+      {/* Close Dialog */}
       <Dialog open={showClose} onOpenChange={setShowClose}>
-        <DialogContent className="sm:max-w-[90vw]">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Cerrar Caja</DialogTitle>
-            <DialogDescription>Confirma el monto real en caja para cerrar</DialogDescription>
+            <DialogTitle className="flex items-center gap-2">
+              <Lock className="h-5 w-5 text-red-600" />
+              Cerrar Caja
+            </DialogTitle>
+            <DialogDescription>Confirma el monto real en caja para cerrar.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             {closeRegId && (() => {
               const reg = registers.find(r => r.id === closeRegId)
               return reg ? (
-                <div className="rounded-md bg-muted p-3 space-y-1 text-sm">
+                <div className="rounded-md bg-muted p-3 space-y-2 text-sm">
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Caja:</span>
                     <span className="font-medium">{reg.name || '—'}</span>
@@ -728,7 +897,7 @@ export function CashRegisterView() {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Monto esperado:</span>
-                    <span className="font-medium">${reg.currentAmt.toFixed(2)}</span>
+                    <span className="font-bold">${reg.currentAmt.toFixed(2)}</span>
                   </div>
                 </div>
               ) : null
@@ -741,7 +910,7 @@ export function CashRegisterView() {
               Se enviará un correo electrónico al administrador con el resumen del cierre.
             </p>
             <Button className="w-full bg-red-600 hover:bg-red-700 text-white" onClick={closeRegister} disabled={saving}>
-              {saving ? 'Cerrando...' : 'Confirmar Cierre'}
+              {saving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Cerrando...</> : 'Confirmar Cierre'}
             </Button>
           </div>
         </DialogContent>
@@ -762,7 +931,7 @@ export function CashRegisterView() {
               <Banknote className="h-5 w-5 text-orange-600" />
               Retiro de Excedente
             </DialogTitle>
-            <DialogDescription>Retira el efectivo excedente de la caja</DialogDescription>
+            <DialogDescription>Retira el efectivo excedente de la caja.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             {openRegisters.length > 1 && (
@@ -822,7 +991,7 @@ export function CashRegisterView() {
               onClick={handleWithdrawal}
               disabled={saving || !withdrawalAmount || parseFloat(withdrawalAmount) <= 0}
             >
-              {saving ? 'Registrando...' : 'Registrar Retiro'}
+              {saving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Registrando...</> : 'Registrar Retiro'}
             </Button>
           </div>
         </DialogContent>
@@ -838,7 +1007,7 @@ export function CashRegisterView() {
               <ClipboardCheck className="h-5 w-5 text-emerald-600" />
               Arqueo de Caja
             </DialogTitle>
-            <DialogDescription>Verificación del efectivo en caja por denominación</DialogDescription>
+            <DialogDescription>Verificación del efectivo en caja por denominación.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             {openRegisters.length > 1 && (
@@ -901,7 +1070,6 @@ export function CashRegisterView() {
 
             <Separator />
 
-            {/* Totals */}
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Total contado:</span>
@@ -934,7 +1102,6 @@ export function CashRegisterView() {
               })()}
             </div>
 
-            {/* Audit Result */}
             {auditResult && (
               <div className={`rounded-md p-4 text-center ${
                 auditResult.difference === 0
@@ -974,17 +1141,18 @@ export function CashRegisterView() {
                 rows={2}
               />
             </div>
-
             <Button
               className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
               onClick={handleAudit}
               disabled={saving}
             >
-              {saving ? 'Registrando...' : auditResult ? 'Registrar Nuevo Arqueo' : 'Registrar Arqueo'}
+              {saving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Registrando...</> : auditResult ? 'Registrar Nuevo Arqueo' : 'Registrar Arqueo'}
             </Button>
           </div>
         </DialogContent>
       </Dialog>
+
     </div>
+    </TooltipProvider>
   )
 }
