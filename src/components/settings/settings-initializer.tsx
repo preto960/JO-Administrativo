@@ -28,9 +28,143 @@ interface SettingsData {
   exchangeRate: number
 }
 
+// ── Auto-fetch exchange rates on schedule (Venezuela time) ──
+
+/** Scheduled times in America/Caracas timezone */
+const AUTO_FETCH_SCHEDULE = [
+  { hour: 8, minute: 30 },   // 8:30 AM
+  { hour: 10, minute: 0 },   // 10:00 AM
+  { hour: 14, minute: 0 },   // 2:00 PM
+  { hour: 16, minute: 0 },   // 4:00 PM
+]
+
+const VENEZUELA_TZ = 'America/Caracas'
+const AUTO_FETCH_KEY_PREFIX = 'rate-auto-fetch-'
+const CHECK_INTERVAL_MS = 30_000 // check every 30 seconds
+
+/** Get current time parts in Venezuela timezone */
+function getVenezuelaTimeParts() {
+  const now = new Date()
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: VENEZUELA_TZ,
+    hour: 'numeric',
+    minute: 'numeric',
+    hour12: false,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(now)
+
+  const get = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((p) => p.type === type)?.value ?? ''
+
+  return {
+    hour: parseInt(get('hour')) || 0,
+    minute: parseInt(get('minute')) || 0,
+    dateStr: `${get('year')}-${get('month')}-${get('day')}`,
+  }
+}
+
+/** Build a localStorage key for a specific schedule slot */
+function slotKey(dateStr: string, hour: number, minute: number) {
+  return `${AUTO_FETCH_KEY_PREFIX}${dateStr}-${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
+}
+
+/** Check if the current time matches any scheduled slot that hasn't fired yet */
+function shouldAutoFetch(): string | null {
+  const { hour, minute, dateStr } = getVenezuelaTimeParts()
+  const nowTotal = hour * 60 + minute
+
+  for (const slot of AUTO_FETCH_SCHEDULE) {
+    const key = slotKey(dateStr, slot.hour, slot.minute)
+    const slotTotal = slot.hour * 60 + slot.minute
+    const diff = nowTotal - slotTotal
+
+    // If we're within a 2-minute window after the scheduled time and haven't fetched yet
+    if (diff >= 0 && diff <= 2 && !localStorage.getItem(key)) {
+      return key
+    }
+  }
+  return null
+}
+
+/** Perform the auto-fetch: scrape BCV from client, then POST to server */
+async function performAutoFetch(
+  setSettings: (settings: AppSettings) => void,
+  sourceLabel: string,
+) {
+  try {
+    let usdRate: number | undefined
+    let eurRate: number | undefined
+    let source = 'auto-server'
+
+    // 1st: Try client-side BCV scraping (from user's browser in Venezuela)
+    try {
+      const { scrapeBcvFromClient } = await import('@/lib/scrape-bcv-client')
+      const clientRates = await scrapeBcvFromClient()
+      if (clientRates) {
+        usdRate = clientRates.usd
+        eurRate = clientRates.eur
+        source = clientRates.source
+      }
+    } catch {
+      console.warn('[Auto-rates] Client-side BCV scraping failed, falling back to server')
+    }
+
+    // 2nd: Persist rates to DB
+    if (usdRate) {
+      await api.post('/api/exchange-rates', {
+        usd: usdRate,
+        eur: eurRate,
+        source: `${sourceLabel}-${source}`,
+      })
+    } else {
+      // Fallback: let server fetch rates
+      const data = await api.get<{
+        rates: Array<{ currency: string; rate: number; source: string }>
+      }>('/api/exchange-rates')
+      if (data?.rates?.length > 0) {
+        const foundUsd = data.rates.find((r) => r.currency === 'USD')
+        const foundEur = data.rates.find((r) => r.currency === 'EUR')
+        if (foundUsd) {
+          usdRate = foundUsd.rate
+          eurRate = foundEur?.rate
+          source = foundUsd.source
+          // POST to persist in Settings table
+          await api.post('/api/exchange-rates', {
+            usd: usdRate,
+            eur: eurRate,
+            source: `${sourceLabel}-server`,
+          })
+        }
+      }
+    }
+
+    // 3rd: Update Zustand store so POS/dashboard picks up new rates immediately
+    if (usdRate) {
+      const currentSettings = useAppStore.getState().settings
+      if (currentSettings) {
+        const updates: Partial<AppSettings> = { usdRate }
+        if (eurRate) updates.eurRate = eurRate
+        if (!currentSettings.customRate) {
+          const refCurrency = currentSettings.referenceCurrency || 'USD'
+          updates.exchangeRate =
+            refCurrency === 'EUR' && eurRate ? eurRate : usdRate
+        }
+        setSettings({ ...currentSettings, ...updates })
+      }
+    }
+
+    const timeStr = new Date().toLocaleString('es-VE', { timeZone: VENEZUELA_TZ })
+    console.log(`[Auto-rates] Tasas actualizadas automaticamente a las ${timeStr} (fuente: ${source})`)
+  } catch (error) {
+    console.error('[Auto-rates] Error en actualizacion automatica:', error)
+  }
+}
+
 /**
  * Loads settings from DB on app startup and applies theme colors to CSS variables.
- * Also auto-fetches BCV exchange rates.
+ * Also sets up a scheduler for automatic exchange rate updates (4x/day).
  */
 export function SettingsInitializer() {
   const setSettings = useAppStore((s) => s.setSettings)
@@ -47,13 +181,10 @@ export function SettingsInitializer() {
           applyBothColors(s.primaryColor || 'blue', s.secondaryColor || 'slate')
 
           // Apply theme from DB only if next-themes hasn't already set one
-          // next-themes reads from localStorage key "theme" on its own
           const nextThemesValue = localStorage.getItem('theme')
           if (nextThemesValue) {
-            // User has a theme preference saved — let next-themes handle it
             setTheme(nextThemesValue)
           } else if (s.theme) {
-            // No localStorage yet (first visit) — use DB value
             setTheme(s.theme)
           }
 
@@ -63,11 +194,6 @@ export function SettingsInitializer() {
           }
         }
 
-        // NOTE: We do NOT auto-fetch BCV exchange rates on page load anymore.
-        // The GET /api/exchange-rates endpoint is now read-only and does NOT
-        // write to the Settings table. Rates are only updated when the user
-        // explicitly clicks "Actualizar" in Configuración > Moneda.
-
         // Load custom role permissions from the database
         api.get<{ permissions: Record<string, UserPermissions> }>('/api/role-permissions')
           .then((data) => {
@@ -75,9 +201,7 @@ export function SettingsInitializer() {
               setCustomPermissions(data.permissions)
             }
           })
-          .catch(() => {
-            // Silently fail - use default permissions
-          })
+          .catch(() => {})
       } catch {
         // Silently fail — use defaults from globals.css
       }
@@ -85,7 +209,23 @@ export function SettingsInitializer() {
 
     loadAndApplySettings()
 
-    // Re-apply colors when theme changes (dark ↔ light)
+    // ── Scheduled auto-fetch for exchange rates ──
+    function tick() {
+      const key = shouldAutoFetch()
+      if (key) {
+        // Mark this slot as fulfilled
+        localStorage.setItem(key, new Date().toISOString())
+        performAutoFetch(setSettings, 'auto')
+      }
+    }
+
+    // Check immediately on load (in case a scheduled slot was just missed)
+    tick()
+
+    // Then check every 30 seconds
+    const interval = setInterval(tick, CHECK_INTERVAL_MS)
+
+    // Re-apply colors when theme changes (dark <-> light)
     const observer = new MutationObserver(() => {
       const settings = useAppStore.getState().settings
       if (settings) {
@@ -98,8 +238,11 @@ export function SettingsInitializer() {
       attributeFilter: ['class'],
     })
 
-    return () => observer.disconnect()
-  }, [setSettings])
+    return () => {
+      observer.disconnect()
+      clearInterval(interval)
+    }
+  }, [setSettings, setTheme])
 
   return null
 }
