@@ -177,7 +177,9 @@ export function SettingsView() {
             const refRate = data.rates.find(r => r.currency === refCurrency) || usdRate
             if (refRate) updates.exchangeRate = refRate.rate
           }
-          return { ...prev, ...updates }
+          const merged = { ...prev, ...updates }
+          setAppSettings(merged as AppSettings)
+          return merged
         })
       }
     } catch {
@@ -423,6 +425,7 @@ export function SettingsView() {
                             if (refRate) updates.exchangeRate = refRate.rate
                           }
                           setSettings({ ...settings, ...updates })
+                          setAppSettings({ ...settings, ...updates } as AppSettings)
                           toast.success('Tasas actualizadas desde el BCV')
                         } else {
                           toast.error('No se pudieron obtener las tasas')

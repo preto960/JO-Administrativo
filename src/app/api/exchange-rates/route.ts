@@ -8,23 +8,21 @@ interface BcvRate {
   fetchedAt: string
 }
 
-// BCV rates are in the range 100-1000 Bs per USD/EUR (as of 2026)
 const MIN_RATE = 1
 const MAX_RATE = 10000
+
+function isValidRate(v: number): boolean {
+  return !isNaN(v) && v >= MIN_RATE && v <= MAX_RATE
+}
 
 /**
  * Parse a BCV-format number.
  * BCV uses comma as decimal separator: "508,60040000" → 508.6004
  */
 function parseBcvNumber(raw: string): number | null {
-  // Remove spaces
   let cleaned = raw.trim().replace(/\s/g, '')
-  // BCV format: "508,60040000" - comma is decimal, dot could be thousands
-  // Try: remove dots (thousands), replace comma with dot (decimal)
   const v1 = parseFloat(cleaned.replace(/\./g, '').replace(',', '.'))
-  // Try: just replace comma with dot
   const v2 = parseFloat(cleaned.replace(',', '.'))
-  // Use the more reasonable value
   const candidates = [v1, v2].filter(v => !isNaN(v) && v >= MIN_RATE && v <= MAX_RATE)
   if (candidates.length > 0) return candidates[0]
   if (!isNaN(v1) && v1 >= MIN_RATE && v1 <= MAX_RATE) return v1
@@ -32,15 +30,67 @@ function parseBcvNumber(raw: string): number | null {
   return null
 }
 
-function isValidRate(v: number): boolean {
-  return !isNaN(v) && v >= MIN_RATE && v <= MAX_RATE
+/**
+ * Attempt 1: DolarAPI — fast, reliable, JSON API.
+ * Returns official (BCV) and parallel rates for USD and EUR.
+ */
+async function fetchDolarApi(): Promise<BcvRate[]> {
+  const results: BcvRate[] = []
+  const now = new Date().toISOString()
+
+  try {
+    // Fetch USD rates
+    const usdRes = await fetch('https://ve.dolarapi.com/v1/dolares', {
+      signal: AbortSignal.timeout(10000),
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+    })
+    if (usdRes.ok) {
+      const data = await usdRes.json()
+      if (Array.isArray(data)) {
+        const oficial = data.find((d: { fuente: string }) => d.fuente === 'oficial')
+        if (oficial?.promedio && isValidRate(oficial.promedio)) {
+          results.push({
+            currency: 'USD',
+            rate: Math.round(oficial.promedio * 100) / 100,
+            source: 'BCV (dolarapi.com)',
+            fetchedAt: now,
+          })
+        }
+      }
+    }
+  } catch (error) {
+    console.error('[DolarAPI USD] Failed:', error instanceof Error ? error.message : 'Unknown error')
+  }
+
+  try {
+    // Fetch EUR rates
+    const eurRes = await fetch('https://ve.dolarapi.com/v1/euros', {
+      signal: AbortSignal.timeout(10000),
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+    })
+    if (eurRes.ok) {
+      const data = await eurRes.json()
+      if (Array.isArray(data)) {
+        const oficial = data.find((d: { fuente: string }) => d.fuente === 'oficial')
+        if (oficial?.promedio && isValidRate(oficial.promedio)) {
+          results.push({
+            currency: 'EUR',
+            rate: Math.round(oficial.promedio * 100) / 100,
+            source: 'BCV (dolarapi.com)',
+            fetchedAt: now,
+          })
+        }
+      }
+    }
+  } catch (error) {
+    console.error('[DolarAPI EUR] Failed:', error instanceof Error ? error.message : 'Unknown error')
+  }
+
+  return results
 }
 
 /**
- * Attempt 1: Fetch the BCV official page and extract rates.
- * The BCV website shows a "TIPO DE CAMBIO DE REFERENCIA" section with rates
- * for USD ($), EUR (€), CNY, TRY, RUB.
- * Rates are in format like "508,60040000" (comma as decimal).
+ * Attempt 2: Fetch the BCV official page and extract rates.
  */
 async function scrapeBcvDirect(): Promise<BcvRate[]> {
   const results: BcvRate[] = []
@@ -50,18 +100,14 @@ async function scrapeBcvDirect(): Promise<BcvRate[]> {
     const response = await fetch('https://www.bcv.org.ve/', {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Accept-Language': 'es-VE,es;q=0.9,en;q=0.8',
-        'Accept-Encoding': 'identity',
         'Cache-Control': 'no-cache',
-        'Pragma': 'no-cache',
       },
       signal: AbortSignal.timeout(20000),
     })
 
-    if (!response.ok) {
-      throw new Error(`BCV HTTP ${response.status}`)
-    }
+    if (!response.ok) throw new Error(`BCV HTTP ${response.status}`)
 
     const html = await response.text()
 
@@ -71,7 +117,6 @@ async function scrapeBcvDirect(): Promise<BcvRate[]> {
       for (const script of scriptBlocks) {
         const jsContent = script.replace(/<\/?script[^>]*>/gi, '')
 
-        // Look for Drupal settings (BCV uses Drupal CMS)
         const drupalMatch = jsContent.match(/jQuery\.extend\(Drupal\.settings\s*,\s*(\{[\s\S]*?\})\s*\)/)
         if (drupalMatch) {
           const jsonStr = drupalMatch[1]
@@ -91,19 +136,15 @@ async function scrapeBcvDirect(): Promise<BcvRate[]> {
           }
         }
 
-        // Generic patterns for rates in JS
         const usdPatterns = [
           /d[oó]lar\s*[:=]\s*"?([0-9]+[,.\d]+)"?/i,
           /USD\s*[:=]\s*"?([0-9]+[,.\d]+)"?/i,
-          /"amount"\s*:\s*"?([0-9]+[,.\d]+)"?/i,
           /tasa_dolar\s*[:=]\s*"?([0-9]+[,.\d]+)"?/i,
-          /precio_dolar\s*[:=]\s*"?([0-9]+[,.\d]+)"?/i,
         ]
         const eurPatterns = [
           /euro\s*[:=]\s*"?([0-9]+[,.\d]+)"?/i,
           /EUR\s*[:=]\s*"?([0-9]+[,.\d]+)"?/i,
           /tasa_euro\s*[:=]\s*"?([0-9]+[,.\d]+)"?/i,
-          /precio_euro\s*[:=]\s*"?([0-9]+[,.\d]+)"?/i,
         ]
 
         for (const p of usdPatterns) {
@@ -125,17 +166,13 @@ async function scrapeBcvDirect(): Promise<BcvRate[]> {
       }
     }
 
-    // ── Strategy B: HTML patterns - look for rates near USD/EUR labels ──
+    // ── Strategy B: HTML patterns near USD/EUR labels ──
     if (!results.some(r => r.currency === 'USD')) {
       const usdHtmlPatterns = [
         /d[oó]lar[^0-9]*([0-9]+[,]\d{2,})/gi,
         /USD[^0-9]*([0-9]+[,]\d{2,})/gi,
-        /\$\s*<\/?\w+[^>]*>\s*([0-9]+[,]\d{2,})/gi,
         /data-valor="([0-9]+[,]\d{2,})"/gi,
-        /class="[^"]*dolar[^"]*"[^>]*>\s*([0-9]+[,]\d{2,})/gi,
-        /id="[^"]*dolar[^"]*"[^>]*>[\s\S]*?([0-9]+[,]\d{2,})/i,
       ]
-
       for (const pattern of usdHtmlPatterns) {
         const matches = [...html.matchAll(pattern)]
         for (const match of matches) {
@@ -153,10 +190,7 @@ async function scrapeBcvDirect(): Promise<BcvRate[]> {
       const eurHtmlPatterns = [
         /euro[^0-9]*([0-9]+[,]\d{2,})/gi,
         /EUR[^0-9]*([0-9]+[,]\d{2,})/gi,
-        /€\s*<\/?\w+[^>]*>\s*([0-9]+[,]\d{2,})/gi,
-        /class="[^"]*euro[^"]*"[^>]*>\s*([0-9]+[,]\d{2,})/gi,
       ]
-
       for (const pattern of eurHtmlPatterns) {
         const matches = [...html.matchAll(pattern)]
         for (const match of matches) {
@@ -170,10 +204,8 @@ async function scrapeBcvDirect(): Promise<BcvRate[]> {
       }
     }
 
-    // ── Strategy C: Find all decimal numbers in the page ──
-    // BCV shows rates like "508,60040000" - numbers with comma decimals
+    // ── Strategy C: Find all comma-decimal numbers, pick largest ──
     if (!results.some(r => r.currency === 'USD')) {
-      // Find numbers with comma decimals (BCV format)
       const numberPattern = /(\d{2,4},\d{2,8})/g
       const allNumbers: { value: number; index: number }[] = []
       let numMatch: RegExpExecArray | null
@@ -184,7 +216,6 @@ async function scrapeBcvDirect(): Promise<BcvRate[]> {
         }
       }
 
-      // Also find numbers with dot decimals (some pages might use dot)
       const dotPattern = /(\d{2,4}\.\d{2,8})/g
       while ((numMatch = dotPattern.exec(html)) !== null) {
         const value = parseFloat(numMatch[1])
@@ -193,9 +224,6 @@ async function scrapeBcvDirect(): Promise<BcvRate[]> {
         }
       }
 
-      // If we found numbers, the largest ones near each other are likely the rates
-      // BCV rates: USD ~508, EUR ~596, CNY ~70, TRY ~15, RUB ~5
-      // USD and EUR are typically the two largest values
       allNumbers.sort((a, b) => b.value - a.value)
       if (allNumbers.length >= 1) {
         results.push({ currency: 'USD', rate: Math.round(allNumbers[0].value * 100) / 100, source: 'BCV', fetchedAt: now })
@@ -212,7 +240,7 @@ async function scrapeBcvDirect(): Promise<BcvRate[]> {
 }
 
 /**
- * Attempt 2: BCV sub-pages with rate information.
+ * Attempt 3: BCV sub-pages with rate information.
  */
 async function scrapeBcvEndpoints(): Promise<BcvRate[]> {
   const results: BcvRate[] = []
@@ -221,16 +249,15 @@ async function scrapeBcvEndpoints(): Promise<BcvRate[]> {
   const endpoints = [
     'https://www.bcv.org.ve/tasas-informativas-sistema-bancario',
     'https://www.bcv.org.ve/estadisticas/tasas-de-referencia',
-    'https://www.bcv.org.ve/?q=tasas',
   ]
 
   for (const url of endpoints) {
     try {
       const response = await fetch(url, {
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-          'Accept-Language': 'es-VE,es;q=0.9,en;q=0.8',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          'Accept': 'text/html,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'es-VE,es;q=0.9',
           'Cache-Control': 'no-cache',
         },
         signal: AbortSignal.timeout(15000),
@@ -265,7 +292,7 @@ async function scrapeBcvEndpoints(): Promise<BcvRate[]> {
 }
 
 /**
- * Attempt 3: Fallback - pydolarve API (BCV monitor specifically).
+ * Attempt 4: Fallback - pydolarve API.
  */
 async function fetchPydolarve(): Promise<BcvRate[]> {
   const results: BcvRate[] = []
@@ -290,7 +317,7 @@ async function fetchPydolarve(): Promise<BcvRate[]> {
             results.push({ currency: 'USD', rate: Math.round(v * 100) / 100, source: 'pydolarve-BCV', fetchedAt: now })
           }
         }
-        const eurMonitor = data.monitors.find((m: { name: string; title?: string }) =>
+        const eurMonitor = data.monitors.find((m: { name: string }) =>
           m.name.toLowerCase().includes('euro')
         )
         if (eurMonitor?.price) {
@@ -309,11 +336,24 @@ async function fetchPydolarve(): Promise<BcvRate[]> {
 }
 
 /**
- * Main function: tries all methods and returns best rates.
+ * Main function: tries all methods in cascade and returns best rates.
+ * Order: DolarAPI → BCV Direct → BCV Sub-pages → Pydolarve → Static fallback
  */
 async function fetchBcvRates(): Promise<BcvRate[]> {
-  let rates = await scrapeBcvDirect()
+  let rates: BcvRate[] = []
 
+  // 1. DolarAPI (fast, reliable JSON API)
+  rates = await fetchDolarApi()
+
+  // 2. BCV Direct scraping
+  if (!rates.some(r => r.currency === 'USD')) {
+    const bcvRates = await scrapeBcvDirect()
+    for (const r of bcvRates) {
+      if (!rates.some(er => er.currency === r.currency)) rates.push(r)
+    }
+  }
+
+  // 3. BCV sub-pages
   if (!rates.some(r => r.currency === 'USD')) {
     const subRates = await scrapeBcvEndpoints()
     for (const r of subRates) {
@@ -321,6 +361,7 @@ async function fetchBcvRates(): Promise<BcvRate[]> {
     }
   }
 
+  // 4. Pydolarve
   if (!rates.some(r => r.currency === 'USD')) {
     const fallbackRates = await fetchPydolarve()
     for (const r of fallbackRates) {
@@ -328,16 +369,17 @@ async function fetchBcvRates(): Promise<BcvRate[]> {
     }
   }
 
+  // 5. Static fallback
   if (!rates.some(r => r.currency === 'USD')) {
     rates.push({
       currency: 'USD',
-      rate: 508.60,
+      rate: 510.79,
       source: 'fallback-estatico',
       fetchedAt: new Date().toISOString(),
     })
   }
 
-  // If we have USD but not EUR, estimate EUR ≈ USD * 1.17
+  // Estimate EUR if missing (EUR ≈ USD * 1.17)
   if (rates.some(r => r.currency === 'USD') && !rates.some(r => r.currency === 'EUR')) {
     const usdRate = rates.find(r => r.currency === 'USD')!
     rates.push({
@@ -386,15 +428,13 @@ export async function GET() {
       await upsertRate(eurCurrency.id, vesCurrency.id, eurRate.rate)
     }
 
-    // Update Settings with both USD and EUR reference rates
+    // Update Settings
     const settings = await db.settings.findFirst()
     if (settings) {
       const updateData: Record<string, number> = {}
       if (usdRate) updateData.usdRate = usdRate.rate
       if (eurRate) updateData.eurRate = eurRate.rate
 
-      // Compute the effective exchange rate:
-      // If customRate is set (>0), use it; otherwise use the selected reference currency rate
       const refCurrency = settings.referenceCurrency || 'USD'
       const refRate = rates.find(r => r.currency === refCurrency) || usdRate
       if (refRate && !settings.customRate) {
