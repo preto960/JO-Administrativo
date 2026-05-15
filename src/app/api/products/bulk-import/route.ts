@@ -54,6 +54,24 @@ export async function POST(request: NextRequest) {
     const skuSet = new Set(existingProducts.filter(p => p.sku).map(p => p.sku!.toLowerCase()))
     const nameSet = new Set(existingProducts.map(p => p.name.toLowerCase()))
 
+    // Helper: auto-generate SKU from product name (ABC-0001 format)
+    function generateAutoSKU(name: string): string {
+      const letters = name
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // Remove accents
+        .replace(/[^a-zA-Z]/g, '')
+        .toUpperCase()
+        .slice(0, 3)
+        .padEnd(3, 'X')
+      // Find the next available number for this prefix
+      let num = 1
+      let candidate = `${letters}-${String(num).padStart(4, '0')}`
+      while (skuSet.has(candidate.toLowerCase())) {
+        num++
+        candidate = `${letters}-${String(num).padStart(4, '0')}`
+      }
+      return candidate
+    }
+
     let created = 0
     let updated = 0
     let skipped = 0
@@ -75,7 +93,12 @@ export async function POST(request: NextRequest) {
             }
 
             const name = row.name.toString().trim()
-            const sku = row.sku?.toString().trim() || null
+            let sku = row.sku?.toString().trim() || null
+
+            // Auto-generate SKU if not provided
+            if (!sku) {
+              sku = generateAutoSKU(name)
+            }
             const price = parseFloat(String(row.price))
             if (isNaN(price) || price <= 0) {
               errors.push(`Fila ${i + batch.indexOf(row) + 1}: Precio inválido (${row.price})`)

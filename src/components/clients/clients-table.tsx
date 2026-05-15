@@ -32,7 +32,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Plus, Search, Users, Eye, DollarSign, Loader2, Receipt, Truck, X, Banknote, CreditCard, ArrowLeftRight, Smartphone, Trash2 } from 'lucide-react'
+import { Plus, Search, Users, Eye, DollarSign, Loader2, Receipt, Truck, X, Banknote, CreditCard, ArrowLeftRight, Smartphone, Trash2, Printer } from 'lucide-react'
 import { toast } from 'sonner'
 import { useSetting } from '@/stores/use-app-store'
 
@@ -623,6 +623,7 @@ export function ClientsTable() {
                             <TableHead className="text-right">Total</TableHead>
                             <TableHead>Método</TableHead>
                             <TableHead>Estado</TableHead>
+                            <TableHead className="w-10"></TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -656,6 +657,30 @@ export function ClientsTable() {
                                       {sale.status}
                                     </Badge>
                                   )}
+                                </TableCell>
+                                <TableCell>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    title="Imprimir Factura"
+                                    onClick={async () => {
+                                      try {
+                                        const res = await fetch(`/api/sales/${sale.id}/invoice`)
+                                        if (!res.ok) throw new Error()
+                                        const blob = await res.blob()
+                                        const url = URL.createObjectURL(blob)
+                                        const a = document.createElement('a')
+                                        a.href = url
+                                        a.download = `factura_${sale.id.slice(0, 8)}.pdf`
+                                        a.click()
+                                        URL.revokeObjectURL(url)
+                                      } catch {
+                                        toast.error('Error al generar factura')
+                                      }
+                                    }}
+                                  >
+                                    <Printer className="h-3.5 w-3.5" />
+                                  </Button>
                                 </TableCell>
                               </TableRow>
                             )
