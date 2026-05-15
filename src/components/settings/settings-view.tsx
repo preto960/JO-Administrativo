@@ -47,6 +47,8 @@ import {
   Loader2,
   RefreshCw,
   Shield,
+  Upload,
+  X,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { ALL_ROLES, getRoleLabel } from '@/lib/permissions'
@@ -369,12 +371,69 @@ export function SettingsView() {
                 />
               </div>
               <div className="space-y-2">
-                <Label>URL del Logo</Label>
-                <Input
-                  value={settings.logoUrl}
-                  onChange={(e) => setSettings({ ...settings, logoUrl: e.target.value })}
-                  placeholder="https://ejemplo.com/logo.png"
-                />
+                <Label>Logo del Negocio</Label>
+                <div className="flex items-center gap-4">
+                  {settings.logoUrl ? (
+                    <div className="relative">
+                      <img
+                        src={settings.logoUrl}
+                        alt="Logo"
+                        className="h-16 w-16 rounded-lg object-cover border"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setSettings({ ...settings, logoUrl: '' })}
+                        className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-white hover:bg-destructive/90"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex h-16 w-16 items-center justify-center rounded-lg border-2 border-dashed border-muted-foreground/30">
+                      <Upload className="h-5 w-5 text-muted-foreground/50" />
+                    </div>
+                  )}
+                  <div className="flex-1">
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/gif,image/webp,image/svg+xml"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0]
+                        if (!file) return
+                        if (file.size > 2 * 1024 * 1024) {
+                          toast.error('El archivo no debe superar 2MB')
+                          return
+                        }
+                        const formData = new FormData()
+                        formData.append('file', file)
+                        try {
+                          const res = await fetch('/api/upload', { method: 'POST', body: formData })
+                          const data = await res.json()
+                          if (data.url) {
+                            setSettings({ ...settings, logoUrl: data.url })
+                          } else {
+                            toast.error(data.error || 'Error al subir imagen')
+                          }
+                        } catch {
+                          toast.error('Error al subir imagen')
+                        }
+                        e.target.value = ''
+                      }}
+                      className="hidden"
+                      id="logo-upload"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => document.getElementById('logo-upload')?.click()}
+                    >
+                      <Upload className="mr-2 h-3.5 w-3.5" />
+                      Subir Imagen
+                    </Button>
+                    <p className="text-xs text-muted-foreground mt-1">JPG, PNG, GIF, WebP o SVG. Máximo 2MB.</p>
+                  </div>
+                </div>
               </div>
               <Button
                 className="bg-primary hover:bg-primary/90 text-white"

@@ -52,6 +52,7 @@ export async function PUT(
         price: body.price,
         currencyId: body.currencyId,
         categoryId: body.categoryId || null,
+        imageUrl: body.imageUrl || '',
         active: body.active,
       },
       include: {

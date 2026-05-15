@@ -41,7 +41,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import { Plus, Search, Edit, Trash2, Package, Eye, EyeOff, Upload } from 'lucide-react'
+import { Plus, Search, Edit, Trash2, Package, Eye, EyeOff, Upload, ImageIcon, X, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { ProductImportDialog } from './product-import-dialog'
 
@@ -54,6 +54,7 @@ interface Product {
   type: string
   costAvg: number
   price: number
+  imageUrl: string
   active: boolean
   currency: { id: string; symbol: string; code: string }
   category: { id: string; name: string } | null
@@ -121,6 +122,8 @@ export function ProductsTable() {
   const [formMinStock, setFormMinStock] = useState('')
   const [formBranchPrice, setFormBranchPrice] = useState('')
   const [formActive, setFormActive] = useState(true)
+  const [formImageUrl, setFormImageUrl] = useState('')
+  const [uploadingImage, setUploadingImage] = useState(false)
   const [saving, setSaving] = useState(false)
 
   // ── Data fetching ────────────────────────────────────────────────────────
@@ -198,6 +201,7 @@ export function ProductsTable() {
     setFormCategory('')
     setFormCurrency('')
     setFormActive(true)
+    setFormImageUrl('')
     setEditProduct(null)
   }, [])
 
@@ -219,6 +223,7 @@ export function ProductsTable() {
       setFormCategory(product.category?.id || '__none__')
       setFormCurrency(product.currency.id)
       setFormActive(product.active)
+      setFormImageUrl(product.imageUrl || '')
       // Set branch-specific values
       if (selectedBranchId) {
         const branchInv = product.inventories.find(i => i.branchId === selectedBranchId)
@@ -263,6 +268,7 @@ export function ProductsTable() {
         currencyId: formCurrency,
         categoryId: formCategory && formCategory !== '__none__' ? formCategory : null,
         type: 'simple',
+        imageUrl: formImageUrl || undefined,
         branchId: selectedBranchId || undefined,
         branchPrice: formBranchPrice !== '' ? parseFloat(formBranchPrice) : undefined,
       }
@@ -552,6 +558,80 @@ export function ProductsTable() {
                 </Label>
               </div>
             )}
+            {/* Image Upload */}
+            <div className="space-y-2">
+              <Label>Imagen del Producto</Label>
+              <div className="flex items-center gap-3">
+                {formImageUrl ? (
+                  <div className="relative">
+                    <img
+                      src={formImageUrl}
+                      alt="Producto"
+                      className="h-14 w-14 rounded-lg object-cover border"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setFormImageUrl('')}
+                      className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-white hover:bg-destructive/90"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex h-14 w-14 items-center justify-center rounded-lg border-2 border-dashed border-muted-foreground/30">
+                    <ImageIcon className="h-5 w-5 text-muted-foreground/50" />
+                  </div>
+                )}
+                <div className="flex-1">
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/gif,image/webp"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0]
+                      if (!file) return
+                      if (file.size > 2 * 1024 * 1024) {
+                        toast.error('La imagen no debe superar 2MB')
+                        return
+                      }
+                      setUploadingImage(true)
+                      const formData = new FormData()
+                      formData.append('file', file)
+                      try {
+                        const res = await fetch('/api/upload', { method: 'POST', body: formData })
+                        const data = await res.json()
+                        if (data.url) {
+                          setFormImageUrl(data.url)
+                        } else {
+                          toast.error(data.error || 'Error al subir imagen')
+                        }
+                      } catch {
+                        toast.error('Error al subir imagen')
+                      } finally {
+                        setUploadingImage(false)
+                      }
+                      e.target.value = ''
+                    }}
+                    className="hidden"
+                    id="product-image-upload"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={uploadingImage}
+                    onClick={() => document.getElementById('product-image-upload')?.click()}
+                  >
+                    {uploadingImage ? (
+                      <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Upload className="mr-2 h-3.5 w-3.5" />
+                    )}
+                    {uploadingImage ? 'Subiendo...' : 'Subir Imagen'}
+                  </Button>
+                  <p className="text-xs text-muted-foreground mt-1">JPG, PNG, GIF o WebP. Máximo 2MB.</p>
+                </div>
+              </div>
+            </div>
             <div className="space-y-2">
               <Label htmlFor="pname">Nombre *</Label>
               <Input

@@ -58,14 +58,24 @@ export function AppShell() {
     }
   }, [isLoading, user])
 
-  const ActiveComponent = viewComponents[activeView] || FinancialDashboard
+  // Determine the resolved view BEFORE rendering any component.
+  // This prevents forbidden views from briefly flashing.
+  let resolvedView = activeView
+  if (!isLoading && user) {
+    const role = user.role || 'cajero'
+    if (!canAccessView(role, activeView)) {
+      resolvedView = 'pos'
+    }
+  }
 
-  // If user exists and can't access current view, show nothing while redirecting
-  if (user && !canAccessView(user.role, activeView)) {
+  const ActiveComponent = viewComponents[resolvedView] || FinancialDashboard
+
+  // Don't render the app shell until we know the user's role
+  if (isLoading) {
     return (
       <ThemeProvider attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange>
         <div className="flex h-screen items-center justify-center">
-          <p className="text-muted-foreground">Redirigiendo...</p>
+          <p className="text-muted-foreground">Cargando...</p>
         </div>
       </ThemeProvider>
     )

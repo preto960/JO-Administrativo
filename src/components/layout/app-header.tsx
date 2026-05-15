@@ -202,16 +202,9 @@ export function AppHeader() {
           </DropdownMenuTrigger>
           <DropdownMenuContent className="w-56" align="end" forceMount>
             <DropdownMenuLabel className="font-normal">
-              <div className="flex flex-col space-y-1">
+              <div className="flex flex-col space-y-0.5">
                 <p className="text-sm font-medium">{user?.name || 'Usuario'}</p>
-                <p className="text-xs text-muted-foreground">{user?.email || 'usuario@erp.com'}</p>
                 <p className="text-xs text-primary capitalize">{user?.role || 'cajero'}</p>
-                {selectedBranch && (
-                  <p className="text-xs text-muted-foreground flex items-center gap-1">
-                    <GitBranch className="h-3 w-3" />
-                    {selectedBranch.name}
-                  </p>
-                )}
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
@@ -221,7 +214,7 @@ export function AppHeader() {
                 Configuración
               </DropdownMenuItem>
             )}
-            <DropdownMenuSeparator />
+            {user?.role === 'admin' && <DropdownMenuSeparator />}
             <DropdownMenuItem className="text-red-600" onClick={() => signOut({ callbackUrl: '/login' })}>
               <LogOut className="mr-2 h-4 w-4" />
               Cerrar Sesión

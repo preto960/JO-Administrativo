@@ -60,6 +60,7 @@ export async function POST(request: NextRequest) {
         price: body.price,
         currencyId: body.currencyId,
         categoryId: body.categoryId || null,
+        imageUrl: body.imageUrl || '',
       },
       include: { currency: true, category: true },
     })

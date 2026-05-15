@@ -23,6 +23,7 @@ interface ProductWithInventory {
   costAvg: number
   currencyId: string
   categoryId: string | null
+  imageUrl: string
   active: boolean
   currency: { symbol: string }
   category: { name: string } | null
@@ -250,7 +251,7 @@ export function PosTerminal() {
                   disabled={outOfStock}
                   className={`group relative flex flex-col items-start gap-0.5 rounded-lg border bg-card p-3 text-left transition-all hover:border-primary/30 hover:shadow-md hover:bg-primary/5 dark:hover:bg-primary/10 ${outOfStock ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
-                  <div className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
                     {outOfStock ? (
                       <span className="flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-white text-xs">
                         <AlertTriangle className="h-3 w-3" />
@@ -263,12 +264,32 @@ export function PosTerminal() {
                       <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary text-white text-xs">+</span>
                     )}
                   </div>
-                  <span className={`text-sm font-medium leading-tight line-clamp-1 ${outOfStock ? 'line-through' : ''}`}>
-                    {product.name}
-                  </span>
-                  <span className="text-[10px] text-muted-foreground leading-tight">
-                    {product.sku || 'Sin SKU'}
-                  </span>
+                  {product.imageUrl ? (
+                    <div className="flex items-center gap-2 w-full">
+                      <img
+                        src={product.imageUrl}
+                        alt={product.name}
+                        className="h-10 w-10 rounded-md object-cover flex-shrink-0"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <span className={`text-sm font-medium leading-tight line-clamp-1 block ${outOfStock ? 'line-through' : ''}`}>
+                          {product.name}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground leading-tight block">
+                          {product.sku || 'Sin SKU'}
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <span className={`text-sm font-medium leading-tight line-clamp-1 ${outOfStock ? 'line-through' : ''}`}>
+                        {product.name}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground leading-tight">
+                        {product.sku || 'Sin SKU'}
+                      </span>
+                    </>
+                  )}
                   <div className="mt-auto flex items-center justify-between w-full">
                     <div>
                       <span className="text-sm font-bold text-primary dark:text-primary">
