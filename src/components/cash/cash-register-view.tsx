@@ -33,7 +33,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Wallet, Plus, ArrowUpCircle, ArrowDownCircle, Lock, Eye, Loader2, UserCircle, AlertTriangle, GitBranch, Banknote, ClipboardCheck, CheckCircle2 } from 'lucide-react'
+import { Wallet, Plus, ArrowUpCircle, ArrowDownCircle, Lock, Eye, Loader2, UserCircle, AlertTriangle, Banknote, ClipboardCheck, CheckCircle2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface CashRegister {
@@ -82,7 +82,6 @@ export function CashRegisterView() {
   const [closeRegId, setCloseRegId] = useState<string | null>(null)
   const [initialAmt, setInitialAmt] = useState('100')
   const [registerName, setRegisterName] = useState('')
-  const [openBranchId, setOpenBranchId] = useState<string>('')
   const [selectedUserId, setSelectedUserId] = useState('')
   const [availableUsers, setAvailableUsers] = useState<{ id: string; name: string; role: string }[]>([])
   const [moveType, setMoveType] = useState('entrada')
@@ -131,15 +130,21 @@ export function CashRegisterView() {
     }
   }
 
-  // Initialize branch filter
+  // Sync local filter with store branch — react to header branch changes
   useEffect(() => {
     const mainBranch = branches.find(b => b.isMain && b.active)
-    const defaultBranch = filterBranchId || selectedBranchId || mainBranch?.id || ''
-    setFilterBranchId(defaultBranch)
-    if (!filterBranchId && !selectedBranchId && mainBranch) {
-      setSelectedBranchId(mainBranch.id)
+    const targetBranch = selectedBranchId || mainBranch?.id || ''
+    if (targetBranch && targetBranch !== filterBranchId) {
+      setFilterBranchId(targetBranch)
     }
-  }, [branches])
+  }, [selectedBranchId, branches])
+
+  // Initialize branch filter on mount
+  useEffect(() => {
+    const mainBranch = branches.find(b => b.isMain && b.active)
+    const defaultBranch = selectedBranchId || mainBranch?.id || ''
+    setFilterBranchId(defaultBranch)
+  }, [])
 
   useEffect(() => {
     if (filterBranchId) {
@@ -172,8 +177,9 @@ export function CashRegisterView() {
         setSaving(false)
         return
       }
-      if (!openBranchId) {
-        toast.error('Debe seleccionar una sucursal')
+      const targetBranch = filterBranchId || selectedBranchId || ''
+      if (!targetBranch) {
+        toast.error('No hay sucursal seleccionada')
         setSaving(false)
         return
       }
@@ -181,19 +187,13 @@ export function CashRegisterView() {
         userId: effectiveUserId,
         initialAmt: parseFloat(initialAmt) || 0,
         name: registerName.trim() || undefined,
-        branchId: openBranchId,
+        branchId: targetBranch,
       })
       toast.success('Caja abierta exitosamente')
       setShowOpen(false)
-      // Save branch before clearing dialog state
-      const openedBranchId = openBranchId
       setRegisterName('')
       setSelectedUserId('')
-      setOpenBranchId('')
-      // Switch filter to the branch where the register was opened
-      setFilterBranchId(openedBranchId)
-      setSelectedBranchId(openedBranchId)
-      fetchData(openedBranchId)
+      fetchData(targetBranch)
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Error al abrir caja'
       toast.error(msg)
@@ -385,32 +385,7 @@ export function CashRegisterView() {
         </Card>
       )}
 
-      {/* Branch filter (non-cashier only) */}
-      {!isCashier && (
-        <div className="flex items-center gap-2">
-          <GitBranch className="h-4 w-4 text-muted-foreground" />
-          <Select value={filterBranchId} onValueChange={(v) => {
-            setFilterBranchId(v)
-            setSelectedBranchId(v)
-          }}>
-            <SelectTrigger className="w-48">
-              <SelectValue placeholder="Filtrar por sucursal" />
-            </SelectTrigger>
-            <SelectContent>
-              {branches
-                .filter(b => b.active)
-                .map((branch) => (
-                  <SelectItem key={branch.id} value={branch.id}>
-                    <span className="flex items-center gap-2">
-                      {branch.name}
-                      {branch.isMain && <span className="text-xs text-muted-foreground">(Principal)</span>}
-                    </span>
-                  </SelectItem>
-                ))}
-            </SelectContent>
-          </Select>
-        </div>
-      )}
+
 
       {/* Summary Cards */}
       <div className="grid gap-3 grid-cols-1 sm:grid-cols-3">
@@ -467,10 +442,7 @@ export function CashRegisterView() {
                         Cerrar Todas
                       </Button>
                     )}
-                    <Button size="sm" className="bg-primary hover:bg-primary/90 text-white" onClick={() => {
-                      setOpenBranchId(filterBranchId || selectedBranchId || '')
-                      setShowOpen(true)
-                    }}>
+                    <Button size="sm" className="bg-primary hover:bg-primary/90 text-white" onClick={() => setShowOpen(true)}>
                       <Plus className="mr-1 h-3 w-3" /> Abrir Caja
                     </Button>
                   </>
@@ -646,29 +618,9 @@ export function CashRegisterView() {
         <DialogContent className="sm:max-w-[90vw]">
           <DialogHeader>
             <DialogTitle>Abrir Caja</DialogTitle>
-            <DialogDescription>Selecciona la sucursal, cajero y monto inicial</DialogDescription>
+            <DialogDescription>Selecciona el cajero y el monto inicial</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            {/* Branch selection */}
-            <div className="space-y-2">
-              <Label>Sucursal *</Label>
-              <Select value={openBranchId} onValueChange={setOpenBranchId}>
-                <SelectTrigger><SelectValue placeholder="Seleccionar sucursal" /></SelectTrigger>
-                <SelectContent>
-                  {branches
-                    .filter(b => b.active)
-                    .map((branch) => (
-                      <SelectItem key={branch.id} value={branch.id}>
-                        <span className="flex items-center gap-2">
-                          <GitBranch className="h-3 w-3" />
-                          {branch.name}
-                          {branch.isMain && <span className="text-xs text-muted-foreground">(Principal)</span>}
-                        </span>
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-            </div>
             {/* Cashier selection */}
             <div className="space-y-2">
               <Label>Cajero Asignado *</Label>
@@ -694,7 +646,7 @@ export function CashRegisterView() {
               <Label htmlFor="initial">Monto Inicial</Label>
               <Input id="initial" type="number" step="0.01" value={initialAmt} onChange={(e) => setInitialAmt(e.target.value)} />
             </div>
-            <Button className="w-full bg-primary hover:bg-primary/90 text-white" onClick={openRegister} disabled={saving || !selectedUserId || !openBranchId}>
+            <Button className="w-full bg-primary hover:bg-primary/90 text-white" onClick={openRegister} disabled={saving || !selectedUserId}>
               {saving ? 'Abriendo...' : 'Abrir Caja'}
             </Button>
           </div>
