@@ -399,13 +399,6 @@ export function ProductsTable() {
         </div>
       </div>
 
-      {/* Branch indicator */}
-      {branchName && (
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Badge variant="outline" className="text-primary">Sucursal: {branchName}</Badge>
-        </div>
-      )}
-
       {/* Summary badges */}
       <div className="flex items-center gap-3 text-sm text-muted-foreground">
         <Badge variant="secondary">{filteredProducts.length} producto{filteredProducts.length !== 1 ? 's' : ''}</Badge>
@@ -422,6 +415,7 @@ export function ProductsTable() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-12">Img</TableHead>
                   <TableHead>Producto</TableHead>
                   <TableHead className="hidden sm:table-cell">SKU</TableHead>
                   <TableHead>Categoría</TableHead>
@@ -444,6 +438,19 @@ export function ProductsTable() {
                       key={product.id}
                       className={!product.active ? 'opacity-60' : ''}
                     >
+                      <TableCell>
+                        {product.imageUrl ? (
+                          <img
+                            src={product.imageUrl}
+                            alt={product.name}
+                            className="h-9 w-9 rounded-md object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-9 w-9 items-center justify-center rounded-md bg-muted">
+                            <Package className="h-4 w-4 text-muted-foreground/50" />
+                          </div>
+                        )}
+                      </TableCell>
                       <TableCell className="font-medium">{product.name}</TableCell>
                       <TableCell className="hidden sm:table-cell text-muted-foreground">
                         {product.sku || '—'}
@@ -517,7 +524,7 @@ export function ProductsTable() {
                 })}
                 {filteredProducts.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                       <Package className="mx-auto mb-2 h-8 w-8 opacity-50" />
                       No se encontraron productos
                     </TableCell>
