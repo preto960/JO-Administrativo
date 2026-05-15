@@ -251,3 +251,25 @@ Stage Summary:
 - Build exitoso sin errores
 - La vista ahora es más visual e intuitiva con tarjetas, tooltips y mejor jerarquía
 
+---
+Task ID: 5
+Agent: Main
+Task: Barcode scanner button in POS view to add products to cart
+
+Work Log:
+- Explored POS terminal component, POS store, product schema, and existing barcode infrastructure
+- Found that barcode labels already use SKU as barcode text (no dedicated barcode field in DB)
+- Added ScanBarcode icon button next to search input in POS terminal
+- Implemented toggle mode: button opens dedicated barcode input, X button closes it
+- Barcode scan handler: on Enter key, searches products by exact SKU match (then partial)
+- Auto-adds product to cart if found and in stock, with toast notifications
+- Handles edge cases: not found, out of stock, max stock reached
+- Re-focuses barcode input after each scan for rapid consecutive scanning
+- Visual differentiation: primary-colored border and background in scan mode
+- TypeScript compiles cleanly for pos-terminal.tsx
+
+Stage Summary:
+- Feature: Barcode scanner input in POS terminal
+- File modified: src/components/pos/pos-terminal.tsx (+104 lines, -2 lines)
+- Commit: 09e56cb
+- No new dependencies needed (uses existing lucide-react ScanBarcode icon)
