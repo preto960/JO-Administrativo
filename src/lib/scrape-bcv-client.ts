@@ -103,7 +103,7 @@ function extractFromHtml(html: string, results: RawRate[]): void {
       /\$\s*<\/?\w+[^>]*>\s*([0-9]+[,]\d{2,})/gi,
       /data-valor="([0-9]+[,]\d{2,})"/gi,
       /class="[^"]*dolar[^"]*"[^>]*>\s*([0-9]+[,]\d{2,})/gi,
-      /id="[^"]*dolar[^"]*"[^>]*>[\s\S]*?([0-9]+[,]\d{2,})/i,
+      /id="[^"]*dolar[^"]*"[^>]*>[\s\S]*?([0-9]+[,]\d{2,})/gi,
     ]
     for (const pattern of usdHtmlPatterns) {
       const matches = [...html.matchAll(pattern)]
