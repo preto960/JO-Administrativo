@@ -35,7 +35,7 @@ interface Category {
 }
 
 export function PosTerminal() {
-  const { addItem, getCurrentQty, searchQuery, setSearchQuery, categoryFilter, setCategoryFilter } = usePosStore()
+  const { addItem, getCurrentQty, searchQuery, setSearchQuery, categoryFilter, setCategoryFilter, validateBranch } = usePosStore()
   const { items, getTotal, getItemCount } = usePosStore()
   const exchangeRate = useSetting('exchangeRate')
   const referenceCurrency = useSetting('referenceCurrency')
@@ -48,6 +48,13 @@ export function PosTerminal() {
   const searchRef = useRef<HTMLInputElement>(null)
   const isMobile = useIsMobile()
   const currencySymbol = referenceCurrency === 'EUR' ? '€' : '$'
+
+  // Validate saved cart against current branch on mount
+  useEffect(() => {
+    if (selectedBranchId) {
+      validateBranch(selectedBranchId)
+    }
+  }, [selectedBranchId, validateBranch])
 
   const fetchProducts = useCallback(() => {
     setLoading(true)
