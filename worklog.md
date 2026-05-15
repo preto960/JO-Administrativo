@@ -208,3 +208,22 @@ Stage Summary:
 - Exchange rates now persist correctly after update and reload
 - The flow is: User clicks "Actualizar" → BCV rates fetched → saved to DB via PUT /api/settings → on reload, GET /api/settings returns the saved values
 - No automatic rate fetching on page load (prevents overwriting user-saved values)
+
+---
+Task ID: 7b
+Agent: Main Agent
+Task: Push exchange rate fix to remote repository
+
+Work Log:
+- Found 1 local commit not pushed to origin
+- `git pull --rebase` had conflicts in 2 files (exchange-rates/route.ts, settings-view.tsx)
+- Resolved all 3 conflict markers:
+  - GET /api/exchange-rates: kept read-only (no DB write)
+  - settings-view.tsx: removed autoFetchRates useEffect
+  - settings-view.tsx: merged remote's client-side scraping with local's saveSettings persistence
+- Successfully rebased and pushed to origin/main
+
+Stage Summary:
+- Commit f1692e1 pushed to https://github.com/preto960/JO-Administrativo.git
+- Exchange rate flow: User clicks "Actualizar" → client-side BCV scrape → POST to server → saved to Settings table → on reload, GET /api/settings returns saved values
+- No auto-fetch on page load (prevents overwriting)
