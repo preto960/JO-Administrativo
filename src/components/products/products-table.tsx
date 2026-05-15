@@ -41,12 +41,9 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import { Plus, Search, Edit, Trash2, Package, Eye, EyeOff, Upload, ImageIcon, X, Loader2, FileDown, Barcode, Printer } from 'lucide-react'
+import { Plus, Search, Edit, Trash2, Package, Eye, EyeOff, Upload, ImageIcon, X, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
-import { useIsMobile } from '@/hooks/use-mobile'
-import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription } from '@/components/ui/drawer'
 import { ProductImportDialog } from './product-import-dialog'
-import { BarcodeLabelSelector } from './barcode-label-selector'
 
 // ── Interfaces ──────────────────────────────────────────────────────────────
 
@@ -101,7 +98,6 @@ function fmtStock(n: number): string {
 export function ProductsTable() {
   const selectedBranchId = useAppStore((s) => s.selectedBranchId)
   const branches = useAppStore((s) => s.branches)
-  const isMobile = useIsMobile()
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [currencies, setCurrencies] = useState<Currency[]>([])
@@ -114,7 +110,6 @@ export function ProductsTable() {
   const [productToDelete, setProductToDelete] = useState<Product | null>(null)
   const [editProduct, setEditProduct] = useState<Product | null>(null)
   const [importOpen, setImportOpen] = useState(false)
-  const [showBarcodeDialog, setShowBarcodeDialog] = useState(false)
 
   // Form state
   const [formName, setFormName] = useState('')
@@ -401,40 +396,15 @@ export function ProductsTable() {
           >
             <Upload className="mr-2 h-4 w-4" /> Importar
           </Button>
-          <Button
-            variant="outline"
-            className="text-primary hover:text-primary"
-            onClick={async () => {
-              try {
-                const params = new URLSearchParams()
-                params.set('active', showInactive ? 'all' : 'true')
-                if (selectedBranchId) params.set('branchId', selectedBranchId)
-                if (catFilter !== '__all__') params.set('categoryId', catFilter)
-                const res = await fetch(`/api/products/export-pdf?${params}`)
-                if (!res.ok) throw new Error()
-                const blob = await res.blob()
-                const url = URL.createObjectURL(blob)
-                const a = document.createElement('a')
-                a.href = url
-                a.download = 'listado_productos.pdf'
-                a.click()
-                URL.revokeObjectURL(url)
-              } catch {
-                toast.error('Error al generar PDF')
-              }
-            }}
-          >
-            <FileDown className="mr-2 h-4 w-4" /> Exportar PDF
-          </Button>
-          <Button
-            variant="outline"
-            className="text-amber-600 border-amber-300 hover:bg-amber-50 dark:border-amber-800 dark:hover:bg-amber-950/30"
-            onClick={() => setShowBarcodeDialog(true)}
-          >
-            <Barcode className="mr-2 h-4 w-4" /> Etiquetas
-          </Button>
         </div>
       </div>
+
+      {/* Branch indicator */}
+      {branchName && (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Badge variant="outline" className="text-primary">Sucursal: {branchName}</Badge>
+        </div>
+      )}
 
       {/* Summary badges */}
       <div className="flex items-center gap-3 text-sm text-muted-foreground">
@@ -452,7 +422,6 @@ export function ProductsTable() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-12">Img</TableHead>
                   <TableHead>Producto</TableHead>
                   <TableHead className="hidden sm:table-cell">SKU</TableHead>
                   <TableHead>Categoría</TableHead>
@@ -475,19 +444,6 @@ export function ProductsTable() {
                       key={product.id}
                       className={!product.active ? 'opacity-60' : ''}
                     >
-                      <TableCell>
-                        {product.imageUrl ? (
-                          <img
-                            src={product.imageUrl}
-                            alt={product.name}
-                            className="h-9 w-9 rounded-md object-cover"
-                          />
-                        ) : (
-                          <div className="flex h-9 w-9 items-center justify-center rounded-md bg-muted">
-                            <Package className="h-4 w-4 text-muted-foreground/50" />
-                          </div>
-                        )}
-                      </TableCell>
                       <TableCell className="font-medium">{product.name}</TableCell>
                       <TableCell className="hidden sm:table-cell text-muted-foreground">
                         {product.sku || '—'}
@@ -533,33 +489,6 @@ export function ProductsTable() {
                           >
                             <Edit className="h-3.5 w-3.5" />
                           </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-950/30"
-                            onClick={async () => {
-                              try {
-                                const res = await fetch('/api/products/barcode-labels', {
-                                  method: 'POST',
-                                  headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({ products: [{ productId: product.id, quantity: 1 }] }),
-                                })
-                                if (!res.ok) throw new Error()
-                                const blob = await res.blob()
-                                const url = URL.createObjectURL(blob)
-                                const a = document.createElement('a')
-                                a.href = url
-                                a.download = `etiqueta_${product.name.replace(/\s+/g, '_')}.pdf`
-                                a.click()
-                                URL.revokeObjectURL(url)
-                              } catch {
-                                toast.error('Error al generar etiqueta')
-                              }
-                            }}
-                            title="Etiqueta"
-                          >
-                            <Barcode className="h-3.5 w-3.5" />
-                          </Button>
                           {product.active ? (
                             <Button
                               variant="ghost"
@@ -588,7 +517,7 @@ export function ProductsTable() {
                 })}
                 {filteredProducts.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                       <Package className="mx-auto mb-2 h-8 w-8 opacity-50" />
                       No se encontraron productos
                     </TableCell>
@@ -861,41 +790,6 @@ export function ProductsTable() {
         onOpenChange={setImportOpen}
         onImportComplete={fetchData}
       />
-
-      {/* Barcode Labels Dialog / Drawer */}
-      {isMobile ? (
-        <Drawer open={showBarcodeDialog} onOpenChange={setShowBarcodeDialog}>
-          <DrawerContent>
-            <DrawerHeader>
-              <DrawerTitle className="flex items-center gap-2">
-                <Barcode className="h-5 w-5 text-amber-600" />
-                Generar Etiquetas
-              </DrawerTitle>
-              <DrawerDescription>
-                Selecciona productos y la cantidad de etiquetas por producto
-              </DrawerDescription>
-            </DrawerHeader>
-            <div className="px-4 pb-4 flex flex-col" style={{ height: 'calc(70vh - 80px)', minHeight: '300px' }}>
-              <BarcodeLabelSelector products={filteredProducts} onClose={() => setShowBarcodeDialog(false)} />
-            </div>
-          </DrawerContent>
-        </Drawer>
-      ) : (
-        <Dialog open={showBarcodeDialog} onOpenChange={setShowBarcodeDialog}>
-          <DialogContent className="sm:max-w-2xl max-h-[80vh] flex flex-col">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <Barcode className="h-5 w-5 text-amber-600" />
-                Generar Etiquetas
-              </DialogTitle>
-              <DialogDescription>
-                Selecciona productos y la cantidad de etiquetas por producto
-              </DialogDescription>
-            </DialogHeader>
-            <BarcodeLabelSelector products={filteredProducts} onClose={() => setShowBarcodeDialog(false)} />
-          </DialogContent>
-        </Dialog>
-      )}
     </div>
   )
 }
