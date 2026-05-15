@@ -2,20 +2,15 @@
 
 import { useEffect, useState, useRef } from 'react'
 import { useSession } from 'next-auth/react'
-import { api } from '@/lib/api'
+import { useAppStore } from '@/stores/use-app-store'
 import { Clock, AlertTriangle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-interface SystemSettings {
-  sessionDuration: number
-}
-
 export function SessionTimer() {
   const { data: session } = useSession()
-  const [settings, setSettings] = useState<SystemSettings | null>(null)
+  const sessionDuration = useAppStore((s) => s.settings?.sessionDuration || 28800)
   const [remaining, setRemaining] = useState<number | null>(null)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const loadedRef = useRef(false)
 
   useEffect(() => {
     // Calculate approximate remaining time based on session token
@@ -25,8 +20,6 @@ export function SessionTimer() {
         return
       }
 
-      if (!settings) return
-
       const exp = (session as Record<string, unknown>).expires as string
       if (exp) {
         const expiresAt = new Date(exp).getTime()
@@ -34,18 +27,8 @@ export function SessionTimer() {
         const diff = Math.max(0, Math.floor((expiresAt - now) / 1000))
         setRemaining(diff)
       } else {
-        setRemaining(settings.sessionDuration)
+        setRemaining(sessionDuration)
       }
-    }
-
-    // Only fetch settings once (prevent infinite loop)
-    if (!loadedRef.current) {
-      loadedRef.current = true
-      api.get<SystemSettings>('/api/settings')
-        .then(setSettings)
-        .catch(() => {
-          setSettings({ sessionDuration: 28800 })
-        })
     }
 
     calculateRemaining()
@@ -55,9 +38,9 @@ export function SessionTimer() {
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current)
     }
-  }, [session, settings])
+  }, [session, sessionDuration])
 
-  if (!remaining || !settings) return null
+  if (!remaining) return null
 
   const hours = Math.floor(remaining / 3600)
   const minutes = Math.floor((remaining % 3600) / 60)

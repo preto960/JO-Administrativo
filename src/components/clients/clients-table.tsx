@@ -106,7 +106,7 @@ export function ClientsTable() {
   const [showPaymentDialog, setShowPaymentDialog] = useState(false)
   const [paying, setPaying] = useState(false)
   const [openCashRegId, setOpenCashRegId] = useState<string | null>(null)
-  const [baseCurrencyId, setBaseCurrencyId] = useState('')
+  const baseCurrencyId = useAppStore((s) => s.settings?.baseCurrencyId || '')
 
   const exchangeRate = useSetting('exchangeRate')
   const referenceCurrency = useSetting('referenceCurrency')
@@ -202,10 +202,6 @@ export function ClientsTable() {
     // Set amount in reference currency by default
     setPaymentAmount(client.pendingBalance.toFixed(2))
     setShowPaymentDialog(true)
-    // Load base currency if needed
-    api.get<{ baseCurrencyId: string }>('/api/settings')
-      .then(s => setBaseCurrencyId(s?.baseCurrencyId || ''))
-      .catch(() => {})
   }
 
   // When payment method changes, toggle between Bs. and reference currency

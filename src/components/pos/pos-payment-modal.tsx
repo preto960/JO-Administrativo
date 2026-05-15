@@ -46,13 +46,13 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
   const { user } = useAuth()
   const exchangeRate = useSetting('exchangeRate')
   const referenceCurrency = useSetting('referenceCurrency')
+  const baseCurrencyId = useSetting('baseCurrencyId')
   const [method, setMethod] = useState('divisas')
   const [amount, setAmount] = useState('')
   const [reference, setReference] = useState('')
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
   const [currencies, setCurrencies] = useState<{ id: string; code: string; symbol: string; isBase: boolean }[]>([])
-  const [baseCurrencyId, setBaseCurrencyId] = useState('')
   const [openCashRegId, setOpenCashRegId] = useState<string | null>(null)
 
   const total = getTotal()
@@ -78,12 +78,9 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
   useEffect(() => {
     Promise.all([
       api.get<{ id: string; code: string; symbol: string; isBase: boolean }[]>('/api/currencies'),
-      api.get<{ baseCurrencyId: string }>('/api/settings'),
       api.get<Array<{ id: string; status: string }>>('/api/cash-register'),
-    ]).then(([currencies, settings, registers]) => {
+    ]).then(([currencies, registers]) => {
       setCurrencies(currencies)
-      const base = currencies.find(c => c.isBase)
-      setBaseCurrencyId(settings?.baseCurrencyId || base?.id || currencies[0]?.id || '')
       const openReg = registers?.find(r => r.status === 'abierta')
       if (openReg) setOpenCashRegId(openReg.id)
     }).catch(() => {})
