@@ -56,9 +56,15 @@ export function PosCart({ onPayment }: PosCartProps) {
   }
 
   const handleResume = (sale: PausedSale) => {
+    const hadActiveItems = usePosStore.getState().items.length > 0
     const success = resumeSale(sale.id)
     if (success) {
       setShowPaused(false)
+      if (hadActiveItems) {
+        toast.success('Venta activa pausada automáticamente', {
+          description: 'La venta que tenías en curso fue guardada en pausadas.',
+        })
+      }
       toast.success('Venta restaurada')
     } else {
       toast.error('No se puede restaurar: la venta pertenece a otra sucursal')

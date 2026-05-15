@@ -156,7 +156,7 @@ export const usePosStore = create<PosState>()(
 
       // Resume a paused sale — restore items and remove from pausedSales
       resumeSale: (saleId) => {
-        const { pausedSales, branchId } = get()
+        const { pausedSales, branchId, items, clientId } = get()
         const sale = pausedSales.find((s) => s.id === saleId)
         if (!sale) return false
 
@@ -165,10 +165,29 @@ export const usePosStore = create<PosState>()(
           return false
         }
 
+        let updatedPausedSales = pausedSales.filter((s) => s.id !== saleId)
+
+        // If current cart has items, auto-pause the active sale first
+        if (items.length > 0) {
+          const total = items.reduce((s, i) => s + i.lineTotal, 0)
+          const itemCount = items.reduce((s, i) => s + i.quantity, 0)
+          const autoPaused: PausedSale = {
+            id: `paused-${Date.now()}`,
+            items: [...items],
+            clientId,
+            branchId,
+            total,
+            itemCount,
+            clientName: 'Cliente general',
+            pausedAt: new Date().toISOString(),
+          }
+          updatedPausedSales = [autoPaused, ...updatedPausedSales]
+        }
+
         set({
           items: sale.items,
           clientId: sale.clientId,
-          pausedSales: pausedSales.filter((s) => s.id !== saleId),
+          pausedSales: updatedPausedSales,
         })
 
         return true
