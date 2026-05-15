@@ -273,3 +273,41 @@ Stage Summary:
 - File modified: src/components/pos/pos-terminal.tsx (+104 lines, -2 lines)
 - Commit: 09e56cb
 - No new dependencies needed (uses existing lucide-react ScanBarcode icon)
+
+---
+Task ID: 0
+Agent: Main
+Task: Fix PDFKit ENOENT font error on Vercel - migrate to jsPDF
+
+Work Log:
+- Identified root cause: PDFKit's standard font files (Helvetica.afm) not included in Vercel serverless bundle
+- Found 4 files using PDFKit: cash-close-pdf.ts, export-pdf/route.ts, barcode-labels/route.ts, invoice/route.ts
+- Installed jspdf@4.2.1 and jspdf-autotable@5.0.7
+- Rewrote cash-close-pdf.ts: complete rewrite with modular draw functions (drawHeader, drawRegisterInfo, drawFinancialSummary, drawPaymentMethods, drawExpenses, drawSalesDetail, drawFooter)
+- Rewrote export-pdf/route.ts: products list PDF with header band, summary, table with autotable
+- Rewrote barcode-labels/route.ts: kept bwip-js for barcode generation, converted to base64 for jsPDF addImage
+- Rewrote invoice/route.ts: invoice/dispatch PDF with blue header, meta info boxes, product table, totals, payment methods, credit notice
+- All features preserved: multi-page, alternating rows, colored cells, page numbers, footers
+- Removed pdfkit from dependencies
+
+Stage Summary:
+- 4 files rewritten: cash-close-pdf.ts, export-pdf/route.ts, barcode-labels/route.ts, invoice/route.ts
+- Dependencies: +jspdf, +jspdf-autotable, -pdfkit
+- Commits: 4a24de4, 136bebc
+- No font file dependency = works on Vercel serverless
+
+---
+Task ID: 5
+Agent: Main
+Task: Barcode scanner button in POS view to add products to cart
+
+Work Log:
+- Added ScanBarcode icon button next to search input in POS terminal
+- Toggle mode: button opens dedicated barcode input, X button closes it
+- On Enter key: searches products by exact SKU match (then partial)
+- Auto-adds to cart with success/error toast notifications
+- Maintains focus for rapid consecutive scanning
+
+Stage Summary:
+- File modified: src/components/pos/pos-terminal.tsx
+- Commit: 09e56cb
