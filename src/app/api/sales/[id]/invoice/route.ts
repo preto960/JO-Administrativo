@@ -1,4 +1,5 @@
-import PDFDocument from 'pdfkit'
+import jsPDF from 'jspdf'
+import autoTable from 'jspdf-autotable'
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 
@@ -44,335 +45,290 @@ export async function GET(
     const receivable = hasReceivable ? sale.receivables[0] : null
     const invoiceTitle = hasReceivable ? 'NOTA DE DESPACHO' : 'FACTURA'
 
-    const doc = new PDFDocument({
-      size: 'LETTER',
-      margins: { top: 20, bottom: 40, left: 40, right: 40 },
-      bufferPages: true,
-    })
-
-    doc.registerFont('Regular', '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf')
-    doc.registerFont('Bold', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf')
-
-    const buffers: Buffer[] = []
-    doc.on('data', (chunk: Buffer) => buffers.push(chunk))
-
-    const pdfPromise = new Promise<Buffer>((resolve) => {
-      doc.on('end', () => resolve(Buffer.concat(buffers)))
-    })
-
-    const pageWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right
-    const blueHeader = '#1a3a6b'
-    const accentBlue = '#2563eb'
-    const lightGray = '#f3f4f6'
-    const darkText = '#1f2937'
-    const mutedText = '#6b7280'
-
-    // ─── Blue Header Band ───
-    doc.rect(0, 0, doc.page.width, 110).fill(blueHeader)
-
-    // Company name
-    doc.font('Bold').fontSize(20).fillColor('#ffffff')
-    doc.text(businessName, 40, 20, { width: pageWidth })
-
-    // Company details
-    doc.font('Regular').fontSize(9).fillColor('#d1d5db')
-    let detailY = 48
-    if (rif) {
-      doc.text(`RIF: ${rif}`, 40, detailY)
-      detailY += 14
-    }
-    if (address) {
-      doc.text(`Dirección: ${address}`, 40, detailY)
-      detailY += 14
-    }
-    if (phone) {
-      doc.text(`Teléfono: ${phone}`, 40, detailY)
-      detailY += 14
-    }
-    if (businessEmail) {
-      doc.text(`Email: ${businessEmail}`, 40, detailY)
-    }
-
-    // Invoice number & title (right side of header)
-    doc.font('Bold').fontSize(14).fillColor('#ffffff')
-    doc.text(invoiceTitle, 40, 72, { align: 'right', width: pageWidth })
-
-    const invoiceNumber = sale.id.substring(0, 8).toUpperCase()
-    doc.font('Regular').fontSize(10).fillColor('#93c5fd')
-    doc.text(`N° ${invoiceNumber}`, 40, 92, { align: 'right', width: pageWidth })
-
-    // ─── Invoice Meta Info ───
-    let y = 125
-
-    // Two-column info boxes
-    const boxHeight = 60
-
-    // Left box: Date & Branch
-    doc.roundedRect(40, y, pageWidth / 2 - 5, boxHeight, 4).fill(lightGray)
-    doc.font('Bold').fontSize(8).fillColor(mutedText)
-    doc.text('FECHA', 50, y + 8)
-    doc.font('Regular').fontSize(10).fillColor(darkText)
-    const saleDate = sale.date
-      ? new Date(sale.date).toLocaleDateString('es-VE', {
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit',
-          hour: '2-digit',
-          minute: '2-digit',
-        })
-      : ''
-    doc.text(saleDate, 50, y + 22)
-
-    if (sale.branch) {
-      doc.font('Bold').fontSize(8).fillColor(mutedText)
-      doc.text('SUCURSAL', 50, y + 38)
-      doc.font('Regular').fontSize(10).fillColor(darkText)
-      doc.text(sale.branch.name, 110, y + 38)
-    }
-
-    // Right box: Client info
-    const rightX = 40 + pageWidth / 2 + 5
-    doc.roundedRect(rightX, y, pageWidth / 2 - 5, boxHeight, 4).fill(lightGray)
-    doc.font('Bold').fontSize(8).fillColor(mutedText)
-    doc.text('CLIENTE', rightX + 10, y + 8)
-    doc.font('Regular').fontSize(10).fillColor(darkText)
-    const clientName = sale.client?.name || 'Consumidor Final'
-    doc.text(clientName, rightX + 10, y + 22)
-
-    if (sale.client?.phone) {
-      doc.font('Regular').fontSize(8).fillColor(mutedText)
-      doc.text(`Tel: ${sale.client.phone}`, rightX + 10, y + 38)
-    }
-
-    if (sale.user) {
-      doc.font('Bold').fontSize(8).fillColor(mutedText)
-      doc.text('CAJERO', rightX + 150, y + 38)
-      doc.font('Regular').fontSize(8).fillColor(darkText)
-      doc.text(sale.user.name, rightX + 200, y + 38)
-    }
-
-    y += boxHeight + 8
-
-    // Client details block (if client has address/email)
-    if (sale.client) {
-      const clientDetails: string[] = []
-      if (sale.client.email) clientDetails.push(`Email: ${sale.client.email}`)
-      if (sale.client.address) clientDetails.push(`Dirección: ${sale.client.address}`)
-
-      if (clientDetails.length > 0) {
-        doc.roundedRect(40, y, pageWidth, 28, 4).fill('#eef2ff')
-        doc.font('Regular').fontSize(8).fillColor(accentBlue)
-        doc.text(clientDetails.join('  |  '), 50, y + 9, { width: pageWidth - 20 })
-        y += 34
-      }
-    }
-
-    // ─── Products Table ───
-    const tableTop = y + 5
-    const colWidths = {
-      num: 30,
-      product: pageWidth - 30 - 60 - 60 - 75 - 75 - 10,
-      sku: 60,
-      qty: 60,
-      unitPrice: 75,
-      total: 75,
-    }
-    const tableX = 40
-    const rowHeight = 22
-
-    // Table header
-    doc.roundedRect(tableX, tableTop, pageWidth, rowHeight, 4).fill(blueHeader)
-    doc.font('Bold').fontSize(8).fillColor('#ffffff')
-    let colX = tableX + 5
-
-    doc.text('#', colX, tableTop + 6, { width: colWidths.num })
-    colX += colWidths.num
-    doc.text('Producto', colX, tableTop + 6, { width: colWidths.product })
-    colX += colWidths.product
-    doc.text('SKU', colX, tableTop + 6, { width: colWidths.sku })
-    colX += colWidths.sku
-    doc.text('Cantidad', colX, tableTop + 6, { width: colWidths.qty, align: 'right' })
-    colX += colWidths.qty
-    doc.text('P. Unitario', colX, tableTop + 6, { width: colWidths.unitPrice, align: 'right' })
-    colX += colWidths.unitPrice
-    doc.text('Total', colX, tableTop + 6, { width: colWidths.total, align: 'right' })
-
-    let currentY = tableTop + rowHeight + 2
-
-    // Table rows
     const fmt = (n: number) =>
       n.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-    sale.lines.forEach((line, index) => {
-      // Check if we need a new page
-      if (currentY + rowHeight > doc.page.height - doc.page.margins.bottom - 80) {
-        doc.addPage()
-        currentY = doc.page.margins.top
+    // ─── Colors ───────────────────────────────────────────────────────────
+    const blueHeader: [number, number, number] = [26, 58, 107]
+    const accentBlue: [number, number, number] = [37, 99, 235]
+    const lightGray: [number, number, number] = [243, 244, 246]
+    const darkText: [number, number, number] = [31, 41, 55]
+    const mutedText: [number, number, number] = [107, 114, 128]
+    const redBg: [number, number, number] = [254, 242, 242]
+    const redAccent: [number, number, number] = [220, 38, 38]
 
-        // Repeat header on new page
-        doc.roundedRect(tableX, currentY, pageWidth, rowHeight, 4).fill(blueHeader)
-        doc.font('Bold').fontSize(8).fillColor('#ffffff')
-        let hx = tableX + 5
-        doc.text('#', hx, currentY + 6, { width: colWidths.num })
-        hx += colWidths.num
-        doc.text('Producto', hx, currentY + 6, { width: colWidths.product })
-        hx += colWidths.product
-        doc.text('SKU', hx, currentY + 6, { width: colWidths.sku })
-        hx += colWidths.sku
-        doc.text('Cantidad', hx, currentY + 6, { width: colWidths.qty, align: 'right' })
-        hx += colWidths.qty
-        doc.text('P. Unitario', hx, currentY + 6, { width: colWidths.unitPrice, align: 'right' })
-        hx += colWidths.unitPrice
-        doc.text('Total', hx, currentY + 6, { width: colWidths.total, align: 'right' })
-        currentY += rowHeight + 2
-      }
-
-      // Alternating row background
-      const rowBg = index % 2 === 0 ? '#ffffff' : lightGray
-      doc.rect(tableX, currentY, pageWidth, rowHeight).fill(rowBg)
-
-      // Subtle row bottom border
-      doc.moveTo(tableX, currentY + rowHeight).lineTo(tableX + pageWidth, currentY + rowHeight)
-      doc.strokeColor('#e5e7eb').lineWidth(0.5).stroke()
-
-      doc.font('Regular').fontSize(8).fillColor(darkText)
-      let cx = tableX + 5
-      doc.text(`${index + 1}`, cx, currentY + 6, { width: colWidths.num })
-      cx += colWidths.num
-
-      doc.font('Bold').fontSize(8)
-      doc.text(line.product.name, cx, currentY + 6, { width: colWidths.product })
-      cx += colWidths.product
-
-      doc.font('Regular').fontSize(8)
-      doc.text(line.product.sku || '-', cx, currentY + 6, { width: colWidths.sku })
-      cx += colWidths.sku
-      doc.text(fmt(line.quantity), cx, currentY + 6, { width: colWidths.qty, align: 'right' })
-      cx += colWidths.qty
-      doc.text(fmt(line.unitPrice), cx, currentY + 6, { width: colWidths.unitPrice, align: 'right' })
-      cx += colWidths.unitPrice
-      doc.font('Bold').fontSize(8)
-      doc.text(fmt(line.lineTotal), cx, currentY + 6, { width: colWidths.total, align: 'right' })
-
-      currentY += rowHeight
+    // ─── Create PDF ───────────────────────────────────────────────────────
+    const doc = new jsPDF({
+      orientation: 'portrait',
+      unit: 'pt',
+      format: 'letter',
     })
 
-    // ─── Totals Section ───
-    currentY += 8
+    const pw = doc.internal.pageSize.getWidth()
+    const ph = doc.internal.pageSize.getHeight()
 
-    const totalsX = tableX + pageWidth - 200
+    // ─── Blue Header Band ─────────────────────────────────────────────────
+    doc.setFillColor(...blueHeader)
+    doc.rect(0, 0, pw, 110, 'F')
+
+    // Company name
+    doc.setFontSize(20)
+    doc.setTextColor(...C_white)
+    doc.setFont('helvetica', 'bold')
+    doc.text(businessName, 40, 24)
+
+    // Company details
+    doc.setFontSize(9)
+    doc.setTextColor(209, 213, 219)
+    doc.setFont('helvetica', 'normal')
+    let detailY = 48
+    if (rif) { doc.text(`RIF: ${rif}`, 40, detailY); detailY += 14 }
+    if (address) { doc.text(`Direccion: ${address}`, 40, detailY); detailY += 14 }
+    if (phone) { doc.text(`Telefono: ${phone}`, 40, detailY); detailY += 14 }
+    if (businessEmail) { doc.text(`Email: ${businessEmail}`, 40, detailY) }
+
+    // Invoice number & title (right side)
+    doc.setFontSize(14)
+    doc.setTextColor(...C_white)
+    doc.setFont('helvetica', 'bold')
+    doc.text(invoiceTitle, pw - 40, 76, { align: 'right' })
+
+    const invoiceNumber = sale.id.substring(0, 8).toUpperCase()
+    doc.setFontSize(10)
+    doc.setTextColor(147, 197, 253)
+    doc.setFont('helvetica', 'normal')
+    doc.text(`No ${invoiceNumber}`, pw - 40, 96, { align: 'right' })
+
+    // ─── Invoice Meta Info ────────────────────────────────────────────────
+    let y = 120
+
+    // Left box: Date & Branch
+    const boxH = 60
+    const halfW = (pw - 90) / 2 - 5
+
+    doc.setFillColor(...lightGray)
+    doc.roundedRect(40, y, halfW, boxH, 4, 4, 'F')
+
+    doc.setFontSize(8)
+    doc.setTextColor(...mutedText)
+    doc.setFont('helvetica', 'bold')
+    doc.text('FECHA', 50, y + 12)
+
+    doc.setFontSize(10)
+    doc.setTextColor(...darkText)
+    doc.setFont('helvetica', 'normal')
+    const saleDate = sale.date
+      ? new Date(sale.date).toLocaleDateString('es-VE', {
+          year: 'numeric', month: '2-digit', day: '2-digit',
+          hour: '2-digit', minute: '2-digit',
+        })
+      : ''
+    doc.text(saleDate, 50, y + 26)
+
+    if (sale.branch) {
+      doc.setFontSize(8)
+      doc.setTextColor(...mutedText)
+      doc.setFont('helvetica', 'bold')
+      doc.text('SUCURSAL', 50, y + 42)
+      doc.setFontSize(10)
+      doc.setTextColor(...darkText)
+      doc.setFont('helvetica', 'normal')
+      doc.text(sale.branch.name, 110, y + 42)
+    }
+
+    // Right box: Client info
+    const rightX = 40 + halfW + 10
+    doc.setFillColor(...lightGray)
+    doc.roundedRect(rightX, y, halfW, boxH, 4, 4, 'F')
+
+    doc.setFontSize(8)
+    doc.setTextColor(...mutedText)
+    doc.setFont('helvetica', 'bold')
+    doc.text('CLIENTE', rightX + 10, y + 12)
+
+    doc.setFontSize(10)
+    doc.setTextColor(...darkText)
+    doc.setFont('helvetica', 'normal')
+    const clientName = sale.client?.name || 'Consumidor Final'
+    doc.text(clientName, rightX + 10, y + 26)
+
+    if (sale.client?.phone) {
+      doc.setFontSize(8)
+      doc.setTextColor(...mutedText)
+      doc.text(`Tel: ${sale.client.phone}`, rightX + 10, y + 42)
+    }
+
+    if (sale.user) {
+      doc.setFontSize(8)
+      doc.setTextColor(...mutedText)
+      doc.setFont('helvetica', 'bold')
+      const cajeroLabel = `CAJERO: ${sale.user.name}`
+      doc.text(cajeroLabel, rightX + 10, y + 54)
+    }
+
+    y += boxH + 8
+
+    // Client details block
+    if (sale.client) {
+      const clientDetails: string[] = []
+      if (sale.client.email) clientDetails.push(`Email: ${sale.client.email}`)
+      if (sale.client.address) clientDetails.push(`Direccion: ${sale.client.address}`)
+
+      if (clientDetails.length > 0) {
+        doc.setFillColor(238, 242, 255)
+        doc.roundedRect(40, y, pw - 80, 24, 4, 4, 'F')
+        doc.setFontSize(8)
+        doc.setTextColor(...accentBlue)
+        doc.setFont('helvetica', 'normal')
+        doc.text(clientDetails.join('  |  '), 50, y + 15, { maxWidth: pw - 100 })
+        y += 30
+      }
+    }
+
+    // ─── Products Table ───────────────────────────────────────────────────
+    const linesBody = sale.lines.map((line, index) => [
+      String(index + 1),
+      line.product.name,
+      line.product.sku || '-',
+      String(line.quantity),
+      fmt(line.unitPrice),
+      fmt(line.lineTotal),
+    ])
+
+    autoTable(doc, {
+      startY: y + 4,
+      theme: 'grid',
+      margin: { left: 40, right: 40 },
+      head: [['#', 'Producto', 'SKU', 'Cantidad', 'P. Unitario', 'Total']],
+      body: linesBody,
+      styles: {
+        fontSize: 8,
+        cellPadding: 4,
+      },
+      headStyles: {
+        fillColor: blueHeader,
+        textColor: [255, 255, 255],
+        fontStyle: 'bold',
+        fontSize: 8,
+      },
+      columnStyles: {
+        0: { cellWidth: 25 },
+        1: { fontStyle: 'bold' },
+        2: { cellWidth: 50, textColor: mutedText },
+        3: { halign: 'right', cellWidth: 45 },
+        4: { halign: 'right', cellWidth: 60 },
+        5: { halign: 'right', fontStyle: 'bold', textColor: accentBlue },
+      },
+    })
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    y = (doc as any).lastAutoTable.finalY + 12
+
+    // ─── Totals Section ───────────────────────────────────────────────────
+    const totalsX = 40 + (pw - 80) - 200
     const labelW = 110
     const valueW = 90
 
-    // Subtotal
-    doc.font('Regular').fontSize(9).fillColor(mutedText)
-    doc.text('Subtotal:', totalsX, currentY, { width: labelW, align: 'right' })
-    doc.font('Regular').fontSize(9).fillColor(darkText)
-    doc.text(fmt(sale.total), totalsX + labelW, currentY, { width: valueW, align: 'right' })
-    currentY += 18
+    doc.setFontSize(9)
+    doc.setTextColor(...mutedText)
+    doc.setFont('helvetica', 'normal')
+    doc.text('Subtotal:', totalsX, y, { align: 'right' })
+    doc.setTextColor(...darkText)
+    doc.text(fmt(sale.total), totalsX + labelW, y, { align: 'right' })
+    y += 18
 
     // Total line
-    doc.moveTo(totalsX, currentY).lineTo(totalsX + labelW + valueW, currentY)
-    doc.strokeColor(accentBlue).lineWidth(1.5).stroke()
-    currentY += 4
+    doc.setDrawColor(...accentBlue)
+    doc.setLineWidth(1.5)
+    doc.line(totalsX, y, totalsX + labelW + valueW, y)
+    y += 6
 
-    doc.font('Bold').fontSize(12).fillColor(accentBlue)
-    doc.text('TOTAL:', totalsX, currentY, { width: labelW, align: 'right' })
-    doc.font('Bold').fontSize(12).fillColor(darkText)
-    doc.text(fmt(sale.total), totalsX + labelW, currentY, { width: valueW, align: 'right' })
-    currentY += 24
+    doc.setFontSize(12)
+    doc.setTextColor(...accentBlue)
+    doc.setFont('helvetica', 'bold')
+    doc.text('TOTAL:', totalsX, y, { align: 'right' })
+    doc.setTextColor(...darkText)
+    doc.text(fmt(sale.total), totalsX + labelW, y, { align: 'right' })
+    y += 24
 
-    // ─── Payment Methods ───
+    // ─── Payment Methods ──────────────────────────────────────────────────
     if (sale.payments.length > 0) {
-      // Check page break
-      if (currentY + 60 > doc.page.height - doc.page.margins.bottom - 40) {
-        doc.addPage()
-        currentY = doc.page.margins.top
-      }
+      if (y + 60 > ph - 80) { doc.addPage(); y = 40 }
 
-      doc.roundedRect(40, currentY, pageWidth, 18, 3).fill(lightGray)
-      doc.font('Bold').fontSize(8).fillColor(mutedText)
-      doc.text('FORMA DE PAGO', 50, currentY + 4)
-      currentY += 22
+      doc.setFillColor(...lightGray)
+      doc.roundedRect(40, y, pw - 80, 18, 3, 3, 'F')
+      doc.setFontSize(8)
+      doc.setTextColor(...mutedText)
+      doc.setFont('helvetica', 'bold')
+      doc.text('FORMA DE PAGO', 50, y + 12)
+      y += 24
 
-      sale.payments.forEach((payment) => {
+      for (const payment of sale.payments) {
         const methodLabel = payment.method.toUpperCase()
         const amountStr = fmt(payment.amount)
         const currencyInfo = payment.currency ? `${payment.currency.symbol} ${payment.currency.code}` : ''
-        const reference = payment.reference ? ` — Ref: ${payment.reference}` : ''
+        const reference = payment.reference ? ` \u2014 Ref: ${payment.reference}` : ''
 
-        doc.font('Regular').fontSize(9).fillColor(darkText)
-        doc.text(
-          `${methodLabel}:  ${amountStr} ${currencyInfo}${reference}`,
-          55,
-          currentY
-        )
-        currentY += 16
-      })
-
-      currentY += 6
+        doc.setFontSize(9)
+        doc.setTextColor(...darkText)
+        doc.setFont('helvetica', 'normal')
+        doc.text(`${methodLabel}:  ${amountStr} ${currencyInfo}${reference}`, 55, y)
+        y += 16
+      }
+      y += 6
     }
 
-    // ─── Credit / Receivables Notice ───
+    // ─── Credit / Receivables Notice ──────────────────────────────────────
     if (hasReceivable && receivable) {
-      if (currentY + 40 > doc.page.height - doc.page.margins.bottom - 40) {
-        doc.addPage()
-        currentY = doc.page.margins.top
-      }
+      if (y + 40 > ph - 80) { doc.addPage(); y = 40 }
 
       const dueDateStr = receivable.dueDate
         ? new Date(receivable.dueDate).toLocaleDateString('es-VE', {
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
+            year: 'numeric', month: '2-digit', day: '2-digit',
           })
         : 'No definida'
       const pendingStr = fmt(receivable.pendingBalance)
 
-      doc.roundedRect(40, currentY, pageWidth, 30, 4).fill('#fef2f2')
-      doc.rect(40, currentY, 4, 30).fill('#dc2626')
+      doc.setFillColor(...redBg)
+      doc.roundedRect(40, y, pw - 80, 30, 4, 4, 'F')
+      doc.setFillColor(...redAccent)
+      doc.rect(40, y, 4, 30, 'F')
 
-      doc.font('Bold').fontSize(9).fillColor('#991b1b')
-      doc.text('CRÉDITO', 54, currentY + 6)
-      doc.font('Regular').fontSize(8).fillColor('#b91c1c')
-      doc.text(`Vence: ${dueDateStr}  |  Saldo pendiente: ${pendingStr}`, 54, currentY + 17)
+      doc.setFontSize(9)
+      doc.setTextColor(153, 27, 27)
+      doc.setFont('helvetica', 'bold')
+      doc.text('CREDITO', 54, y + 12)
+      doc.setFontSize(8)
+      doc.setTextColor(185, 28, 28)
+      doc.setFont('helvetica', 'normal')
+      doc.text(`Vence: ${dueDateStr}  |  Saldo pendiente: ${pendingStr}`, 54, y + 23)
 
-      currentY += 38
+      y += 38
     }
 
-    // ─── Footer ───
-    const totalPages = doc.bufferedPageRange().count
+    // ─── Footer ───────────────────────────────────────────────────────────
+    const totalPages = doc.getNumberOfPages()
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i)
 
-    for (let i = 0; i < totalPages; i++) {
-      doc.switchToPage(i)
+      doc.setDrawColor(209, 213, 219)
+      doc.setLineWidth(0.5)
+      doc.line(40, ph - 35, pw - 40, ph - 35)
 
-      const footerY = doc.page.height - 30
-
-      // Footer line
-      doc.moveTo(40, footerY - 5)
-        .lineTo(doc.page.width - 40, footerY - 5)
-        .strokeColor('#d1d5db').lineWidth(0.5).stroke()
-
-      doc.font('Regular').fontSize(7).fillColor(mutedText)
+      doc.setFontSize(7)
+      doc.setTextColor(...mutedText)
+      doc.setFont('helvetica', 'normal')
       doc.text(
-        `${businessName} — Generado el ${new Date().toLocaleDateString('es-VE')}`,
-        40,
-        footerY,
-        { width: pageWidth, align: 'center' }
+        `${businessName} \u2014 Generado el ${new Date().toLocaleDateString('es-VE')}`,
+        pw / 2, ph - 22, { align: 'center' },
       )
-
-      doc.font('Regular').fontSize(7).fillColor(mutedText)
       doc.text(
-        `Factura N° ${invoiceNumber}  |  Página ${i + 1} de ${totalPages}`,
-        40,
-        footerY + 11,
-        { width: pageWidth, align: 'center' }
+        `Factura No ${invoiceNumber}  |  Pagina ${i} de ${totalPages}`,
+        pw / 2, ph - 12, { align: 'center' },
       )
     }
 
-    doc.end()
-
-    const pdfBuffer = await pdfPromise
+    const pdfBuffer = Buffer.from(doc.output('arraybuffer'))
 
     return new NextResponse(new Uint8Array(pdfBuffer), {
       headers: {
@@ -388,3 +344,6 @@ export async function GET(
     )
   }
 }
+
+// Helper constant for white color
+const C_white: [number, number, number] = [255, 255, 255]

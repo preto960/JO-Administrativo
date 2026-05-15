@@ -1,20 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
-import PDFDocument from 'pdfkit'
+import jsPDF from 'jspdf'
+import autoTable from 'jspdf-autotable'
 import { db } from '@/lib/db'
 import { resolveBranchId } from '@/lib/resolve-branch'
 
 // ─── Colors ───────────────────────────────────────────────────────────────────
 
-const COLORS = {
-  primary: '#1e40af',
-  primaryLight: '#3b82f6',
-  green: '#16a34a',
-  red: '#dc2626',
-  gray: '#6b7280',
-  grayLight: '#f3f4f6',
-  grayMedium: '#e5e7eb',
-  dark: '#111827',
-  white: '#ffffff',
+const C = {
+  primary: [30, 64, 175] as [number, number, number],
+  primaryLight: [59, 130, 246] as [number, number, number],
+  green: [22, 163, 74] as [number, number, number],
+  red: [220, 38, 38] as [number, number, number],
+  gray: [107, 114, 128] as [number, number, number],
+  grayLight: [243, 244, 246] as [number, number, number],
+  grayMedium: [229, 231, 235] as [number, number, number],
+  dark: [17, 24, 39] as [number, number, number],
+  white: [255, 255, 255] as [number, number, number],
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -40,10 +41,6 @@ function fmtStock(stock: number): string {
   return stock % 1 === 0 ? String(Math.round(stock)) : fmt(stock, 2)
 }
 
-function altBg(idx: number): string {
-  return idx % 2 === 0 ? COLORS.grayLight : COLORS.white
-}
-
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface ProductRow {
@@ -66,223 +63,167 @@ function generateProductsPDF(
     address: string
     phone: string
   },
-): Promise<Buffer> {
-  return new Promise<Buffer>((resolve, reject) => {
-    const doc = new PDFDocument({
-      size: 'LETTER',
-      margins: { top: 40, bottom: 40, left: 45, right: 45 },
-      bufferPages: true,
-      info: {
-        Title: 'Listado de Productos',
-        Author: companyInfo.businessName || 'JO-Administrativo',
-        Subject: 'Reporte de listado de productos',
-      },
-    })
-
-    const buffers: Buffer[] = []
-    doc.on('data', (chunk) => buffers.push(chunk))
-    doc.on('end', () => resolve(Buffer.concat(buffers)))
-    doc.on('error', reject)
-
-    const pageWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right
-
-    // ─── Fonts ────────────────────────────────────────────────────────────────
-    doc.registerFont('Regular', '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf')
-    doc.registerFont('Bold', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf')
-
-    // ─── Header band ──────────────────────────────────────────────────────────
-    doc.rect(0, 0, doc.page.width, 80).fill(COLORS.primary)
-
-    doc.font('Bold').fontSize(18).fillColor(COLORS.white)
-    doc.text(companyInfo.businessName || 'JO-Administrativo', 45, 18, { width: pageWidth })
-
-    doc.font('Regular').fontSize(9).fillColor('#d1d5db')
-    const rifLine = companyInfo.rif ? `RIF: ${companyInfo.rif}` : ''
-    const addressLine = companyInfo.address || ''
-    if (rifLine && addressLine) {
-      doc.text(`${rifLine}  |  ${addressLine}${companyInfo.phone ? `  |  Tel: ${companyInfo.phone}` : ''}`, 45, 42, { width: pageWidth })
-    } else if (rifLine) {
-      doc.text(`${rifLine}${companyInfo.phone ? `  |  Tel: ${companyInfo.phone}` : ''}`, 45, 42, { width: pageWidth })
-    } else if (addressLine) {
-      doc.text(`${addressLine}${companyInfo.phone ? `  |  Tel: ${companyInfo.phone}` : ''}`, 45, 42, { width: pageWidth })
-    }
-
-    doc.font('Bold').fontSize(14).fillColor(COLORS.white)
-    doc.text('LISTADO DE PRODUCTOS', 45, 62, { width: pageWidth, align: 'right' })
-
-    doc.fillColor(COLORS.dark)
-
-    // ─── Date ─────────────────────────────────────────────────────────────────
-    let y = 95
-    doc.font('Regular').fontSize(9).fillColor(COLORS.gray)
-    doc.text(`Fecha de generacion: ${fmtDate(new Date())}`, 45, y, { width: pageWidth })
-    y += 18
-
-    // ─── Summary ──────────────────────────────────────────────────────────────
-    const totalProducts = products.length
-    const totalWithStock = products.filter(p => !p.noStock).length
-    const totalNoStock = products.filter(p => p.noStock).length
-
-    doc.rect(45, y, pageWidth, 48).fill('#f0f5ff').stroke(COLORS.primaryLight)
-    doc.font('Bold').fontSize(10).fillColor(COLORS.primary)
-    doc.text('Resumen', 55, y + 6)
-
-    doc.font('Regular').fontSize(9).fillColor(COLORS.dark)
-    doc.text(`Total Productos: ${totalProducts}`, 55, y + 22)
-    doc.text(`Con Stock: ${totalWithStock}`, 55 + pageWidth * 0.35, y + 22)
-    doc.text(`Sin Stock: ${totalNoStock}`, 55 + pageWidth * 0.6, y + 22)
-
-    const inStockPercent = totalProducts > 0 ? ((totalWithStock / totalProducts) * 100).toFixed(1) : '0.0'
-    const noStockPercent = totalProducts > 0 ? ((totalNoStock / totalProducts) * 100).toFixed(1) : '0.0'
-    doc.font('Regular').fontSize(8).fillColor(COLORS.gray)
-    doc.text(`(${inStockPercent}%)`, 55 + pageWidth * 0.35 + 75, y + 23)
-    doc.text(`(${noStockPercent}%)`, 55 + pageWidth * 0.6 + 60, y + 23)
-
-    doc.font('Regular').fontSize(9).fillColor(COLORS.dark)
-    doc.text(`Productos activos en inventario`, 55, y + 36, { width: pageWidth * 0.5 })
-
-    y += 60
-
-    // ─── Table ────────────────────────────────────────────────────────────────
-    const colConfig = {
-      num: { label: '#', width: 0.05, align: 'center' as const },
-      name: { label: 'Producto', width: 0.32, align: 'left' as const },
-      sku: { label: 'SKU', width: 0.12, align: 'center' as const },
-      category: { label: 'Categoria', width: 0.18, align: 'left' as const },
-      price: { label: 'Precio', width: 0.15, align: 'right' as const },
-      stock: { label: 'Stock', width: 0.08, align: 'center' as const },
-      noStock: { label: 'Sin Stock', width: 0.10, align: 'center' as const },
-    }
-
-    // Column X positions (absolute)
-    let xPos = 45
-    const cols: { x: number; w: number; label: string; align: string }[] = []
-    for (const key of Object.keys(colConfig) as (keyof typeof colConfig)[]) {
-      const c = colConfig[key]
-      const w = pageWidth * c.width
-      cols.push({ x: xPos, w, label: c.label, align: c.align })
-      xPos += w
-    }
-
-    // Table header
-    doc.rect(45, y, pageWidth, 22).fill(COLORS.primary)
-    doc.font('Bold').fontSize(8).fillColor(COLORS.white)
-    for (const col of cols) {
-      const textX = col.align === 'center' ? col.x + col.w / 2 : col.align === 'right' ? col.x + col.w - 5 : col.x + 5
-      doc.text(col.label, textX, y + 6, { width: col.w - 10, align: col.align })
-    }
-    y += 24
-
-    // Table rows
-    const rowHeight = 18
-
-    for (let i = 0; i < products.length; i++) {
-      const p = products[i]
-
-      // Check if we need a new page
-      if (y + rowHeight > doc.page.height - 50) {
-        doc.addPage()
-        y = 45
-
-        // Re-draw table header on new page
-        doc.rect(45, y, pageWidth, 22).fill(COLORS.primary)
-        doc.font('Bold').fontSize(8).fillColor(COLORS.white)
-        for (const col of cols) {
-          const textX = col.align === 'center' ? col.x + col.w / 2 : col.align === 'right' ? col.x + col.w - 5 : col.x + 5
-          doc.text(col.label, textX, y + 6, { width: col.w - 10, align: col.align })
-        }
-        y += 24
-      }
-
-      // Alternating row background
-      doc.rect(45, y, pageWidth, rowHeight).fill(altBg(i))
-
-      // Row border lines
-      doc.moveTo(45, y + rowHeight).lineTo(45 + pageWidth, y + rowHeight)
-        .strokeColor(COLORS.grayMedium).lineWidth(0.3).stroke()
-
-      const cellPad = 4
-      const rowY = y + cellPad
-
-      // # column
-      doc.font('Regular').fontSize(7.5).fillColor(COLORS.gray)
-      const numX = cols[0].x + cols[0].w / 2
-      doc.text(String(i + 1), numX, rowY, { width: cols[0].w - 10, align: 'center' })
-
-      // Producto
-      doc.font('Regular').fontSize(8).fillColor(COLORS.dark)
-      doc.text(p.name, cols[1].x + 5, rowY, { width: cols[1].w - 10, align: 'left', lineBreak: false, ellipsis: true })
-
-      // SKU
-      doc.font('Regular').fontSize(7.5).fillColor(COLORS.gray)
-      const skuX = cols[2].x + cols[2].w / 2
-      doc.text(p.sku || '—', skuX, rowY, { width: cols[2].w - 10, align: 'center' })
-
-      // Categoria
-      doc.font('Regular').fontSize(7.5).fillColor(COLORS.dark)
-      doc.text(p.categoryName || '—', cols[3].x + 5, rowY, { width: cols[3].w - 10, align: 'left', lineBreak: false, ellipsis: true })
-
-      // Precio
-      doc.font('Bold').fontSize(8).fillColor(COLORS.dark)
-      doc.text(`${p.currencySymbol} ${fmt(p.price)}`, cols[4].x + 5, rowY, { width: cols[4].w - 10, align: 'right' })
-
-      // Stock
-      doc.font('Bold').fontSize(8)
-      const stockColor = p.noStock ? COLORS.red : COLORS.green
-      doc.fillColor(stockColor)
-      const stockX = cols[5].x + cols[5].w / 2
-      doc.text(fmtStock(p.stock), stockX, rowY, { width: cols[5].w - 10, align: 'center' })
-
-      // Sin Stock column
-      doc.font('Bold').fontSize(9)
-      if (p.noStock) {
-        doc.fillColor(COLORS.red)
-        const nsX = cols[6].x + cols[6].w / 2
-        doc.text('\u2717', nsX, rowY - 1, { width: cols[6].w - 10, align: 'center' })
-      } else {
-        doc.fillColor(COLORS.green)
-        const nsX = cols[6].x + cols[6].w / 2
-        doc.text('\u2713', nsX, rowY - 1, { width: cols[6].w - 10, align: 'center' })
-      }
-
-      y += rowHeight
-    }
-
-    // Empty state
-    if (products.length === 0) {
-      doc.rect(45, y, pageWidth, 40).fill(COLORS.grayLight)
-      doc.font('Regular').fontSize(10).fillColor(COLORS.gray)
-      doc.text('No se encontraron productos con los filtros seleccionados.', 45, y + 13, { width: pageWidth, align: 'center' })
-      y += 44
-    }
-
-    // ─── Footer ───────────────────────────────────────────────────────────────
-    const range = doc.bufferedPageRange()
-    for (let i = range.start; i < range.start + range.count; i++) {
-      doc.switchToPage(i)
-      const footerY = doc.page.height - 35
-
-      doc.moveTo(45, footerY).lineTo(doc.page.width - 45, footerY)
-        .strokeColor(COLORS.grayMedium).lineWidth(0.5).stroke()
-
-      doc.font('Regular').fontSize(7).fillColor(COLORS.gray)
-      const footerCompany = companyInfo.businessName || 'JO-Administrativo'
-      const footerRif = companyInfo.rif ? `  |  RIF: ${companyInfo.rif}` : ''
-      doc.text(
-        `${footerCompany}${footerRif}  |  Generado por JO-Administrativo`,
-        45, footerY + 5, { width: pageWidth, align: 'center' },
-      )
-
-      if (range.count > 1) {
-        doc.text(
-          `Pagina ${i + 1} de ${range.count}`,
-          45, footerY + 15, { width: pageWidth, align: 'center' },
-        )
-      }
-    }
-
-    doc.end()
+): Buffer {
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'pt',
+    format: 'letter',
   })
+
+  doc.setProperties({
+    title: 'Listado de Productos',
+    author: companyInfo.businessName || 'JO-Administrativo',
+    subject: 'Reporte de listado de productos',
+  })
+
+  const pw = doc.internal.pageSize.getWidth()
+
+  // ─── Header band ────────────────────────────────────────────────────────
+  doc.setFillColor(...C.primary)
+  doc.rect(0, 0, pw, 80, 'F')
+
+  doc.setFontSize(18)
+  doc.setTextColor(...C.white)
+  doc.setFont('helvetica', 'bold')
+  doc.text(companyInfo.businessName || 'JO-Administrativo', 45, 30)
+
+  doc.setFontSize(9)
+  doc.setTextColor(209, 213, 219)
+  doc.setFont('helvetica', 'normal')
+
+  const rifLine = companyInfo.rif ? `RIF: ${companyInfo.rif}` : ''
+  const addressLine = companyInfo.address || ''
+  const phoneLine = companyInfo.phone ? `Tel: ${companyInfo.phone}` : ''
+  const parts = [rifLine, addressLine, phoneLine].filter(Boolean).join('  |  ')
+  if (parts) {
+    doc.text(parts, 45, 46)
+  }
+
+  doc.setFontSize(14)
+  doc.setTextColor(...C.white)
+  doc.setFont('helvetica', 'bold')
+  doc.text('LISTADO DE PRODUCTOS', pw - 45, 68, { align: 'right' })
+
+  // ─── Date ───────────────────────────────────────────────────────────────
+  doc.setFontSize(9)
+  doc.setTextColor(...C.gray)
+  doc.setFont('helvetica', 'normal')
+  doc.text(`Fecha de generacion: ${fmtDate(new Date())}`, 45, 96)
+
+  // ─── Summary ────────────────────────────────────────────────────────────
+  const totalProducts = products.length
+  const totalWithStock = products.filter(p => !p.noStock).length
+  const totalNoStock = products.filter(p => p.noStock).length
+
+  doc.setFillColor(240, 245, 255)
+  doc.setDrawColor(...C.primaryLight)
+  doc.roundedRect(45, 106, pw - 90, 44, 3, 3, 'FD')
+
+  doc.setFontSize(10)
+  doc.setTextColor(...C.primary)
+  doc.setFont('helvetica', 'bold')
+  doc.text('Resumen', 55, 120)
+
+  doc.setFontSize(9)
+  doc.setTextColor(...C.dark)
+  doc.setFont('helvetica', 'normal')
+  doc.text(`Total Productos: ${totalProducts}`, 55, 136)
+  doc.text(`Con Stock: ${totalWithStock}`, 55 + (pw - 90) * 0.35, 136)
+  doc.text(`Sin Stock: ${totalNoStock}`, 55 + (pw - 90) * 0.6, 136)
+
+  const inStockPercent = totalProducts > 0 ? ((totalWithStock / totalProducts) * 100).toFixed(1) : '0.0'
+  const noStockPercent = totalProducts > 0 ? ((totalNoStock / totalProducts) * 100).toFixed(1) : '0.0'
+  doc.setFontSize(8)
+  doc.setTextColor(...C.gray)
+  doc.text(`(${inStockPercent}%)`, 55 + (pw - 90) * 0.35 + 70, 137)
+  doc.text(`(${noStockPercent}%)`, 55 + (pw - 90) * 0.6 + 55, 137)
+
+  doc.setFontSize(9)
+  doc.setTextColor(...C.dark)
+  doc.text('Productos activos en inventario', 55, 146)
+
+  // ─── Table ──────────────────────────────────────────────────────────────
+  const bodyRows = products.map((p, i) => [
+    String(i + 1),
+    p.name,
+    p.sku || '\u2014',
+    p.categoryName || '\u2014',
+    `${p.currencySymbol} ${fmt(p.price)}`,
+    fmtStock(p.stock),
+    p.noStock ? '\u2717' : '\u2713',
+  ])
+
+  autoTable(doc, {
+    startY: 158,
+    theme: 'grid',
+    margin: { left: 45, right: 45 },
+    head: [['#', 'Producto', 'SKU', 'Categoria', 'Precio', 'Stock', 'Sin Stock']],
+    body: bodyRows.length > 0 ? bodyRows : [['No se encontraron productos con los filtros seleccionados.']],
+    styles: {
+      fontSize: 7.5,
+      cellPadding: 3,
+    },
+    headStyles: {
+      fillColor: C.primary,
+      textColor: C.white,
+      fontStyle: 'bold',
+      fontSize: 8,
+    },
+    columnStyles: {
+      0: { halign: 'center', cellWidth: 25, textColor: C.gray },
+      1: { cellWidth: 'auto' },
+      2: { halign: 'center', cellWidth: 55, textColor: C.gray },
+      3: { cellWidth: 80 },
+      4: { halign: 'right', fontStyle: 'bold' },
+      5: { halign: 'center', fontStyle: 'bold' },
+      6: { halign: 'center', fontStyle: 'bold' },
+    },
+    didParseCell: (data) => {
+      if (data.section === 'body' && bodyRows.length > 0) {
+        // Color stock column
+        if (data.column.index === 5) {
+          data.cell.styles.textColor = products[data.row.index]?.noStock ? C.red : C.green
+        }
+        // Color sin stock column
+        if (data.column.index === 6) {
+          data.cell.styles.textColor = products[data.row.index]?.noStock ? C.red : C.green
+          data.cell.styles.fontSize = 9
+        }
+      }
+    },
+  })
+
+  // ─── Footer ─────────────────────────────────────────────────────────────
+  const totalPages = doc.getNumberOfPages()
+  const ph = doc.internal.pageSize.getHeight()
+
+  for (let i = 1; i <= totalPages; i++) {
+    doc.setPage(i)
+
+    doc.setDrawColor(...C.grayMedium)
+    doc.setLineWidth(0.5)
+    doc.line(45, ph - 40, pw - 45, ph - 40)
+
+    doc.setFontSize(7)
+    doc.setTextColor(...C.gray)
+    doc.setFont('helvetica', 'normal')
+
+    const footerCompany = companyInfo.businessName || 'JO-Administrativo'
+    const footerRif = companyInfo.rif ? `  |  RIF: ${companyInfo.rif}` : ''
+    doc.text(
+      `${footerCompany}${footerRif}  |  Generado por JO-Administrativo`,
+      pw / 2, ph - 32, { align: 'center' },
+    )
+
+    if (totalPages > 1) {
+      doc.text(
+        `Pagina ${i} de ${totalPages}`,
+        pw / 2, ph - 24, { align: 'center' },
+      )
+    }
+  }
+
+  return Buffer.from(doc.output('arraybuffer'))
 }
 
 // ─── Route Handler ────────────────────────────────────────────────────────────
@@ -344,7 +285,7 @@ export async function GET(request: NextRequest) {
     })
 
     // Generate PDF
-    const pdfBuffer = await generateProductsPDF(rows, companyInfo)
+    const pdfBuffer = generateProductsPDF(rows, companyInfo)
 
     return new NextResponse(new Uint8Array(pdfBuffer), {
       headers: {

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import PDFDocument from 'pdfkit'
+import jsPDF from 'jspdf'
 import bwipjs from 'bwip-js'
 import { db } from '@/lib/db'
 
@@ -12,14 +12,15 @@ interface LabelItem {
 
 // ─── Barcode generator ───────────────────────────────────────────────────────
 
-async function generateBarcode(text: string): Promise<Buffer> {
-  return bwipjs.toBuffer({
+async function generateBarcode(text: string): Promise<string> {
+  const png = await bwipjs.toBuffer({
     bcid: 'code128',
     text,
     scale: 3,
     height: 8,
     includetext: false,
   })
+  return `data:image/png;base64,${png.toString('base64')}`
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -52,7 +53,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { products } = body as { products?: LabelItem[] }
 
-    // ── Validate request ─────────────────────────────────────────────────────
+    // ── Validate request ─────────────────────────────────────────────────
     if (!products || !Array.isArray(products) || products.length === 0) {
       return NextResponse.json(
         { error: 'Se requiere un arreglo de productos con productId y quantity.' },
@@ -69,7 +70,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // ── Fetch products from DB ───────────────────────────────────────────────
+    // ── Fetch products from DB ───────────────────────────────────────────
     const productIds = products.map((p) => p.productId)
     const dbProducts = await db.product.findMany({
       where: { id: { in: productIds } },
@@ -86,7 +87,7 @@ export async function POST(request: NextRequest) {
     // Build a lookup map
     const productMap = new Map(dbProducts.map((p) => [p.id, p]))
 
-    // ── Expand labels with quantity ──────────────────────────────────────────
+    // ── Expand labels with quantity ──────────────────────────────────────
     type LabelData = {
       name: string
       sku: string
@@ -119,9 +120,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // ── Generate barcode images (cache unique barcodes) ──────────────────────
-    const barcodeCache = new Map<string, Buffer>()
-    async function getBarcode(text: string): Promise<Buffer> {
+    // ── Generate barcode images (cache unique barcodes as base64) ────────
+    const barcodeCache = new Map<string, string>()
+    async function getBarcode(text: string): Promise<string> {
       if (!barcodeCache.has(text)) {
         barcodeCache.set(text, await generateBarcode(text))
       }
@@ -132,125 +133,91 @@ export async function POST(request: NextRequest) {
     const uniqueBarcodes = [...new Set(labels.map((l) => l.barcodeText))]
     await Promise.all(uniqueBarcodes.map((text) => getBarcode(text)))
 
-    // ── Create PDF ───────────────────────────────────────────────────────────
-    const pdfBuffer = await new Promise<Buffer>((resolve, reject) => {
-      const doc = new PDFDocument({
-        size: 'LETTER',
-        margins: { top: MARGIN, bottom: MARGIN, left: MARGIN, right: MARGIN },
-        bufferPages: true,
-        info: {
-          Title: 'Etiquetas de Productos',
-          Author: 'JO-Administrativo',
-          Subject: 'Codigos de barras para productos',
-        },
-      })
-
-      const buffers: Buffer[] = []
-      doc.on('data', (chunk: Buffer) => buffers.push(chunk))
-      doc.on('end', () => resolve(Buffer.concat(buffers)))
-      doc.on('error', reject)
-
-      // Register fonts
-      doc.registerFont('Regular', '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf')
-      doc.registerFont('Bold', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf')
-
-      const pageW = doc.page.width
-      const pageH = doc.page.height
-      const usableW = pageW - MARGIN * 2
-
-      let labelIndex = 0
-      let col = 0
-      let row = 0
-
-      // Calculate rows per page
-      const rowHeight = LABEL_HEIGHT + LABEL_GAP_Y
-      const rowsPerPage = Math.floor((pageH - MARGIN * 2) / rowHeight)
-
-      function drawLabel(x: number, y: number, label: LabelData) {
-        // Dotted border
-        doc
-          .save()
-          .rect(x, y, LABEL_WIDTH, LABEL_HEIGHT)
-          .dash(2, { space: 2 })
-          .strokeColor('#999999')
-          .lineWidth(0.5)
-          .stroke()
-          .restore()
-
-        const padX = 6
-        const padY = 5
-        const innerW = LABEL_WIDTH - padX * 2
-
-        // ── Product name (bold, top) ──────────────────────────────────────
-        doc.font('Bold').fontSize(9).fillColor('#111827')
-        doc.text(
-          truncate(label.name, 28),
-          x + padX,
-          y + padY,
-          { width: innerW, lineBreak: false, ellipsis: true },
-        )
-
-        // ── Barcode image (middle) ───────────────────────────────────────
-        const barcodeBuf = barcodeCache.get(label.barcodeText)!
-        const barcodeW = Math.min(120, innerW)
-        const barcodeH = 30
-        const barcodeX = x + padX + (innerW - barcodeW) / 2
-        const barcodeY = y + padY + 14
-        doc.image(barcodeBuf, barcodeX, barcodeY, { width: barcodeW, height: barcodeH })
-
-        // ── SKU text (below barcode) ─────────────────────────────────────
-        doc.font('Regular').fontSize(7).fillColor('#6b7280')
-        doc.text(
-          label.sku,
-          x + padX,
-          y + padY + 46,
-          { width: innerW, align: 'center', lineBreak: false },
-        )
-
-        // ── Price (bottom) ───────────────────────────────────────────────
-        doc.font('Bold').fontSize(10).fillColor('#111827')
-        doc.text(
-          label.price,
-          x + padX,
-          y + padY + 58,
-          { width: innerW, align: 'center', lineBreak: false },
-        )
-      }
-
-      // Draw first page (it's already created)
-      // We use doc.y reference but track manually
-      let currentY = MARGIN
-      let currentPageRows = 0
-
-      while (labelIndex < labels.length) {
-        // Check if we need a new page
-        if (currentPageRows >= rowsPerPage) {
-          doc.addPage()
-          currentY = MARGIN
-          currentPageRows = 0
-        }
-
-        const x = MARGIN + col * (LABEL_WIDTH + LABEL_GAP_X)
-        const y = currentY + row * (LABEL_HEIGHT + LABEL_GAP_Y)
-
-        drawLabel(x, y, labels[labelIndex])
-
-        labelIndex++
-        col++
-        if (col >= COLS) {
-          col = 0
-          row++
-          currentPageRows++
-          if (currentPageRows >= rowsPerPage) {
-            row = 0
-          }
-        }
-      }
-
-      doc.end()
+    // ── Create PDF ───────────────────────────────────────────────────────
+    const doc = new jsPDF({
+      orientation: 'portrait',
+      unit: 'pt',
+      format: 'letter',
     })
 
-    // ── Return PDF ───────────────────────────────────────────────────────────
+    doc.setProperties({
+      title: 'Etiquetas de Productos',
+      author: 'JO-Administrativo',
+      subject: 'Codigos de barras para productos',
+    })
+
+    const pageW = doc.internal.pageSize.getWidth()
+    const pageH = doc.internal.pageSize.getHeight()
+
+    const rowsPerPage = Math.floor((pageH - MARGIN * 2) / (LABEL_HEIGHT + LABEL_GAP_Y))
+
+    let labelIndex = 0
+    let col = 0
+    let row = 0
+    let currentPageRows = 0
+
+    while (labelIndex < labels.length) {
+      // Check if we need a new page
+      if (currentPageRows >= rowsPerPage) {
+        doc.addPage()
+        col = 0
+        row = 0
+        currentPageRows = 0
+      }
+
+      const x = MARGIN + col * (LABEL_WIDTH + LABEL_GAP_X)
+      const y = MARGIN + row * (LABEL_HEIGHT + LABEL_GAP_Y)
+      const label = labels[labelIndex]
+
+      // Dotted border
+      doc.setDrawColor(153, 153, 153)
+      doc.setLineDashPattern([2, 2], 0)
+      doc.setLineWidth(0.5)
+      doc.rect(x, y, LABEL_WIDTH, LABEL_HEIGHT)
+      doc.setLineDashPattern([], 0)
+
+      const padX = 6
+      const padY = 5
+      const innerW = LABEL_WIDTH - padX * 2
+
+      // Product name (bold, top)
+      doc.setFontSize(9)
+      doc.setTextColor(17, 24, 39)
+      doc.setFont('helvetica', 'bold')
+      doc.text(truncate(label.name, 28), x + padX, y + padY + 7, { maxWidth: innerW })
+
+      // Barcode image (middle)
+      const barcodeDataUrl = barcodeCache.get(label.barcodeText)!
+      const barcodeW = Math.min(120, innerW)
+      const barcodeH = 30
+      const barcodeX = x + padX + (innerW - barcodeW) / 2
+      const barcodeY = y + padY + 14
+      doc.addImage(barcodeDataUrl, 'PNG', barcodeX, barcodeY, barcodeW, barcodeH)
+
+      // SKU text (below barcode)
+      doc.setFontSize(7)
+      doc.setTextColor(107, 114, 128)
+      doc.setFont('helvetica', 'normal')
+      doc.text(label.sku, x + padX + innerW / 2, y + padY + 52, { align: 'center' })
+
+      // Price (bottom)
+      doc.setFontSize(10)
+      doc.setTextColor(17, 24, 39)
+      doc.setFont('helvetica', 'bold')
+      doc.text(label.price, x + padX + innerW / 2, y + padY + 65, { align: 'center' })
+
+      labelIndex++
+      col++
+      if (col >= COLS) {
+        col = 0
+        row++
+        currentPageRows++
+      }
+    }
+
+    const pdfBuffer = Buffer.from(doc.output('arraybuffer'))
+
+    // ── Return PDF ───────────────────────────────────────────────────────
     return new NextResponse(new Uint8Array(pdfBuffer), {
       headers: {
         'Content-Type': 'application/pdf',
