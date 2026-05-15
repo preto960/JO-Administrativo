@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Drawer, DrawerTrigger, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription } from '@/components/ui/drawer'
-import { Search, ShoppingCart, AlertTriangle } from 'lucide-react'
+import { Search, ShoppingCart, AlertTriangle, ScanBarcode, X } from 'lucide-react'
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { toast } from 'sonner'
@@ -46,7 +46,10 @@ export function PosTerminal() {
   const [showPayment, setShowPayment] = useState(false)
   const [loading, setLoading] = useState(true)
   const [cartOpen, setCartOpen] = useState(false)
+  const [showBarcodeInput, setShowBarcodeInput] = useState(false)
+  const [barcodeValue, setBarcodeValue] = useState('')
   const searchRef = useRef<HTMLInputElement>(null)
+  const barcodeRef = useRef<HTMLInputElement>(null)
   const isMobile = useIsMobile()
   const currencySymbol = referenceCurrency === 'EUR' ? '€' : '$'
 
@@ -151,6 +154,73 @@ export function PosTerminal() {
     }
   }
 
+  // Handle barcode scan — find product by SKU and add to cart
+  const handleBarcodeScan = useCallback((value: string) => {
+    const trimmed = value.trim()
+    if (!trimmed) return
+
+    // Search by exact SKU match first, then partial
+    const product = products.find(
+      (p) => p.sku && p.sku.toLowerCase() === trimmed.toLowerCase()
+    ) || products.find(
+      (p) => p.sku && p.sku.toLowerCase().includes(trimmed.toLowerCase())
+    )
+
+    if (!product) {
+      toast.error(`Producto no encontrado: ${trimmed}`)
+      return
+    }
+
+    const { stock, effectivePrice } = getBranchInfo(product)
+    if (stock <= 0) {
+      toast.error(`Sin stock: ${product.name}`)
+      return
+    }
+
+    const currentQty = getCurrentQty(product.id)
+    if (currentQty >= stock) {
+      toast.error(`Stock máximo alcanzado: ${product.name} (${currentQty}/${stock})`)
+      return
+    }
+
+    const result = addItem({
+      productId: product.id,
+      productName: product.name,
+      quantity: 1,
+      unitPrice: effectivePrice,
+      unitCost: product.costAvg,
+      currencySymbol: product.currency.symbol,
+      maxStock: stock,
+    })
+
+    if (result) {
+      toast.success(`${product.name} agregado al carrito`, { description: product.sku || undefined })
+    } else {
+      toast.error('No se puede agregar. Stock insuficiente.')
+    }
+  }, [products, getCurrentQty, addItem, getBranchInfo])
+
+  const handleBarcodeKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      handleBarcodeScan(barcodeValue)
+      setBarcodeValue('')
+      // Keep focus on barcode input for rapid consecutive scans
+      setTimeout(() => barcodeRef.current?.focus(), 10)
+    }
+  }, [barcodeValue, handleBarcodeScan])
+
+  const toggleBarcodeInput = useCallback(() => {
+    setShowBarcodeInput((prev) => !prev)
+    setTimeout(() => {
+      if (!showBarcodeInput) {
+        barcodeRef.current?.focus()
+      } else {
+        setBarcodeValue('')
+      }
+    }, 50)
+  }, [showBarcodeInput])
+
   // After a successful sale, refresh products to show updated stock
   const handlePaymentSuccess = () => {
     setShowPayment(false)
@@ -171,8 +241,40 @@ export function PosTerminal() {
     <div className="flex flex-col md:flex-row h-[calc(100vh-7rem)] md:h-[calc(100vh-8rem)] gap-3 md:gap-4">
       {/* Product Grid */}
       <div className="flex flex-1 flex-col gap-3 min-h-0">
-        {/* Search + Mobile Cart Toggle */}
+        {/* Search + Barcode + Mobile Cart Toggle */}
         <div className="flex gap-2">
+          {showBarcodeInput ? (
+            <div className="relative flex-1">
+              <ScanBarcode className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-primary" />
+              <Input
+                ref={barcodeRef}
+                placeholder="Escanear código de barras..."
+                value={barcodeValue}
+                onChange={(e) => setBarcodeValue(e.target.value)}
+                onKeyDown={handleBarcodeKeyDown}
+                className="pl-10 pr-9 border-primary/50 bg-primary/5 ring-primary/20"
+                autoFocus
+              />
+              <button
+                type="button"
+                onClick={() => { setShowBarcodeInput(false); setBarcodeValue('') }}
+                className="absolute right-2 top-1/2 -translate-y-1/2 h-5 w-5 flex items-center justify-center rounded-full hover:bg-primary/20 text-muted-foreground hover:text-primary transition-colors"
+                title="Cerrar escáner"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          ) : (
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-10 w-10 shrink-0 border-primary/30 hover:bg-primary/10 hover:text-primary"
+              onClick={toggleBarcodeInput}
+              title="Escanear código de barras (busca por SKU)"
+            >
+              <ScanBarcode className="h-4 w-4" />
+            </Button>
+          )}
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
