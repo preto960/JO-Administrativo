@@ -172,6 +172,18 @@ export function SettingsView() {
       setAppSettings(updated as AppSettings)
       // Re-apply colors after save to ensure they persist
       applyBothColors(updated.primaryColor || 'blue', updated.secondaryColor || 'slate')
+      // Update favicon if logo was changed
+      if (updated.logoUrl) {
+        const link = document.querySelector<HTMLLinkElement>("link[rel~='icon']")
+        if (link) {
+          link.href = updated.logoUrl
+        } else {
+          const newLink = document.createElement('link')
+          newLink.rel = 'icon'
+          newLink.href = updated.logoUrl
+          document.head.appendChild(newLink)
+        }
+      }
       toast.success('Configuración guardada')
     } catch {
       toast.error('Error al guardar configuración')

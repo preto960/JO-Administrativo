@@ -8,6 +8,19 @@ import { setCustomPermissions, type UserPermissions } from '@/lib/permissions'
 import { useTheme } from 'next-themes'
 import type { AppSettings } from '@/stores/use-app-store'
 
+/** Update the browser favicon dynamically */
+function setFavicon(url: string) {
+  const link = document.querySelector<HTMLLinkElement>("link[rel~='icon']")
+  if (link) {
+    link.href = url
+  } else {
+    const newLink = document.createElement('link')
+    newLink.rel = 'icon'
+    newLink.href = url
+    document.head.appendChild(newLink)
+  }
+}
+
 interface SettingsData {
   primaryColor: string
   secondaryColor: string
@@ -191,6 +204,11 @@ export function SettingsInitializer() {
           // Update page title
           if (s.businessName) {
             document.title = `${s.businessName} - ERP/POS`
+          }
+
+          // Update favicon with company logo
+          if (s.logoUrl) {
+            setFavicon(s.logoUrl)
           }
         }
 
