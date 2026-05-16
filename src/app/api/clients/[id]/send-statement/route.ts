@@ -19,7 +19,10 @@ export async function POST(
             include: {
               sale: {
                 include: {
-                  lines: { include: { product: { select: { name: true } } } },
+                  lines: { include: { product: { select: { name: true, sku: true } } } },
+                  payments: { include: { currency: { select: { code: true, symbol: true } } } },
+                  user: { select: { name: true } },
+                  branch: { select: { name: true } },
                 },
               },
             },
