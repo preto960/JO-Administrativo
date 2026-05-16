@@ -15,7 +15,6 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   Dialog,
   DialogContent,
@@ -23,7 +22,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog'
-import { Building2, Plus, Loader2, Eye, Pencil, DollarSign, CalendarDays, FileText, Trash2 } from 'lucide-react'
+import { Building2, Plus, Loader2, Eye, Pencil, DollarSign, CalendarDays, FileText, Trash2, Search, Phone, Mail, MapPin, UserCircle } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface Supplier {
@@ -56,6 +55,7 @@ interface PayableRecord {
 
 export function SuppliersView() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
+  const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
   const [showDialog, setShowDialog] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -103,6 +103,15 @@ export function SuppliersView() {
   }
 
   useEffect(() => { fetchSuppliers() }, [])
+
+  const filtered = suppliers.filter(
+    (s) =>
+      !search ||
+      s.name.toLowerCase().includes(search.toLowerCase()) ||
+      (s.rif && s.rif.toLowerCase().includes(search.toLowerCase())) ||
+      (s.phone && s.phone.includes(search)) ||
+      (s.email && s.email.toLowerCase().includes(search.toLowerCase()))
+  )
 
   const openCreateDialog = () => {
     setName('')
@@ -250,95 +259,125 @@ export function SuppliersView() {
     )
   }
 
-  if (loading) {
-    return <div className="h-64 rounded-lg bg-muted animate-pulse" />
-  }
-
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold">Proveedores</h2>
-          <p className="text-sm text-muted-foreground">Directorio de proveedores de tu negocio</p>
+      {/* Header + Search */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input placeholder="Buscar proveedor..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" />
         </div>
-        <Button size="sm" className="bg-primary hover:bg-primary/90 text-white" onClick={openCreateDialog}>
-          <Plus className="mr-1 h-3.5 w-3.5" /> Nuevo Proveedor
+        <Button onClick={openCreateDialog} className="bg-primary hover:bg-primary/90 text-white">
+          <Plus className="mr-2 h-4 w-4" /> Nuevo Proveedor
         </Button>
       </div>
 
-      <Card>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Proveedor</TableHead>
-                  <TableHead className="hidden sm:table-cell">RIF</TableHead>
-                  <TableHead className="text-right">Deuda</TableHead>
-                  <TableHead className="hidden md:table-cell">Próximo Vencimiento</TableHead>
-                  <TableHead className="text-right">Acciones</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {suppliers.map((supplier) => (
-                  <TableRow key={supplier.id}>
-                    <TableCell>
-                      <div>
-                        <span className="font-medium">{supplier.name}</span>
-                        {supplier.phone && (
-                          <p className="text-xs text-muted-foreground md:hidden">{supplier.phone}</p>
-                        )}
+      {/* Cards Grid */}
+      {loading ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Card key={i} className="h-48 animate-pulse bg-muted" />
+          ))}
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+          <Building2 className="h-12 w-12 mb-3 opacity-40" />
+          <p className="text-sm">No se encontraron proveedores</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filtered.map((supplier) => {
+            const isOverdue = supplier.nextDueDate && new Date(supplier.nextDueDate) < new Date()
+            return (
+              <Card key={supplier.id} className="relative overflow-hidden hover:shadow-md transition-shadow">
+                <div className={`h-1 ${supplier.balance > 0 ? (isOverdue ? 'bg-orange-500' : 'bg-red-500') : 'bg-green-500'}`} />
+                <CardContent className="p-4 space-y-3">
+                  {/* Name + Balance badge */}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <h3 className="font-semibold text-sm truncate">{supplier.name}</h3>
+                      {supplier.rif && (
+                        <p className="text-xs text-muted-foreground font-mono">{supplier.rif}</p>
+                      )}
+                    </div>
+                    <span className={`shrink-0 text-xs font-bold px-2 py-0.5 rounded-full ${supplier.balance > 0
+                      ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400'
+                      : 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400'
+                    }`}>
+                      {supplier.balance > 0
+                        ? `$${supplier.balance.toFixed(2)}`
+                        : 'Sin deuda'
+                      }
+                    </span>
+                  </div>
+
+                  {/* Contact info */}
+                  <div className="space-y-1 text-xs text-muted-foreground">
+                    {supplier.phone && (
+                      <div className="flex items-center gap-1.5">
+                        <Phone className="h-3 w-3 shrink-0" />
+                        <span className="truncate">{supplier.phone}</span>
                       </div>
-                    </TableCell>
-                    <TableCell className="hidden sm:table-cell">{supplier.rif || '—'}</TableCell>
-                    <TableCell className="text-right">
-                      <span className={supplier.balance > 0 ? 'text-red-600 font-medium' : 'text-primary'}>
-                        ${supplier.balance.toFixed(2)}
-                      </span>
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell">
-                      {getDueDateBadge(supplier.nextDueDate)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <Button size="sm" variant="ghost" title="Editar" onClick={() => openEditDialog(supplier)}>
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button size="sm" variant="ghost" title="Ver Deudas" onClick={() => openDebtDialog(supplier)}>
-                          <DollarSign className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button size="sm" variant="outline" title="Agregar Deuda" onClick={() => openPayableDialog(supplier)}>
-                          <Plus className="h-3 w-3" />
-                        </Button>
-                        <Button size="sm" variant="ghost" className="text-red-400 hover:text-red-600" title="Eliminar" onClick={async () => {
-                          if (!confirm(`¿Estás seguro de eliminar el proveedor "${supplier.name}"?`)) return
-                          try {
-                            await api.del(`/api/suppliers?id=${supplier.id}`)
-                            toast.success('Proveedor eliminado')
-                            fetchSuppliers()
-                          } catch {
-                            toast.error('Error al eliminar proveedor')
-                          }
-                        }}>
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
+                    )}
+                    {supplier.email && (
+                      <div className="flex items-center gap-1.5">
+                        <Mail className="h-3 w-3 shrink-0" />
+                        <span className="truncate">{supplier.email}</span>
                       </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {suppliers.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                      <Building2 className="mx-auto mb-2 h-8 w-8 opacity-50" />
-                      No hay proveedores registrados
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+                    )}
+                    {supplier.address && (
+                      <div className="flex items-center gap-1.5">
+                        <MapPin className="h-3 w-3 shrink-0" />
+                        <span className="truncate">{supplier.address}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Due date + balance summary */}
+                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                    {supplier.balance > 0 && (
+                      <div className="text-red-600 font-medium">
+                        Debe: ${supplier.balance.toFixed(2)}
+                      </div>
+                    )}
+                    {supplier.nextDueDate && (
+                      <div className="flex items-center">
+                        {getDueDateBadge(supplier.nextDueDate)}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Action buttons */}
+                  <div className="flex items-center gap-1 pt-2 border-t">
+                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Ver Deudas" onClick={() => openDebtDialog(supplier)}>
+                      <DollarSign className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button size="sm" variant="outline" className="h-7 text-xs text-primary hover:text-primary" title="Agregar Deuda" onClick={() => openPayableDialog(supplier)}>
+                      <Plus className="mr-1 h-3 w-3" /> Deuda
+                    </Button>
+                    <div className="flex-1" />
+                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Editar" onClick={() => openEditDialog(supplier)}>
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-400 hover:text-red-600" title="Eliminar" onClick={async () => {
+                      if (!confirm(`¿Estás seguro de eliminar el proveedor "${supplier.name}"?`)) return
+                      try {
+                        await api.del(`/api/suppliers?id=${supplier.id}`)
+                        toast.success('Proveedor eliminado')
+                        fetchSuppliers()
+                      } catch {
+                        toast.error('Error al eliminar proveedor')
+                      }
+                    }}>
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          })}
+        </div>
+      )}
 
       {/* New Supplier Dialog */}
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
