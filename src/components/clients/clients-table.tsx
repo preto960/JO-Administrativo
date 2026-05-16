@@ -32,7 +32,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Plus, Search, Users, Eye, DollarSign, Loader2, Receipt, Truck, X, Banknote, CreditCard, ArrowLeftRight, Smartphone, Trash2, Printer, FileText, Mail, Pencil } from 'lucide-react'
+import { Plus, Search, Users, DollarSign, Loader2, Receipt, Truck, X, Trash2, Printer, FileText, Mail, Pencil, Phone, MapPin, ShoppingCart } from 'lucide-react'
 import { toast } from 'sonner'
 import { useSetting } from '@/stores/use-app-store'
 
@@ -430,92 +430,116 @@ export function ClientsTable() {
         </Button>
       </div>
 
-      <Card>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Nombre</TableHead>
-                  <TableHead className="hidden sm:table-cell">Teléfono</TableHead>
-                  <TableHead className="hidden md:table-cell">Email</TableHead>
-                  <TableHead className="text-right">Deuda</TableHead>
-                  <TableHead className="text-right">Acciones</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filtered.map((client) => (
-                  <TableRow key={client.id}>
-                    <TableCell className="font-medium">{client.name}</TableCell>
-                    <TableCell className="hidden sm:table-cell">{client.phone || '—'}</TableCell>
-                    <TableCell className="hidden md:table-cell">{client.email || '—'}</TableCell>
-                    <TableCell className="text-right">
-                      <span className={client.pendingBalance > 0 ? 'text-red-600 font-medium' : 'text-primary'}>
-                        ${client.pendingBalance.toFixed(2)}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-1">
-                        <Button size="sm" variant="ghost" title="Ver Historial" onClick={() => openHistory(client)}>
-                          <Receipt className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button size="sm" variant="ghost" title="Descargar Estado de Cuenta" onClick={() => handleDownloadStatement(client)}>
-                          <FileText className="h-3.5 w-3.5" />
-                        </Button>
-                        {client.email && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            title="Enviar Estado de Cuenta por Email"
-                            onClick={() => handleSendStatement(client)}
-                            disabled={sendingStatement === client.id}
-                          >
-                            {sendingStatement === client.id
-                              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              : <Mail className="h-3.5 w-3.5" />
-                            }
-                          </Button>
-                        )}
-                        <Button size="sm" variant="outline" title="Despachar" onClick={() => openDispatch(client)}>
-                          <Truck className="h-3.5 w-3.5" />
-                        </Button>
-                        {client.pendingBalance > 0 && (
-                          <Button size="sm" variant="outline" className="text-primary hover:text-primary" onClick={() => openPayment(client)}>
-                            <DollarSign className="mr-1 h-3 w-3" /> Cobrar
-                          </Button>
-                        )}
-                        <Button size="sm" variant="ghost" title="Editar Cliente" onClick={() => openEdit(client)}>
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button size="sm" variant="ghost" className="text-red-400 hover:text-red-600" title="Eliminar" onClick={async () => {
-                          if (!confirm(`¿Estás seguro de eliminar el cliente "${client.name}"?`)) return
-                          try {
-                            await api.del(`/api/clients?id=${client.id}`)
-                            toast.success('Cliente eliminado')
-                            fetchClients()
-                          } catch {
-                            toast.error('Error al eliminar cliente')
-                          }
-                        }}>
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {filtered.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                      <Users className="mx-auto mb-2 h-8 w-8 opacity-50" />
-                      No se encontraron clientes
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+      {loading ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Card key={i} className="h-48 animate-pulse bg-muted" />
+          ))}
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+          <Users className="h-12 w-12 mb-3 opacity-40" />
+          <p className="text-sm">No se encontraron clientes</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filtered.map((client) => (
+            <Card key={client.id} className="relative overflow-hidden hover:shadow-md transition-shadow">
+              <div className={`h-1 ${client.pendingBalance > 0 ? 'bg-red-500' : 'bg-green-500'}`} />
+              <CardContent className="p-4 space-y-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <h3 className="font-semibold text-sm truncate">{client.name}</h3>
+                  </div>
+                  <span className={`shrink-0 text-xs font-bold px-2 py-0.5 rounded-full ${client.pendingBalance > 0
+                    ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400'
+                    : 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400'
+                  }`}>
+                    {client.pendingBalance > 0
+                      ? `${currencySymbol}${client.pendingBalance.toFixed(2)}`
+                      : 'Sin deuda'
+                    }
+                  </span>
+                </div>
+
+                <div className="space-y-1 text-xs text-muted-foreground">
+                  {client.phone && (
+                    <div className="flex items-center gap-1.5">
+                      <Phone className="h-3 w-3 shrink-0" />
+                      <span className="truncate">{client.phone}</span>
+                    </div>
+                  )}
+                  {client.email && (
+                    <div className="flex items-center gap-1.5">
+                      <Mail className="h-3 w-3 shrink-0" />
+                      <span className="truncate">{client.email}</span>
+                    </div>
+                  )}
+                  {client.address && (
+                    <div className="flex items-center gap-1.5">
+                      <MapPin className="h-3 w-3 shrink-0" />
+                      <span className="truncate">{client.address}</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                  <div className="flex items-center gap-1">
+                    <ShoppingCart className="h-3 w-3" />
+                    <span>{client._count.sales} venta{client._count.sales !== 1 ? 's' : ''}</span>
+                  </div>
+                  {client.pendingBalance > 0 && (
+                    <div className="text-red-600 font-medium">
+                      Debe: {currencySymbol}{client.pendingBalance.toFixed(2)}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-1 pt-2 border-t">
+                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Ver Historial" onClick={() => openHistory(client)}>
+                    <Receipt className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Estado de Cuenta (PDF)" onClick={() => handleDownloadStatement(client)}>
+                    <FileText className="h-3.5 w-3.5" />
+                  </Button>
+                  {client.email && (
+                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Enviar por Email" onClick={() => handleSendStatement(client)} disabled={sendingStatement === client.id}>
+                      {sendingStatement === client.id
+                        ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        : <Mail className="h-3.5 w-3.5" />
+                      }
+                    </Button>
+                  )}
+                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Despachar" onClick={() => openDispatch(client)}>
+                    <Truck className="h-3.5 w-3.5" />
+                  </Button>
+                  {client.pendingBalance > 0 && (
+                    <Button size="sm" variant="outline" className="h-7 text-xs text-primary hover:text-primary" onClick={() => openPayment(client)}>
+                      <DollarSign className="mr-1 h-3 w-3" /> Cobrar
+                    </Button>
+                  )}
+                  <div className="flex-1" />
+                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Editar" onClick={() => openEdit(client)}>
+                    <Pencil className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-400 hover:text-red-600" title="Eliminar" onClick={async () => {
+                    if (!confirm(`¿Estás seguro de eliminar el cliente "${client.name}"?`)) return
+                    try {
+                      await api.del(`/api/clients?id=${client.id}`)
+                      toast.success('Cliente eliminado')
+                      fetchClients()
+                    } catch {
+                      toast.error('Error al eliminar cliente')
+                    }
+                  }}>
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
 
       {/* Create Client Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
