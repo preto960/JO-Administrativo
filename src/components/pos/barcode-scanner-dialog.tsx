@@ -9,7 +9,7 @@ import { toast } from 'sonner'
 interface BarcodeScannerDialogProps {
   open: boolean
   onClose: () => void
-  onScan: (barcode: string) => void
+  onScan: (barcode: string) => boolean
 }
 
 export function BarcodeScannerDialog({ open, onClose, onScan }: BarcodeScannerDialogProps) {
@@ -84,7 +84,10 @@ export function BarcodeScannerDialog({ open, onClose, onScan }: BarcodeScannerDi
           }
 
           toast.success(`Codigo escaneado: ${decodedText}`)
-          callbackRef.current(decodedText.trim())
+          const success = callbackRef.current(decodedText.trim())
+          if (success) {
+            setTimeout(() => onClose(), 400)
+          }
         },
         () => {
           // QR code not found in frame - this is expected, do nothing

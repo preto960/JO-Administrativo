@@ -156,10 +156,10 @@ export function PosTerminal() {
     }
   }
 
-  // Handle barcode scan — find product by SKU and add to cart
-  const handleBarcodeScan = useCallback((value: string) => {
+  // Handle barcode scan — find product by SKU and add to cart. Returns true on success.
+  const handleBarcodeScan = useCallback((value: string): boolean => {
     const trimmed = value.trim()
-    if (!trimmed) return
+    if (!trimmed) return false
 
     // Search by exact SKU match first, then partial
     const product = products.find(
@@ -170,19 +170,19 @@ export function PosTerminal() {
 
     if (!product) {
       toast.error(`Producto no encontrado: ${trimmed}`)
-      return
+      return false
     }
 
     const { stock, effectivePrice } = getBranchInfo(product)
     if (stock <= 0) {
       toast.error(`Sin stock: ${product.name}`)
-      return
+      return false
     }
 
     const currentQty = getCurrentQty(product.id)
     if (currentQty >= stock) {
       toast.error(`Stock máximo alcanzado: ${product.name} (${currentQty}/${stock})`)
-      return
+      return false
     }
 
     const result = addItem({
@@ -197,8 +197,10 @@ export function PosTerminal() {
 
     if (result) {
       toast.success(`${product.name} agregado al carrito`, { description: product.sku || undefined })
+      return true
     } else {
       toast.error('No se puede agregar. Stock insuficiente.')
+      return false
     }
   }, [products, getCurrentQty, addItem, getBranchInfo])
 
