@@ -155,12 +155,14 @@ function drawInfoCard(doc: jsPDF, report: CashCloseReport, startY: number): numb
       3: { cellWidth: '35%' },
     },
     didDrawCell: (data) => {
-      // Light background for entire card
-      doc.setFillColor(248, 250, 252)
-      doc.roundedRect(margin, y - 2, cardW, data.table.height + 4, 3, 3, 'F')
-      doc.setDrawColor(...C.grayMedium)
-      doc.setLineWidth(0.3)
-      doc.roundedRect(margin, y - 2, cardW, data.table.height + 4, 3, 3, 'S')
+      if (data.row.index === 0 && data.column.index === 0) {
+        // Light background for entire card
+        doc.setFillColor(248, 250, 252)
+        doc.rect(margin, y - 2, cardW, data.table.height + 4, 'F')
+        doc.setDrawColor(...C.grayMedium)
+        doc.setLineWidth(0.3)
+        doc.rect(margin, y - 2, cardW, data.table.height + 4, 'S')
+      }
     },
   })
 
@@ -259,9 +261,9 @@ function drawFinancialSummary(doc: jsPDF, report: CashCloseReport, startY: numbe
           return
         }
         // Total row highlight
-        if (rowIdx === summaryBody.length - 1) {
+        if (rowIdx === summaryBody.length - 1 && data.column.index === 0) {
           doc.setFillColor(...C.blueBg)
-          doc.roundedRect(36, data.cell.y - 2, doc.internal.pageSize.getWidth() - 72, data.cell.height + 4, 2, 2, 'F')
+          doc.rect(36, data.cell.y - 2, doc.internal.pageSize.getWidth() - 72, data.cell.height + 4, 'F')
         }
       }
     },
@@ -278,11 +280,11 @@ function drawFinancialSummary(doc: jsPDF, report: CashCloseReport, startY: numbe
     // Dashed box for exchange rate info
     const boxW = pw - 72
     doc.setFillColor(248, 250, 252)
-    doc.roundedRect(36, y, boxW, 24, 3, 3, 'F')
+    doc.rect(36, y, boxW, 24, 'F')
     doc.setDrawColor(...C.primaryLight)
     doc.setLineWidth(0.4)
     doc.setLineDashPattern([3, 3], 0)
-    doc.roundedRect(36, y, boxW, 24, 3, 3, 'S')
+    doc.rect(36, y, boxW, 24, 'S')
     doc.setLineDashPattern([], 0)
 
     doc.setFontSize(8)
@@ -433,7 +435,7 @@ function drawSalesDetail(doc: jsPDF, report: CashCloseReport, startY: number): n
     const sale = report.sales[si]
 
     doc.setFillColor(...C.blueBg)
-    doc.roundedRect(36, y, doc.internal.pageSize.getWidth() - 72, 16, 2, 2, 'F')
+    doc.rect(36, y, doc.internal.pageSize.getWidth() - 72, 16, 'F')
     doc.setFontSize(8)
     doc.setTextColor(...C.primary)
     doc.setFont('helvetica', 'bold')
@@ -741,9 +743,9 @@ export async function generateMultiCashClosePDF(reports: CashCloseReport[]): Pro
             doc.line(36, lineY, pw - 36, lineY)
             return
           }
-          if (rowIdx === summaryBody.length - 1) {
+          if (rowIdx === summaryBody.length - 1 && data.column.index === 0) {
             doc.setFillColor(...C.blueBg)
-            doc.roundedRect(36, data.cell.y - 2, pw - 72, data.cell.height + 4, 2, 2, 'F')
+            doc.rect(36, data.cell.y - 2, pw - 72, data.cell.height + 4, 'F')
           }
         }
       },
