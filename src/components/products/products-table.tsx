@@ -41,9 +41,10 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import { Plus, Search, Edit, Trash2, Package, Eye, EyeOff, Upload, ImageIcon, X, Loader2 } from 'lucide-react'
+import { Plus, Search, Edit, Trash2, Package, Eye, EyeOff, Upload, ImageIcon, X, Loader2, Printer } from 'lucide-react'
 import { toast } from 'sonner'
 import { ProductImportDialog } from './product-import-dialog'
+import { BarcodeLabelSelector } from './barcode-label-selector'
 
 // ── Interfaces ──────────────────────────────────────────────────────────────
 
@@ -110,6 +111,7 @@ export function ProductsTable() {
   const [productToDelete, setProductToDelete] = useState<Product | null>(null)
   const [editProduct, setEditProduct] = useState<Product | null>(null)
   const [importOpen, setImportOpen] = useState(false)
+  const [labelsOpen, setLabelsOpen] = useState(false)
 
   // Form state
   const [formName, setFormName] = useState('')
@@ -395,6 +397,12 @@ export function ProductsTable() {
             onClick={() => setImportOpen(true)}
           >
             <Upload className="mr-2 h-4 w-4" /> Importar
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => setLabelsOpen(true)}
+          >
+            <Printer className="mr-2 h-4 w-4" /> Etiquetas
           </Button>
         </div>
       </div>
@@ -790,6 +798,29 @@ export function ProductsTable() {
         onOpenChange={setImportOpen}
         onImportComplete={fetchData}
       />
+
+      {/* Barcode Labels Dialog */}
+      <Dialog open={labelsOpen} onOpenChange={setLabelsOpen}>
+        <DialogContent className="sm:max-w-lg h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Generador de Etiquetas</DialogTitle>
+            <DialogDescription>
+              Selecciona productos y la cantidad de etiquetas a generar
+            </DialogDescription>
+          </DialogHeader>
+          <BarcodeLabelSelector
+            products={products.map(p => ({
+              id: p.id,
+              name: p.name,
+              sku: p.sku,
+              price: getEffectivePrice(p),
+              currency: p.currency,
+              active: p.active,
+            }))}
+            onClose={() => setLabelsOpen(false)}
+          />
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
