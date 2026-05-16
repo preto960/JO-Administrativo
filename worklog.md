@@ -335,3 +335,23 @@ Stage Summary:
 - Archivo modificado: src/lib/cash-close-pdf.ts (254 inserciones, 160 eliminaciones)
 - Commit: 6a38fac - Rediseño formato PDF cierre de caja
 - Push exitoso a main
+
+---
+Task ID: 1
+Agent: main
+Task: Fix client statement PDF errors + add edit client button
+
+Work Log:
+- Fixed Prisma error in statement/route.ts: `orderBy: { createdAt: 'desc' }` → `orderBy: { id: 'desc' }` because AccountReceivable model has no `createdAt` field
+- Fixed `fmt(totalBs, 2)` call with extra argument → `fmt(totalBs)` on line 305
+- Added PUT handler to /api/clients/route.ts for updating client data (name, phone, email, address, note)
+- Added `Pencil` icon import from lucide-react to clients-table.tsx
+- Added `editingClient` state + `openEdit()` function to populate form with existing data
+- Modified `handleSave()` to handle both create (POST) and update (PUT) based on editingClient state
+- Added edit button (Pencil icon) on each client row, before the delete button
+- Dialog title/description/button text now changes based on whether creating or editing
+
+Stage Summary:
+- Root cause of PDF/email error was Prisma query using `createdAt` which doesn't exist on AccountReceivable model
+- Edit client feature now fully functional: button per row → dialog with pre-filled data → PUT API call
+- Files modified: src/app/api/clients/[id]/statement/route.ts, src/app/api/clients/route.ts, src/components/clients/clients-table.tsx

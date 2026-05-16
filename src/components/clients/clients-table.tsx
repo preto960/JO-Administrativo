@@ -32,7 +32,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Plus, Search, Users, Eye, DollarSign, Loader2, Receipt, Truck, X, Banknote, CreditCard, ArrowLeftRight, Smartphone, Trash2, Printer, FileText, Mail } from 'lucide-react'
+import { Plus, Search, Users, Eye, DollarSign, Loader2, Receipt, Truck, X, Banknote, CreditCard, ArrowLeftRight, Smartphone, Trash2, Printer, FileText, Mail, Pencil } from 'lucide-react'
 import { toast } from 'sonner'
 import { useSetting } from '@/stores/use-app-store'
 
@@ -116,6 +116,9 @@ export function ClientsTable() {
   const currencySymbol = referenceCurrency === 'EUR' ? '\u20ac' : '$'
   const isLocalMethod = localCurrencyMethods.includes(paymentMethod)
 
+  // Edit client
+  const [editingClient, setEditingClient] = useState<Client | null>(null)
+
   // Dispatch dialog
   const [dispatchClient, setDispatchClient] = useState<Client | null>(null)
   const [showDispatchDialog, setShowDispatchDialog] = useState(false)
@@ -152,11 +155,22 @@ export function ClientsTable() {
   )
 
   const openCreate = () => {
+    setEditingClient(null)
     setFormName('')
     setFormPhone('')
     setFormEmail('')
     setFormAddress('')
     setFormNote('')
+    setDialogOpen(true)
+  }
+
+  const openEdit = (client: Client) => {
+    setEditingClient(client)
+    setFormName(client.name)
+    setFormPhone(client.phone || '')
+    setFormEmail(client.email || '')
+    setFormAddress(client.address || '')
+    setFormNote(client.note || '')
     setDialogOpen(true)
   }
 
@@ -167,18 +181,30 @@ export function ClientsTable() {
     }
     setSaving(true)
     try {
-      await api.post('/api/clients', {
-        name: formName,
-        phone: formPhone || null,
-        email: formEmail || null,
-        address: formAddress || null,
-        note: formNote || null,
-      })
-      toast.success('Cliente creado')
+      if (editingClient) {
+        await api.put('/api/clients', {
+          id: editingClient.id,
+          name: formName,
+          phone: formPhone || null,
+          email: formEmail || null,
+          address: formAddress || null,
+          note: formNote || null,
+        })
+        toast.success('Cliente actualizado')
+      } else {
+        await api.post('/api/clients', {
+          name: formName,
+          phone: formPhone || null,
+          email: formEmail || null,
+          address: formAddress || null,
+          note: formNote || null,
+        })
+        toast.success('Cliente creado')
+      }
       setDialogOpen(false)
       fetchClients()
     } catch {
-      toast.error('Error al crear cliente')
+      toast.error(editingClient ? 'Error al actualizar cliente' : 'Error al crear cliente')
     } finally {
       setSaving(false)
     }
@@ -458,6 +484,9 @@ export function ClientsTable() {
                             <DollarSign className="mr-1 h-3 w-3" /> Cobrar
                           </Button>
                         )}
+                        <Button size="sm" variant="ghost" title="Editar Cliente" onClick={() => openEdit(client)}>
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
                         <Button size="sm" variant="ghost" className="text-red-400 hover:text-red-600" title="Eliminar" onClick={async () => {
                           if (!confirm(`¿Estás seguro de eliminar el cliente "${client.name}"?`)) return
                           try {
@@ -492,8 +521,8 @@ export function ClientsTable() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Nuevo Cliente</DialogTitle>
-            <DialogDescription>Registra un nuevo cliente en el sistema</DialogDescription>
+            <DialogTitle>{editingClient ? 'Editar Cliente' : 'Nuevo Cliente'}</DialogTitle>
+            <DialogDescription>{editingClient ? 'Modifica los datos del cliente' : 'Registra un nuevo cliente en el sistema'}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
@@ -519,7 +548,7 @@ export function ClientsTable() {
               <Input id="cnote" value={formNote} onChange={(e) => setFormNote(e.target.value)} placeholder="Notas internas" />
             </div>
             <Button className="w-full bg-primary hover:bg-primary/90 text-white" onClick={handleSave} disabled={saving}>
-              {saving ? 'Guardando...' : 'Crear Cliente'}
+              {saving ? 'Guardando...' : editingClient ? 'Actualizar Cliente' : 'Crear Cliente'}
             </Button>
           </div>
         </DialogContent>

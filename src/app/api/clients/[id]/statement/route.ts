@@ -27,7 +27,7 @@ export async function GET(
                 },
               },
             },
-            orderBy: { createdAt: 'desc' },
+            orderBy: { id: 'desc' },
           },
         },
       }),
@@ -302,7 +302,7 @@ export async function GET(
       doc.setTextColor(...mutedText)
       doc.setFont('helvetica', 'normal')
       doc.text(
-        `Tasa de cambio: 1 ${referenceCurrency} = ${fmt(exchangeRate)} Bs  |  Deuda total: ${fmt(totalBs, 2)} Bs`,
+        `Tasa de cambio: 1 ${referenceCurrency} = ${fmt(exchangeRate)} Bs  |  Deuda total: ${fmt(totalBs)} Bs`,
         pw / 2, ph - 45, { align: 'center' }
       )
     }

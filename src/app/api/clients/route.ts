@@ -60,6 +60,32 @@ export async function POST(request: NextRequest) {
   }
 }
 
+export async function PUT(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const { id, name, phone, email, address, note } = body
+
+    if (!id) {
+      return NextResponse.json({ error: 'ID es requerido' }, { status: 400 })
+    }
+
+    const client = await db.client.update({
+      where: { id },
+      data: {
+        name,
+        phone: phone || null,
+        email: email || null,
+        address: address || null,
+        note: note || null,
+      },
+    })
+
+    return NextResponse.json(client)
+  } catch (error) {
+    return NextResponse.json({ error: 'Error al actualizar cliente' }, { status: 500 })
+  }
+}
+
 export async function DELETE(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
