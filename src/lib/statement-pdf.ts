@@ -74,14 +74,10 @@ export function generateStatementPDF(
   const symbol = referenceCurrency === 'EUR' ? '\u20ac' : '$'
 
   // ─── Colors ───────────────────────────────────────────────────────────
-  const blueHeader: [number, number, number] = [26, 58, 107]
-  const accentBlue: [number, number, number] = [37, 99, 235]
-  const lightGray: [number, number, number] = [243, 244, 246]
-  const darkText: [number, number, number] = [31, 41, 55]
-  const mutedText: [number, number, number] = [107, 114, 128]
-  const redBg: [number, number, number] = [254, 242, 242]
-  const redAccent: [number, number, number] = [220, 38, 38]
-  const C_white: [number, number, number] = [255, 255, 255]
+  const blue: [number, number, number] = [26, 58, 107]
+  const white: [number, number, number] = [255, 255, 255]
+  const dark: [number, number, number] = [31, 41, 55]
+  const muted: [number, number, number] = [107, 114, 128]
 
   // ─── Create PDF ───────────────────────────────────────────────────────
   const doc = new jsPDF({
@@ -93,187 +89,157 @@ export function generateStatementPDF(
   const pw = doc.internal.pageSize.getWidth()
   const ph = doc.internal.pageSize.getHeight()
 
-  // ─── Header ──────────────────────────────────────────────────────────
-  doc.setFillColor(...blueHeader)
-  doc.rect(0, 0, pw, 100, 'F')
+  // ─── Header bar ───────────────────────────────────────────────────────
+  doc.setFillColor(...blue)
+  doc.rect(0, 0, pw, 90, 'F')
 
-  doc.setFontSize(20)
-  doc.setTextColor(...C_white)
+  doc.setFontSize(18)
+  doc.setTextColor(...white)
   doc.setFont('helvetica', 'bold')
-  doc.text(businessName, 40, 24)
+  doc.text(businessName, 40, 28)
 
   doc.setFontSize(9)
-  doc.setTextColor(209, 213, 219)
+  doc.setTextColor(200, 210, 225)
   doc.setFont('helvetica', 'normal')
-  let detailY = 46
-  if (rif) { doc.text(`RIF: ${rif}`, 40, detailY); detailY += 14 }
-  if (address) { doc.text(`Direccion: ${address}`, 40, detailY); detailY += 14 }
-  if (phone) { doc.text(`Telefono: ${phone}`, 40, detailY) }
+  let infoY = 48
+  if (rif) { doc.text(`RIF: ${rif}`, 40, infoY); infoY += 14 }
+  if (address) { doc.text(`Direccion: ${address}`, 40, infoY); infoY += 14 }
+  if (phone) { doc.text(`Telefono: ${phone}`, 40, infoY) }
 
   doc.setFontSize(16)
-  doc.setTextColor(...C_white)
+  doc.setTextColor(...white)
   doc.setFont('helvetica', 'bold')
-  doc.text('ESTADO DE CUENTA', pw - 40, 50, { align: 'right' })
+  doc.text('ESTADO DE CUENTA', pw - 40, 40, { align: 'right' })
 
   doc.setFontSize(9)
-  doc.setTextColor(147, 197, 253)
+  doc.setTextColor(160, 190, 230)
   doc.setFont('helvetica', 'normal')
-  doc.text(`Fecha: ${new Date().toLocaleDateString('es-VE', { year: 'numeric', month: '2-digit', day: '2-digit' })}`, pw - 40, 68, { align: 'right' })
+  doc.text(
+    new Date().toLocaleDateString('es-VE', { year: 'numeric', month: '2-digit', day: '2-digit' }),
+    pw - 40, 58, { align: 'right' },
+  )
 
-  // ─── Client Info ─────────────────────────────────────────────────────
-  let y = 112
+  // ─── Client info ──────────────────────────────────────────────────────
+  let y = 104
 
-  doc.setFillColor(...lightGray)
-  doc.rect(40, y, pw - 80, 50, 'F')
-
-  doc.setFontSize(8)
-  doc.setTextColor(...mutedText)
-  doc.setFont('helvetica', 'bold')
-  doc.text('CLIENTE', 50, y + 12)
+  doc.setFillColor(248, 249, 250)
+  doc.rect(40, y, pw - 80, 44, 'F')
 
   doc.setFontSize(11)
-  doc.setTextColor(...darkText)
+  doc.setTextColor(...dark)
   doc.setFont('helvetica', 'bold')
-  doc.text(client.name, 50, y + 28)
+  doc.text(client.name, 52, y + 17)
 
   doc.setFontSize(8)
-  doc.setTextColor(...mutedText)
+  doc.setTextColor(...muted)
   doc.setFont('helvetica', 'normal')
-  const clientDetails: string[] = []
-  if (client.phone) clientDetails.push(`Tel: ${client.phone}`)
-  if (client.email) clientDetails.push(`Email: ${client.email}`)
-  if (client.address) clientDetails.push(`Dir: ${client.address}`)
-  if (clientDetails.length > 0) {
-    doc.text(clientDetails.join('  |  '), 50, y + 42)
+  const clientInfo: string[] = []
+  if (client.phone) clientInfo.push(`Tel: ${client.phone}`)
+  if (client.email) clientInfo.push(`Email: ${client.email}`)
+  if (client.address) clientInfo.push(`Dir: ${client.address}`)
+  if (clientInfo.length > 0) {
+    doc.text(clientInfo.join('  |  '), 52, y + 34)
   }
 
-  y += 62
+  y += 58
 
-  // ─── Debt Summary ────────────────────────────────────────────────────
+  // ─── No debt ──────────────────────────────────────────────────────────
   if (client.receivables.length === 0) {
-    doc.setFontSize(12)
-    doc.setTextColor(...accentBlue)
+    doc.setFontSize(13)
+    doc.setTextColor(37, 99, 235)
     doc.setFont('helvetica', 'bold')
-    doc.text('Sin deuda pendiente', pw / 2, y + 40, { align: 'center' })
+    doc.text('Sin deuda pendiente', pw / 2, y + 30, { align: 'center' })
   } else {
-    // Summary box
-    doc.setFillColor(...redBg)
-    doc.rect(40, y, pw - 80, 40, 'F')
-    doc.setFillColor(...redAccent)
-    doc.rect(40, y, 4, 40, 'F')
+    // ─── One table: all invoices ────────────────────────────────────────
+    const tableBody: (string | number)[][] = []
 
-    doc.setFontSize(9)
-    doc.setTextColor(153, 27, 27)
-    doc.setFont('helvetica', 'bold')
-    doc.text(`${client.receivables.length} factura(s) pendiente(s)`, 54, y + 14)
-
-    doc.setFontSize(14)
-    doc.setTextColor(...redAccent)
-    doc.text(`Deuda Total: ${symbol}${fmt(totalDebt)}`, 54, y + 32)
-
-    y += 52
-
-    // ─── Detail per receivable (no summary table) ──────────────────────
-    for (const r of client.receivables) {
+    client.receivables.forEach((r, i) => {
       const sale = r.sale
-      if (y + 100 > ph - 80) { doc.addPage(); y = 40 }
-
-      // Sale header
       const saleDate = sale.date
         ? new Date(sale.date).toLocaleDateString('es-VE', { year: 'numeric', month: '2-digit', day: '2-digit' })
         : ''
-      const saleNum = sale.id.substring(0, 8).toUpperCase()
+      const dueDateStr = r.dueDate
+        ? new Date(r.dueDate).toLocaleDateString('es-VE', { year: 'numeric', month: '2-digit', day: '2-digit' })
+        : ''
 
-      doc.setFillColor(238, 242, 255)
-      doc.rect(40, y, pw - 80, 20, 'F')
-      doc.setFontSize(8)
-      doc.setTextColor(...accentBlue)
-      doc.setFont('helvetica', 'bold')
-      doc.text(`Factura No ${saleNum}  |  ${saleDate}  |  Sucursal: ${sale.branch?.name || '\u2014'}  |  Cajero: ${sale.user?.name || '\u2014'}`, 50, y + 13)
-      y += 26
+      // Products as a comma-separated list
+      const products = sale.lines.map(l => l.product.name).join(', ')
 
-      // Product lines
-      const linesBody = sale.lines.map((line, idx) => [
-        String(idx + 1),
-        line.product.name,
-        String(line.quantity),
-        `${symbol}${fmt(line.unitPrice)}`,
-        `${symbol}${fmt(line.lineTotal)}`,
+      tableBody.push([
+        String(i + 1),
+        saleDate,
+        products,
+        `${symbol}${fmt(r.amount)}`,
+        `${symbol}${fmt(r.pendingBalance)}`,
+        dueDateStr,
       ])
+    })
 
-      autoTable(doc, {
-        startY: y,
-        theme: 'grid',
-        margin: { left: 60, right: 40 },
-        head: [['#', 'Producto', 'Cant.', 'P. Unit.', 'Total']],
-        body: linesBody,
-        styles: {
-          fontSize: 7.5,
-          cellPadding: 3,
-        },
-        headStyles: {
-          fillColor: lightGray,
-          textColor: mutedText,
-          fontStyle: 'bold',
-          fontSize: 7,
-        },
-        columnStyles: {
-          0: { cellWidth: 20 },
-          3: { halign: 'right', cellWidth: 55 },
-          4: { halign: 'right', fontStyle: 'bold', textColor: accentBlue },
-        },
-      })
+    autoTable(doc, {
+      startY: y,
+      theme: 'striped',
+      margin: { left: 40, right: 40 },
+      head: [['#', 'Fecha', 'Productos', 'Monto', 'Pendiente', 'Vence']],
+      body: tableBody,
+      styles: {
+        fontSize: 9,
+        cellPadding: 5,
+        lineColor: [209, 213, 219],
+        lineWidth: 0.5,
+      },
+      headStyles: {
+        fillColor: blue,
+        textColor: white,
+        fontStyle: 'bold',
+        fontSize: 9,
+      },
+      columnStyles: {
+        0: { cellWidth: 25, halign: 'center' },
+        1: { cellWidth: 80 },
+        2: { cellWidth: 190 },
+        3: { cellWidth: 70, halign: 'right' },
+        4: { cellWidth: 70, halign: 'right' },
+        5: { cellWidth: 65, halign: 'center' },
+      },
+      didParseCell: (data) => {
+        // Bold the last (total) row
+        if (data.section === 'body' && data.row.index === tableBody.length - 1) {
+          data.cell.styles.fillColor = [254, 242, 242]
+          data.cell.styles.fontStyle = 'bold'
+          data.cell.styles.textColor = [220, 38, 38]
+        }
+      },
+    })
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      y = (doc as any).lastAutoTable.finalY + 6
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    y = (doc as any).lastAutoTable.finalY + 20
 
-      // Pending balance for this sale
-      doc.setFontSize(8)
-      doc.setTextColor(...mutedText)
-      doc.setFont('helvetica', 'normal')
-      doc.text(`Total venta: ${symbol}${fmt(sale.total)}  |  Pagos: ${sale.payments.map(p => `${p.method} ${p.currency.symbol}${fmt(p.amount)}`).join(', ') || 'Credito'}`, 60, y)
-      y += 12
-
-      doc.setFontSize(9)
-      doc.setTextColor(...redAccent)
-      doc.setFont('helvetica', 'bold')
-      doc.text(`Saldo pendiente: ${symbol}${fmt(r.pendingBalance)}`, 60, y)
-
-      if (r.dueDate) {
-        doc.setTextColor(...mutedText)
-        doc.setFont('helvetica', 'normal')
-        doc.text(`  |  Vence: ${new Date(r.dueDate).toLocaleDateString('es-VE', { year: 'numeric', month: '2-digit', day: '2-digit' })}`, 60 + doc.getTextWidth(`Saldo pendiente: ${symbol}${fmt(r.pendingBalance)}`) + 8, y)
-      }
-
-      y += 20
-    }
-
-    // ─── Grand Total ────────────────────────────────────────────────────
-    if (y + 40 > ph - 80) { doc.addPage(); y = 40 }
-
-    doc.setFillColor(...redBg)
-    doc.rect(40, y, pw - 80, 30, 'F')
-    doc.setFillColor(...redAccent)
-    doc.rect(40, y, 4, 30, 'F')
+    // ─── Total box ─────────────────────────────────────────────────────
+    doc.setFillColor(254, 242, 242)
+    doc.rect(40, y, pw - 80, 36, 'F')
+    doc.setFillColor(220, 38, 38)
+    doc.rect(40, y, 4, 36, 'F')
 
     doc.setFontSize(11)
-    doc.setTextColor(...redAccent)
+    doc.setTextColor(220, 38, 38)
     doc.setFont('helvetica', 'bold')
-    doc.text('TOTAL DEUDA PENDIENTE', 54, y + 19)
+    doc.text('TOTAL DEUDA PENDIENTE', 56, y + 23)
 
-    doc.setFontSize(14)
-    doc.text(`${symbol}${fmt(totalDebt)}`, pw - 54, y + 19, { align: 'right' })
-  }
+    doc.setFontSize(16)
+    doc.text(`${symbol}${fmt(totalDebt)}`, pw - 52, y + 23, { align: 'right' })
 
-  // ─── Exchange rate ───────────────────────────────────────────────────
-  if (exchangeRate > 0 && totalDebt > 0) {
-    doc.setFontSize(8)
-    doc.setTextColor(...mutedText)
-    doc.setFont('helvetica', 'normal')
-    doc.text(
-      `Tasa de cambio: 1 ${referenceCurrency} = ${fmt(exchangeRate)} Bs  |  Deuda total: ${fmt(totalDebt * exchangeRate)} Bs`,
-      pw / 2, ph - 45, { align: 'center' }
-    )
+    y += 36
+
+    // ─── Exchange rate ─────────────────────────────────────────────────
+    if (exchangeRate > 0) {
+      doc.setFontSize(8)
+      doc.setTextColor(...muted)
+      doc.setFont('helvetica', 'normal')
+      doc.text(
+        `Tasa: 1 ${referenceCurrency} = ${fmt(exchangeRate)} Bs  |  Equivalente: ${fmt(totalDebt * exchangeRate)} Bs`,
+        pw / 2, y + 16, { align: 'center' },
+      )
+    }
   }
 
   // ─── Footer ──────────────────────────────────────────────────────────
@@ -282,19 +248,15 @@ export function generateStatementPDF(
     doc.setPage(i)
 
     doc.setDrawColor(209, 213, 219)
-    doc.setLineWidth(0.5)
-    doc.line(40, ph - 35, pw - 40, ph - 35)
+    doc.setLineWidth(0.3)
+    doc.line(40, ph - 30, pw - 40, ph - 30)
 
     doc.setFontSize(7)
-    doc.setTextColor(...mutedText)
+    doc.setTextColor(...muted)
     doc.setFont('helvetica', 'normal')
     doc.text(
-      `${businessName} \u2014 Generado el ${new Date().toLocaleDateString('es-VE')}`,
-      pw / 2, ph - 22, { align: 'center' },
-    )
-    doc.text(
-      `Estado de Cuenta  |  Pagina ${i} de ${totalPages}`,
-      pw / 2, ph - 12, { align: 'center' },
+      `${businessName} \u2014 Estado de Cuenta  |  Pagina ${i} de ${totalPages}`,
+      pw / 2, ph - 16, { align: 'center' },
     )
   }
 
