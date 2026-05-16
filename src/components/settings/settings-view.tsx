@@ -50,6 +50,7 @@ import {
   Shield,
   Upload,
   X,
+  Tag,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { ALL_ROLES, getRoleLabel } from '@/lib/permissions'
@@ -136,6 +137,13 @@ export function SettingsView() {
   const [userBranchId, setUserBranchId] = useState('')
   const [userActive, setUserActive] = useState(true)
 
+  // Categories state
+  const [categories, setCategories] = useState<Array<{ id: string; name: string; _count: { products: number } }>>([])
+  const [showCatDialog, setShowCatDialog] = useState(false)
+  const [editingCat, setEditingCat] = useState<{ id: string; name: string } | null>(null)
+  const [catName, setCatName] = useState('')
+  const [catSaving, setCatSaving] = useState(false)
+
   // Branches state
   const [branches, setBranches] = useState<Branch[]>([])
   const [showBranchDialog, setShowBranchDialog] = useState(false)
@@ -162,6 +170,7 @@ export function SettingsView() {
     api.get<UserItem[]>('/api/users').then(setUsers).catch(() => {})
     api.get<CurrencyItem[]>('/api/currencies').then(setCurrencies).catch(() => {})
     api.get<Branch[]>('/api/branches').then(setBranches).catch(() => {})
+    api.get<Array<{ id: string; name: string; _count: { products: number } }>>('/api/categories').then(setCategories).catch(() => {})
   }, [])
 
   useEffect(() => { fetchSettings() }, [fetchSettings])
@@ -305,6 +314,10 @@ export function SettingsView() {
           <TabsTrigger value="sistema" className="gap-1.5">
             <Monitor className="h-3.5 w-3.5 hidden sm:block" />
             <span>Sistema</span>
+          </TabsTrigger>
+          <TabsTrigger value="categorias" className="gap-1.5">
+            <Tag className="h-3.5 w-3.5 hidden sm:block" />
+            <span>Categorías</span>
           </TabsTrigger>
           <TabsTrigger value="apariencia" className="gap-1.5">
             <Palette className="h-3.5 w-3.5 hidden sm:block" />
@@ -997,6 +1010,109 @@ export function SettingsView() {
           </Card>
         </TabsContent>
 
+        {/* ── Categorías Tab ────────────────────────────── */}
+        <TabsContent value="categorias">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-base">Categorías de Productos</CardTitle>
+                  <CardDescription>Gestiona las categorías para organizar tus productos y el punto de venta</CardDescription>
+                </div>
+                <Button size="sm" className="bg-primary hover:bg-primary/90 text-white" onClick={() => {
+                  setEditingCat(null)
+                  setCatName('')
+                  setShowCatDialog(true)
+                }}>
+                  <Plus className="mr-1 h-3.5 w-3.5" /> Nueva
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Nombre</TableHead>
+                      <TableHead className="text-center">Productos</TableHead>
+                      <TableHead className="text-right">Acciones</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {categories.map((cat) => (
+                      <TableRow key={cat.id}>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <Tag className="h-4 w-4 text-muted-foreground" />
+                            <span className="font-medium">{cat.name}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Badge variant={cat._count.products > 0 ? 'default' : 'secondary'}>
+                            {cat._count.products}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => {
+                                setEditingCat(cat)
+                                setCatName(cat.name)
+                                setShowCatDialog(true)
+                              }}
+                              title="Editar"
+                            >
+                              <Edit className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-red-400 hover:text-red-600"
+                              onClick={async () => {
+                                if (cat._count.products > 0) {
+                                  toast.error(`No se puede eliminar. Tiene ${cat._count.products} producto(s) asociado(s)`)
+                                  return
+                                }
+                                if (!confirm(`¿Estás seguro de eliminar la categoría "${cat.name}"?`)) return
+                                try {
+                                  await api.del(`/api/categories?id=${cat.id}`)
+                                  toast.success('Categoría eliminada')
+                                  setCategories(prev => prev.filter(c => c.id !== cat.id))
+                                } catch {
+                                  toast.error('Error al eliminar categoría')
+                                }
+                              }}
+                              title="Eliminar"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {categories.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={3} className="text-center py-8 text-muted-foreground">
+                          <Tag className="mx-auto mb-2 h-8 w-8 opacity-50" />
+                          No hay categorías registradas
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+              {categories.length > 0 && (
+                <div className="mt-4 text-xs text-muted-foreground">
+                  Total: {categories.length} categorías con {categories.reduce((s, c) => s + c._count.products, 0)} productos asociados
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         {/* ── Apariencia Tab ────────────────────────────── */}
         <TabsContent value="apariencia">
           <Card>
@@ -1043,6 +1159,69 @@ export function SettingsView() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* ── Category Dialog ─────────────────────────────── */}
+      <Dialog open={showCatDialog} onOpenChange={setShowCatDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{editingCat ? 'Editar Categoría' : 'Nueva Categoría'}</DialogTitle>
+            <DialogDescription>
+              {editingCat ? 'Modifica el nombre de la categoría' : 'Crea una nueva categoría para organizar tus productos'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Nombre de la Categoría *</Label>
+              <Input
+                value={catName}
+                onChange={(e) => setCatName(e.target.value)}
+                placeholder="Ej: Bebidas, Lácteos, Aseo Personal..."
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    document.getElementById('cat-save-btn')?.click()
+                  }
+                }}
+              />
+              <p className="text-xs text-muted-foreground">
+                Las categorías se usan para organizar productos en el catálogo y filtrar en el punto de venta.
+              </p>
+            </div>
+            <Button
+              id="cat-save-btn"
+              className="w-full bg-primary hover:bg-primary/90 text-white"
+              onClick={async () => {
+                if (!catName.trim()) {
+                  toast.error('El nombre es obligatorio')
+                  return
+                }
+                setCatSaving(true)
+                try {
+                  if (editingCat) {
+                    const updated = await api.put('/api/categories', { id: editingCat.id, name: catName.trim() })
+                    toast.success('Categoría actualizada')
+                    setCategories(prev => prev.map(c => c.id === editingCat.id ? updated : c))
+                  } else {
+                    const created = await api.post('/api/categories', { name: catName.trim() })
+                    toast.success('Categoría creada')
+                    setCategories(prev => [...prev, created])
+                  }
+                  setShowCatDialog(false)
+                } catch (error) {
+                  const msg = error instanceof Error ? error.message : 'Error al guardar categoría'
+                  toast.error(msg)
+                } finally {
+                  setCatSaving(false)
+                }
+              }}
+              disabled={catSaving || !catName.trim()}
+            >
+              {catSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              {catSaving ? 'Guardando...' : editingCat ? 'Actualizar' : 'Crear Categoría'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* ── Branch Dialog ────────────────────────────────── */}
       <Dialog open={showBranchDialog} onOpenChange={setShowBranchDialog}>
