@@ -85,7 +85,7 @@ export async function POST(
 
     const filename = `estado_cuenta_${client.name.replace(/\s+/g, '_')}.pdf`
 
-    await resend.emails.send({
+    const sendResult = await resend.emails.send({
       from: fromEmail,
       to: [client.email],
       subject: `Estado de Cuenta - ${client.name} - ${new Date().toLocaleDateString('es-VE')}`,
@@ -150,7 +150,13 @@ export async function POST(
       ],
     })
 
-    console.log('[Email] Estado de cuenta enviado correctamente')
+    console.log('[Email] Resend response:', JSON.stringify(sendResult))
+
+    if (sendResult.error) {
+      throw new Error(`Resend error: ${sendResult.error.name} - ${sendResult.error.message}`)
+    }
+
+    console.log('[Email] Estado de cuenta enviado correctamente, ID:', sendResult.data?.id)
 
     return NextResponse.json({ success: true, message: `Estado de cuenta enviado a ${client.email}` })
   } catch (error) {
