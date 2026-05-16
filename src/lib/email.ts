@@ -315,11 +315,7 @@ export async function sendCashCloseEmail(data: CashCloseData): Promise<boolean> 
                 <td style="padding: 6px 0; text-align: right; font-weight: bold; color: red;">-$${data.totalExpenses.toFixed(2)}</td>
               </tr>
               <tr style="border-top: 2px solid #333;">
-                <td style="padding: 6px 0; font-weight: bold;">Esperado:</td>
-                <td style="padding: 6px 0; text-align: right; font-weight: bold;">$${data.expected.toFixed(2)}</td>
-              </tr>
-              <tr>
-                <td style="padding: 6px 0; font-weight: bold;">Real:</td>
+                <td style="padding: 6px 0; font-weight: bold;">Total en Caja:</td>
                 <td style="padding: 6px 0; text-align: right; font-weight: bold;">$${data.actual.toFixed(2)}</td>
               </tr>
               <tr style="border-top: 2px solid #333;">
