@@ -32,7 +32,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Plus, Search, Users, Eye, DollarSign, Loader2, Receipt, Truck, X, Banknote, CreditCard, ArrowLeftRight, Smartphone, Trash2, Printer } from 'lucide-react'
+import { Plus, Search, Users, Eye, DollarSign, Loader2, Receipt, Truck, X, Banknote, CreditCard, ArrowLeftRight, Smartphone, Trash2, Printer, FileText, Mail } from 'lucide-react'
 import { toast } from 'sonner'
 import { useSetting } from '@/stores/use-app-store'
 
@@ -97,6 +97,9 @@ export function ClientsTable() {
   const [sales, setSales] = useState<SaleRecord[]>([])
   const [loadingHistory, setLoadingHistory] = useState(false)
   const [showHistoryDialog, setShowHistoryDialog] = useState(false)
+
+  // Statement email
+  const [sendingStatement, setSendingStatement] = useState<string | null>(null)
 
   // Payment dialog
   const [paymentClient, setPaymentClient] = useState<Client | null>(null)
@@ -178,6 +181,42 @@ export function ClientsTable() {
       toast.error('Error al crear cliente')
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleDownloadStatement = async (client: Client) => {
+    try {
+      const res = await fetch(`/api/clients/${client.id}/statement`)
+      if (!res.ok) throw new Error()
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `estado_cuenta_${client.name.replace(/\s+/g, '_')}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+      toast.success('Estado de cuenta descargado')
+    } catch {
+      toast.error('Error al descargar el estado de cuenta')
+    }
+  }
+
+  const handleSendStatement = async (client: Client) => {
+    if (!client.email) {
+      toast.error('El cliente no tiene email registrado')
+      return
+    }
+    setSendingStatement(client.id)
+    try {
+      const res = await fetch(`/api/clients/${client.id}/send-statement`, { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      toast.success(`Estado de cuenta enviado a ${client.email}`)
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Error al enviar'
+      toast.error(msg)
+    } finally {
+      setSendingStatement(null)
     }
   }
 
@@ -394,6 +433,23 @@ export function ClientsTable() {
                         <Button size="sm" variant="ghost" title="Ver Historial" onClick={() => openHistory(client)}>
                           <Receipt className="h-3.5 w-3.5" />
                         </Button>
+                        <Button size="sm" variant="ghost" title="Descargar Estado de Cuenta" onClick={() => handleDownloadStatement(client)}>
+                          <FileText className="h-3.5 w-3.5" />
+                        </Button>
+                        {client.email && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            title="Enviar Estado de Cuenta por Email"
+                            onClick={() => handleSendStatement(client)}
+                            disabled={sendingStatement === client.id}
+                          >
+                            {sendingStatement === client.id
+                              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              : <Mail className="h-3.5 w-3.5" />
+                            }
+                          </Button>
+                        )}
                         <Button size="sm" variant="outline" title="Despachar" onClick={() => openDispatch(client)}>
                           <Truck className="h-3.5 w-3.5" />
                         </Button>
