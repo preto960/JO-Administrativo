@@ -150,8 +150,8 @@ export function generateStatementPDF(
     doc.setFont('helvetica', 'bold')
     doc.text('Sin deuda pendiente', pw / 2, y + 30, { align: 'center' })
   } else {
-    // ─── One table: all invoices ────────────────────────────────────────
-    const tableBody: (string | number)[][] = []
+    // ─── One table: products separated by invoice ──────────────────────
+    const tableBody: (string | number | object)[][] = []
 
     client.receivables.forEach((r, i) => {
       const sale = r.sale
@@ -161,52 +161,76 @@ export function generateStatementPDF(
       const dueDateStr = r.dueDate
         ? new Date(r.dueDate).toLocaleDateString('es-VE', { year: 'numeric', month: '2-digit', day: '2-digit' })
         : ''
+      const saleNum = sale.id.substring(0, 8).toUpperCase()
 
-      // Products as a comma-separated list
-      const products = sale.lines.map(l => l.product.name).join(', ')
+      sale.lines.forEach((line, lineIdx) => {
+        tableBody.push([
+          // Show invoice # and date only on first row of each group
+          lineIdx === 0 ? `${i + 1}` : '',
+          lineIdx === 0 ? saleDate : '',
+          line.product.name,
+          String(line.quantity),
+          `${symbol}${fmt(line.unitPrice)}`,
+          `${symbol}${fmt(line.lineTotal)}`,
+          lineIdx === 0 ? dueDateStr : '',
+        ])
+      })
 
+      // Subtotal row per invoice
       tableBody.push([
-        String(i + 1),
-        saleDate,
-        products,
-        `${symbol}${fmt(r.amount)}`,
-        `${symbol}${fmt(r.pendingBalance)}`,
-        dueDateStr,
+        '',
+        { content: `Subtotal Factura ${saleNum}`, styles: { fontStyle: 'bold', textColor: [37, 99, 235], halign: 'right', cellPadding: { left: 5 } } },
+        '',
+        '',
+        '',
+        { content: `${symbol}${fmt(r.amount)}`, styles: { fontStyle: 'bold', textColor: [37, 99, 235], halign: 'right' } },
+        { content: `Pend: ${symbol}${fmt(r.pendingBalance)}`, styles: { fontStyle: 'bold', textColor: [220, 38, 38], fontSize: 8, halign: 'center' } },
       ])
     })
 
     autoTable(doc, {
       startY: y,
-      theme: 'striped',
+      theme: 'grid',
       margin: { left: 40, right: 40 },
-      head: [['#', 'Fecha', 'Productos', 'Monto', 'Pendiente', 'Vence']],
+      head: [['#', 'Fecha', 'Producto', 'Cant.', 'P. Unit.', 'Total', 'Vence']],
       body: tableBody,
       styles: {
-        fontSize: 9,
-        cellPadding: 5,
+        fontSize: 8.5,
+        cellPadding: 4,
         lineColor: [209, 213, 219],
-        lineWidth: 0.5,
+        lineWidth: 0.3,
       },
       headStyles: {
         fillColor: blue,
         textColor: white,
         fontStyle: 'bold',
-        fontSize: 9,
+        fontSize: 8.5,
       },
       columnStyles: {
-        0: { cellWidth: 25, halign: 'center' },
-        1: { cellWidth: 80 },
-        2: { cellWidth: 190 },
-        3: { cellWidth: 70, halign: 'right' },
-        4: { cellWidth: 70, halign: 'right' },
-        5: { cellWidth: 65, halign: 'center' },
+        0: { cellWidth: 22, halign: 'center' },
+        1: { cellWidth: 72 },
+        2: { cellWidth: 160 },
+        3: { cellWidth: 30, halign: 'center' },
+        4: { cellWidth: 55, halign: 'right' },
+        5: { cellWidth: 60, halign: 'right' },
+        6: { cellWidth: 56, halign: 'center' },
       },
       didParseCell: (data) => {
-        // Bold the last (total) row
-        if (data.section === 'body' && data.row.index === tableBody.length - 1) {
-          data.cell.styles.fillColor = [254, 242, 242]
-          data.cell.styles.fontStyle = 'bold'
-          data.cell.styles.textColor = [220, 38, 38]
+        // Style subtotal rows (light blue bg)
+        if (data.section === 'body') {
+          const isFirstCol = data.column.index === 0
+          const cellContent = String(data.cell.raw ?? '')
+          if (isFirstCol && cellContent === '' && data.row.index > 0) {
+            // Check if this is a subtotal row by looking at column 1 content
+            const rowCells = tableBody[data.row.index]
+            if (rowCells && typeof rowCells[1] === 'object' && 'content' in (rowCells[1] as object)) {
+              data.cell.styles.fillColor = [238, 242, 255]
+            }
+          }
+          // Apply blue bg to all cells in subtotal row
+          if (typeof data.cell.raw === 'object' && data.cell.raw !== null && 'styles' in (data.cell.raw as object)) {
+            data.cell.styles.fillColor = [238, 242, 255]
+          }
         }
       },
     })
