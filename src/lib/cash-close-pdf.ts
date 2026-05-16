@@ -231,8 +231,7 @@ function drawFinancialSummary(doc: jsPDF, report: CashCloseReport, startY: numbe
     theme: 'plain',
     margin: { left: 45, right: 45 },
     body: [
-      ['Monto Esperado', `${symbol}${fmt(report.expected)}`],
-      ['Monto Real (Contado)', `${symbol}${fmt(report.actual)}`],
+      ['Total en Caja', `${symbol}${fmt(report.actual)}`],
       ['Diferencia', `${symbol}${fmt(report.difference)}`],
     ],
     styles: {
@@ -244,7 +243,7 @@ function drawFinancialSummary(doc: jsPDF, report: CashCloseReport, startY: numbe
       1: { fontStyle: 'bold', halign: 'right' },
     },
     didParseCell: (data) => {
-      if (data.section === 'body' && data.column.index === 1 && data.row.index === 2) {
+      if (data.section === 'body' && data.column.index === 1 && data.row.index === 1) {
         data.cell.styles.textColor = report.difference === 0 ? C.green : report.difference > 0 ? C.amber : C.red
       }
     },
@@ -261,13 +260,13 @@ function drawFinancialSummary(doc: jsPDF, report: CashCloseReport, startY: numbe
 
   // Exchange rate info
   if (report.exchangeRate > 0) {
-    const totalBs = report.expected * report.exchangeRate
+    const totalBs = report.actual * report.exchangeRate
     const pw3 = doc.internal.pageSize.getWidth()
     doc.setFontSize(8)
     doc.setTextColor(...C.gray)
     doc.setFont('helvetica', 'normal')
     doc.text(
-      `Tasa de cambio: 1 ${report.referenceCurrency} = ${fmt(report.exchangeRate)} Bs  |  Total esperado en Bs: ${fmt(totalBs)} Bs`,
+      `Tasa de cambio: 1 ${report.referenceCurrency} = ${fmt(report.exchangeRate)} Bs  |  Total en caja: ${fmt(totalBs)} Bs`,
       pw3 / 2, y, { align: 'center' }
     )
     y += 12
@@ -609,13 +608,11 @@ export async function generateMultiCashClosePDF(reports: CashCloseReport[]): Pro
 
   const bodyRows = reports.map(r => {
     grandTotalSales += r.totalSales
-    grandTotalExpected += r.expected
     grandTotalActual += r.actual
     return [
       r.cashierName,
       r.registerName || '\u2014',
       `${symbol}${fmt(r.totalSales)}`,
-      `${symbol}${fmt(r.expected)}`,
       `${symbol}${fmt(r.actual)}`,
       `${symbol}${fmt(r.difference)}`,
     ]
@@ -625,16 +622,15 @@ export async function generateMultiCashClosePDF(reports: CashCloseReport[]): Pro
     'TOTAL GENERAL',
     '',
     `${symbol}${fmt(grandTotalSales)}`,
-    `${symbol}${fmt(grandTotalExpected)}`,
     `${symbol}${fmt(grandTotalActual)}`,
-    `${symbol}${fmt(grandTotalActual - grandTotalExpected)}`,
+    '',
   ])
 
   autoTable(doc, {
     startY: y,
     theme: 'grid',
     margin: { left: 45, right: 45 },
-    head: [['Cajero/a', 'Caja', 'Ventas', 'Esperado', 'Real', 'Diferencia']],
+    head: [['Cajero/a', 'Caja', 'Ventas', 'Total en Caja', 'Diferencia']],
     body: bodyRows,
     styles: {
       fontSize: 8,
@@ -648,8 +644,7 @@ export async function generateMultiCashClosePDF(reports: CashCloseReport[]): Pro
     columnStyles: {
       2: { halign: 'right' },
       3: { halign: 'right' },
-      4: { halign: 'right' },
-      5: { halign: 'right', fontStyle: 'bold' },
+      4: { halign: 'right', fontStyle: 'bold' },
     },
     didParseCell: (data) => {
       if (data.section === 'body' && data.row.index === bodyRows.length - 1) {
@@ -658,7 +653,7 @@ export async function generateMultiCashClosePDF(reports: CashCloseReport[]): Pro
         data.cell.styles.textColor = C.primary
       }
       // Color difference column
-      if (data.section === 'body' && data.column.index === 5 && data.row.index < bodyRows.length - 1) {
+      if (data.section === 'body' && data.column.index === 4 && data.row.index < bodyRows.length - 1) {
         const diff = reports[data.row.index]?.difference || 0
         data.cell.styles.textColor = diff === 0 ? C.green : diff > 0 ? C.amber : C.red
       }
@@ -706,8 +701,7 @@ export async function generateMultiCashClosePDF(reports: CashCloseReport[]): Pro
       ['Monto de Apertura:', `${sym}${fmt(r.initialAmt)}`],
       ['+ Ventas en Efectivo:', `${sym}${fmt(r.totalSales)}`],
       [`+ Entradas / - Gastos / - Retiros:`, `${sym}${fmt(r.totalEntries)} / ${sym}${fmt(r.totalExpenses)} / ${sym}${fmt(r.totalRetiros)}`],
-      ['Monto Esperado:', `${sym}${fmt(r.expected)}`],
-      ['Monto Real:', `${sym}${fmt(r.actual)}`],
+      ['Total en Caja:', `${sym}${fmt(r.actual)}`],
       ['Diferencia:', `${sym}${fmt(r.difference)}`],
     ]
 
