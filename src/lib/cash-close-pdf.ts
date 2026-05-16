@@ -218,46 +218,6 @@ function drawFinancialSummary(doc: jsPDF, report: CashCloseReport, startY: numbe
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   y = (doc as any).lastAutoTable.finalY + 4
 
-  // Divider
-  const pw2 = doc.internal.pageSize.getWidth()
-  doc.setDrawColor(...C.primary)
-  doc.setLineWidth(1.5)
-  doc.line(45, y, pw2 - 45, y)
-  y += 6
-
-  // Result rows
-  autoTable(doc, {
-    startY: y,
-    theme: 'plain',
-    margin: { left: 45, right: 45 },
-    body: [
-      ['Total en Caja', `${symbol}${fmt(report.actual)}`],
-      ['Diferencia', `${symbol}${fmt(report.difference)}`],
-    ],
-    styles: {
-      fontSize: 9,
-      cellPadding: 4,
-    },
-    columnStyles: {
-      0: { fontStyle: 'normal', textColor: C.dark },
-      1: { fontStyle: 'bold', halign: 'right' },
-    },
-    didParseCell: (data) => {
-      if (data.section === 'body' && data.column.index === 1 && data.row.index === 1) {
-        data.cell.styles.textColor = report.difference === 0 ? C.green : report.difference > 0 ? C.amber : C.red
-      }
-    },
-    didDrawCell: (data) => {
-      if (data.section === 'body') {
-        doc.setFillColor(...C.yellowBg)
-        doc.rect(data.cell.x, data.cell.y, data.cell.width, data.cell.height, 'F')
-      }
-    },
-  })
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  y = (doc as any).lastAutoTable.finalY + 8
-
   // Exchange rate info
   if (report.exchangeRate > 0) {
     const totalBs = report.actual * report.exchangeRate
@@ -614,7 +574,6 @@ export async function generateMultiCashClosePDF(reports: CashCloseReport[]): Pro
       r.registerName || '\u2014',
       `${symbol}${fmt(r.totalSales)}`,
       `${symbol}${fmt(r.actual)}`,
-      `${symbol}${fmt(r.difference)}`,
     ]
   })
 
@@ -623,14 +582,13 @@ export async function generateMultiCashClosePDF(reports: CashCloseReport[]): Pro
     '',
     `${symbol}${fmt(grandTotalSales)}`,
     `${symbol}${fmt(grandTotalActual)}`,
-    '',
   ])
 
   autoTable(doc, {
     startY: y,
     theme: 'grid',
     margin: { left: 45, right: 45 },
-    head: [['Cajero/a', 'Caja', 'Ventas', 'Total en Caja', 'Diferencia']],
+    head: [['Cajero/a', 'Caja', 'Ventas', 'Total en Caja']],
     body: bodyRows,
     styles: {
       fontSize: 8,
@@ -643,19 +601,13 @@ export async function generateMultiCashClosePDF(reports: CashCloseReport[]): Pro
     },
     columnStyles: {
       2: { halign: 'right' },
-      3: { halign: 'right' },
-      4: { halign: 'right', fontStyle: 'bold' },
+      3: { halign: 'right', fontStyle: 'bold' },
     },
     didParseCell: (data) => {
       if (data.section === 'body' && data.row.index === bodyRows.length - 1) {
         data.cell.styles.fillColor = C.blueBg
         data.cell.styles.fontStyle = 'bold'
         data.cell.styles.textColor = C.primary
-      }
-      // Color difference column
-      if (data.section === 'body' && data.column.index === 4 && data.row.index < bodyRows.length - 1) {
-        const diff = reports[data.row.index]?.difference || 0
-        data.cell.styles.textColor = diff === 0 ? C.green : diff > 0 ? C.amber : C.red
       }
     },
   })
@@ -702,7 +654,6 @@ export async function generateMultiCashClosePDF(reports: CashCloseReport[]): Pro
       ['+ Ventas en Efectivo:', `${sym}${fmt(r.totalSales)}`],
       [`+ Entradas / - Gastos / - Retiros:`, `${sym}${fmt(r.totalEntries)} / ${sym}${fmt(r.totalExpenses)} / ${sym}${fmt(r.totalRetiros)}`],
       ['Total en Caja:', `${sym}${fmt(r.actual)}`],
-      ['Diferencia:', `${sym}${fmt(r.difference)}`],
     ]
 
     let ry = y + 24
@@ -710,11 +661,6 @@ export async function generateMultiCashClosePDF(reports: CashCloseReport[]): Pro
       doc.setTextColor(...C.dark)
       doc.text(label, 55, ry)
       doc.setFont('helvetica', 'bold')
-      // Color the difference
-      if (label === 'Diferencia:') {
-        const diffColor = r.difference === 0 ? C.green : r.difference > 0 ? C.amber : C.red
-        doc.setTextColor(...diffColor)
-      }
       doc.text(value, pw - 55, ry, { align: 'right' })
       doc.setFont('helvetica', 'normal')
       ry += 9

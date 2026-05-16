@@ -44,12 +44,6 @@ function getFromEmail(): string {
   return process.env.RESEND_FROM || 'JO-Administrativo <onboarding@resend.dev>'
 }
 
-function fmtDiff(difference: number): string {
-  if (difference > 0) return `<span style="color: green;">Sobrante: $${difference.toFixed(2)}</span>`
-  if (difference < 0) return `<span style="color: red;">Faltante: $${Math.abs(difference).toFixed(2)}</span>`
-  return `<span style="color: green;">Cuadrado</span>`
-}
-
 // ─── Single Register Close Email with PDF ────────────────────────────────────
 
 export async function sendCashCloseEmailWithPDF(data: CashCloseDataWithPDF): Promise<boolean> {
@@ -61,7 +55,6 @@ export async function sendCashCloseEmailWithPDF(data: CashCloseDataWithPDF): Pro
     }
 
     const fromEmail = getFromEmail()
-    const diffText = fmtDiff(data.difference)
     const dateStr = data.closingDate.toLocaleDateString('es-VE')
     const registerLabel = data.registerName || 'Caja'
     const salesInfo = data.salesCount ? `<tr><td style="padding: 6px 0; font-weight: bold;">Ventas realizadas:</td><td style="padding: 6px 0; text-align: right; font-weight: bold;">${data.salesCount}</td></tr>` : ''
@@ -120,16 +113,8 @@ export async function sendCashCloseEmailWithPDF(data: CashCloseDataWithPDF): Pro
                 <td style="padding: 6px 0; text-align: right; font-weight: bold; color: red;">-$${data.totalExpenses.toFixed(2)}</td>
               </tr>
               <tr style="border-top: 2px solid #333;">
-                <td style="padding: 6px 0; font-weight: bold;">Esperado:</td>
-                <td style="padding: 6px 0; text-align: right; font-weight: bold;">$${data.expected.toFixed(2)}</td>
-              </tr>
-              <tr>
-                <td style="padding: 6px 0; font-weight: bold;">Real:</td>
+                <td style="padding: 6px 0; font-weight: bold;">Total en Caja:</td>
                 <td style="padding: 6px 0; text-align: right; font-weight: bold;">$${data.actual.toFixed(2)}</td>
-              </tr>
-              <tr style="border-top: 2px solid #333;">
-                <td style="padding: 6px 0; font-weight: bold;">Resultado:</td>
-                <td style="padding: 6px 0; text-align: right; font-weight: bold;">${diffText}</td>
               </tr>
             </table>
           </div>
@@ -173,11 +158,6 @@ export async function sendCashCloseAllEmailWithPDF(data: CashCloseAllData): Prom
     const grandTotal = data.cuts.reduce((sum, c) => sum + c.actual, 0)
 
     const rows = data.cuts.map(c => {
-      const diffText = c.difference > 0
-        ? `<span style="color: green;">+$${c.difference.toFixed(2)}</span>`
-        : c.difference < 0
-          ? `<span style="color: red;">-$${Math.abs(c.difference).toFixed(2)}</span>`
-          : `Cuadrado`
       const salesCol = c.salesCount
         ? `<td style="padding: 8px; text-align: center;">${c.salesCount}</td>`
         : ''
@@ -188,7 +168,6 @@ export async function sendCashCloseAllEmailWithPDF(data: CashCloseAllData): Prom
           ${salesCol}
           <td style="padding: 8px; text-align: right;">$${c.totalSales.toFixed(2)}</td>
           <td style="padding: 8px; text-align: right;">$${c.actual.toFixed(2)}</td>
-          <td style="padding: 8px; text-align: center;">${diffText}</td>
         </tr>
       `
     }).join('')
@@ -217,8 +196,7 @@ export async function sendCashCloseAllEmailWithPDF(data: CashCloseAllData): Prom
                 <th style="padding: 10px; text-align: left;">Caja</th>
                 ${salesHeader}
                 <th style="padding: 10px; text-align: right;">Ventas</th>
-                <th style="padding: 10px; text-align: right;">Total</th>
-                <th style="padding: 10px; text-align: center;">Diferencia</th>
+                <th style="padding: 10px; text-align: right;">Total en Caja</th>
               </tr>
             </thead>
             <tbody>
@@ -226,7 +204,6 @@ export async function sendCashCloseAllEmailWithPDF(data: CashCloseAllData): Prom
               <tr style="border-top: 2px solid #333; font-weight: bold;">
                 <td colspan="${salesHeader ? '4' : '3'}" style="padding: 10px; text-align: right;">Total General:</td>
                 <td style="padding: 10px; text-align: right;">$${grandTotal.toFixed(2)}</td>
-                <td></td>
               </tr>
             </tbody>
           </table>
@@ -266,7 +243,6 @@ export async function sendCashCloseEmail(data: CashCloseData): Promise<boolean> 
     }
 
     const fromEmail = getFromEmail()
-    const diffText = fmtDiff(data.difference)
 
     await resend.emails.send({
       from: fromEmail,
@@ -318,10 +294,6 @@ export async function sendCashCloseEmail(data: CashCloseData): Promise<boolean> 
                 <td style="padding: 6px 0; font-weight: bold;">Total en Caja:</td>
                 <td style="padding: 6px 0; text-align: right; font-weight: bold;">$${data.actual.toFixed(2)}</td>
               </tr>
-              <tr style="border-top: 2px solid #333;">
-                <td style="padding: 6px 0; font-weight: bold;">Resultado:</td>
-                <td style="padding: 6px 0; text-align: right; font-weight: bold;">${diffText}</td>
-              </tr>
             </table>
           </div>
           <p style="margin-top: 16px; color: #999; font-size: 12px; text-align: center;">
@@ -364,18 +336,12 @@ export async function sendCashCloseAllEmail(cuts: Array<{
     const grandTotal = cuts.reduce((sum, c) => sum + c.actual, 0)
 
     const rows = cuts.map(c => {
-      const diffText = c.difference > 0
-        ? `<span style="color: green;">+$${c.difference.toFixed(2)}</span>`
-        : c.difference < 0
-          ? `<span style="color: red;">-$${Math.abs(c.difference).toFixed(2)}</span>`
-          : `Cuadrado`
       return `
         <tr style="border-bottom: 1px solid #eee;">
           <td style="padding: 8px;">${c.cashierName}</td>
           <td style="padding: 8px;">${c.registerName || '—'}</td>
           <td style="padding: 8px; text-align: right;">$${c.totalSales.toFixed(2)}</td>
           <td style="padding: 8px; text-align: right;">$${c.actual.toFixed(2)}</td>
-          <td style="padding: 8px; text-align: center;">${diffText}</td>
         </tr>
       `
     }).join('')
@@ -394,8 +360,7 @@ export async function sendCashCloseAllEmail(cuts: Array<{
                 <th style="padding: 10px; text-align: left;">Cajero</th>
                 <th style="padding: 10px; text-align: left;">Caja</th>
                 <th style="padding: 10px; text-align: right;">Ventas</th>
-                <th style="padding: 10px; text-align: right;">Total</th>
-                <th style="padding: 10px; text-align: center;">Diferencia</th>
+                <th style="padding: 10px; text-align: right;">Total en Caja</th>
               </tr>
             </thead>
             <tbody>
@@ -403,7 +368,6 @@ export async function sendCashCloseAllEmail(cuts: Array<{
               <tr style="border-top: 2px solid #333; font-weight: bold;">
                 <td colspan="3" style="padding: 10px; text-align: right;">Total General:</td>
                 <td style="padding: 10px; text-align: right;">$${grandTotal.toFixed(2)}</td>
-                <td></td>
               </tr>
             </tbody>
           </table>
