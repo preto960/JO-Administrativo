@@ -1,4 +1,5 @@
 import { db } from '@/lib/db'
+import { generateStatementPDF } from '@/lib/statement-pdf'
 import { NextRequest, NextResponse } from 'next/server'
 
 export async function POST(
@@ -45,16 +46,11 @@ export async function POST(
     const fmt = (n: number) =>
       n.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-    // Build the statement PDF
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
-      : 'http://localhost:3000'
-
-    const pdfRes = await fetch(`${baseUrl}/api/clients/${clientId}/statement`)
-    if (!pdfRes.ok) {
-      throw new Error('Failed to generate statement PDF')
-    }
-    const pdfBuffer = Buffer.from(await pdfRes.arrayBuffer())
+    // Generate PDF directly (no HTTP fetch)
+    console.log('[Email] Generando PDF del estado de cuenta...')
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const pdfBuffer = generateStatementPDF(client as any, settings as any)
+    console.log('[Email] PDF generado correctamente, enviando email...')
 
     // Send email
     const { Resend } = await import('resend')
@@ -71,7 +67,7 @@ export async function POST(
             : ''
           const dueDateStr = r.dueDate
             ? new Date(r.dueDate).toLocaleDateString('es-VE')
-            : '—'
+            : '\u2014'
           return `
             <tr style="border-bottom: 1px solid #eee;">
               <td style="padding: 8px; text-align: center;">${i + 1}</td>
@@ -150,6 +146,8 @@ export async function POST(
         },
       ],
     })
+
+    console.log('[Email] Estado de cuenta enviado correctamente')
 
     return NextResponse.json({ success: true, message: `Estado de cuenta enviado a ${client.email}` })
   } catch (error) {
