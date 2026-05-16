@@ -132,37 +132,33 @@ function drawInfoCard(doc: jsPDF, report: CashCloseReport, startY: number): numb
 
   autoTable(doc, {
     startY: y,
-    theme: 'plain',
+    theme: 'grid',
     margin: { left: margin, right: margin },
     body: [
       [
-        { content: 'Cajero:', styles: { fontStyle: 'bold', textColor: C.gray, cellPadding: { top: 5, bottom: 5 } } },
-        { content: report.cashierName, styles: { textColor: C.dark, cellPadding: { top: 5, bottom: 5 } } },
-        { content: 'Sucursal:', styles: { fontStyle: 'bold', textColor: C.gray, cellPadding: { top: 5, bottom: 5 } } },
-        { content: report.branchName, styles: { textColor: C.dark, cellPadding: { top: 5, bottom: 5 } } },
+        { content: 'Cajero:', styles: { fontStyle: 'bold', textColor: C.gray, cellPadding: 5 } },
+        { content: report.cashierName, styles: { textColor: C.dark, cellPadding: 5 } },
+        { content: 'Sucursal:', styles: { fontStyle: 'bold', textColor: C.gray, cellPadding: 5 } },
+        { content: report.branchName, styles: { textColor: C.dark, cellPadding: 5 } },
       ],
       [
-        { content: 'Caja:', styles: { fontStyle: 'bold', textColor: C.gray, cellPadding: { top: 2, bottom: 5 } } },
-        { content: report.registerName || 'Sin nombre', styles: { textColor: C.dark, cellPadding: { top: 2, bottom: 5 } } },
-        { content: 'Cierre:', styles: { fontStyle: 'bold', textColor: C.gray, cellPadding: { top: 2, bottom: 5 } } },
-        { content: fmtDate(report.closingDate), styles: { textColor: C.dark, cellPadding: { top: 2, bottom: 5 } } },
+        { content: 'Caja:', styles: { fontStyle: 'bold', textColor: C.gray, cellPadding: 5 } },
+        { content: report.registerName || 'Sin nombre', styles: { textColor: C.dark, cellPadding: 5 } },
+        { content: 'Cierre:', styles: { fontStyle: 'bold', textColor: C.gray, cellPadding: 5 } },
+        { content: fmtDate(report.closingDate), styles: { textColor: C.dark, cellPadding: 5 } },
       ],
     ],
+    styles: {
+      fillColor: [248, 250, 252],
+      lineWidth: 0.3,
+      lineColor: C.grayMedium,
+      fontSize: 9,
+    },
     columnStyles: {
       0: { cellWidth: 'auto' },
       1: { cellWidth: '35%' },
       2: { cellWidth: 'auto' },
       3: { cellWidth: '35%' },
-    },
-    didDrawCell: (data) => {
-      if (data.row.index === 0 && data.column.index === 0) {
-        // Light background for entire card
-        doc.setFillColor(248, 250, 252)
-        doc.rect(margin, y - 2, cardW, data.table.height + 4, 'F')
-        doc.setDrawColor(...C.grayMedium)
-        doc.setLineWidth(0.3)
-        doc.rect(margin, y - 2, cardW, data.table.height + 4, 'S')
-      }
     },
   })
 
@@ -248,22 +244,19 @@ function drawFinancialSummary(doc: jsPDF, report: CashCloseReport, startY: numbe
       0: { cellWidth: '70%' },
       1: { cellWidth: '30%' },
     },
-    didDrawCell: (data) => {
-      // Alternating row backgrounds
+    didParseCell: (data) => {
       if (data.section === 'body') {
         const rowIdx = data.row.index
-        // Separator row
+        // Separator row - draw a line via top/bottom border
         if (summaryBody[rowIdx][0].content === '') {
-          doc.setDrawColor(...C.grayMedium)
-          doc.setLineWidth(0.5)
-          const lineY = data.cell.y + data.cell.height / 2
-          doc.line(36, lineY, doc.internal.pageSize.getWidth() - 36, lineY)
-          return
+          data.cell.styles.cellPadding = { top: 0, bottom: 0, left: 0, right: 0 }
+          data.cell.styles.lineWidth = 0.5
+          data.cell.styles.lineColor = C.grayMedium
+          data.cell.styles.borders = { top: { width: 0.5, color: C.grayMedium }, bottom: { width: 0.5, color: C.grayMedium }, left: { width: 0 }, right: { width: 0 } }
         }
         // Total row highlight
-        if (rowIdx === summaryBody.length - 1 && data.column.index === 0) {
-          doc.setFillColor(...C.blueBg)
-          doc.rect(36, data.cell.y - 2, doc.internal.pageSize.getWidth() - 72, data.cell.height + 4, 'F')
+        if (rowIdx === summaryBody.length - 1) {
+          data.cell.styles.fillColor = C.blueBg
         }
       }
     },
@@ -277,27 +270,13 @@ function drawFinancialSummary(doc: jsPDF, report: CashCloseReport, startY: numbe
     const totalBs = report.actual * report.exchangeRate
     const pw = doc.internal.pageSize.getWidth()
 
-    // Dashed box for exchange rate info
-    const boxW = pw - 72
-    doc.setFillColor(248, 250, 252)
-    doc.rect(36, y, boxW, 24, 'F')
-    doc.setDrawColor(...C.primaryLight)
-    doc.setLineWidth(0.4)
-    doc.setLineDashPattern([3, 3], 0)
-    doc.rect(36, y, boxW, 24, 'S')
-    doc.setLineDashPattern([], 0)
-
+    // Exchange rate info
     doc.setFontSize(8)
     doc.setTextColor(...C.gray)
     doc.setFont('helvetica', 'normal')
-    doc.text(`Tasa de cambio: 1 ${report.referenceCurrency} = ${fmt(report.exchangeRate)} Bs`, pw / 2, y + 9, { align: 'center' })
+    doc.text(`Tasa de cambio: 1 ${report.referenceCurrency} = ${fmt(report.exchangeRate)} Bs  |  Total en caja: ${fmt(totalBs, 2)} Bs`, pw / 2, y + 6, { align: 'center' })
 
-    doc.setFontSize(9)
-    doc.setTextColor(...C.primary)
-    doc.setFont('helvetica', 'bold')
-    doc.text(`Total en caja: ${fmt(totalBs, 2)} Bs`, pw / 2, y + 19, { align: 'center' })
-
-    y += 32
+    y += 18
   }
 
   return y
@@ -733,19 +712,17 @@ export async function generateMultiCashClosePDF(reports: CashCloseReport[]): Pro
         0: { cellWidth: '70%' },
         1: { cellWidth: '30%' },
       },
-      didDrawCell: (data) => {
+      didParseCell: (data) => {
         if (data.section === 'body') {
           const rowIdx = data.row.index
           if (summaryBody[rowIdx][0].content === '') {
-            doc.setDrawColor(...C.grayMedium)
-            doc.setLineWidth(0.5)
-            const lineY = data.cell.y + data.cell.height / 2
-            doc.line(36, lineY, pw - 36, lineY)
-            return
+            data.cell.styles.cellPadding = { top: 0, bottom: 0, left: 0, right: 0 }
+            data.cell.styles.lineWidth = 0.5
+            data.cell.styles.lineColor = C.grayMedium
+            data.cell.styles.borders = { top: { width: 0.5, color: C.grayMedium }, bottom: { width: 0.5, color: C.grayMedium }, left: { width: 0 }, right: { width: 0 } }
           }
-          if (rowIdx === summaryBody.length - 1 && data.column.index === 0) {
-            doc.setFillColor(...C.blueBg)
-            doc.rect(36, data.cell.y - 2, pw - 72, data.cell.height + 4, 'F')
+          if (rowIdx === summaryBody.length - 1) {
+            data.cell.styles.fillColor = C.blueBg
           }
         }
       },
