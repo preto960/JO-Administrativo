@@ -87,7 +87,10 @@ export async function POST(request: NextRequest) {
     // Send email with PDF report to admin (async, don't block response)
     import('@/lib/email').then(async ({ sendCashCloseEmailWithPDF }) => {
       try {
+        console.log('[Email] Generating PDF for cash close...')
         const settings = await db.settings.findFirst()
+        console.log('[Email] Settings loaded:', JSON.stringify({ ivaEnabled: settings?.ivaEnabled, ivaRate: settings?.ivaRate, exchangeRate: settings?.exchangeRate }))
+
         const report = await buildReportFromRegister(
           register as any,
           closingDate,
@@ -107,7 +110,10 @@ export async function POST(request: NextRequest) {
           settings?.ivaEnabled || false,
           settings?.ivaRate || 0,
         )
+        console.log('[Email] Report built, generating PDF buffer...')
         const pdfBuffer = await generateCashClosePDF(report)
+        console.log('[Email] PDF generated, size:', pdfBuffer.length, 'bytes')
+
         await sendCashCloseEmailWithPDF({
           cashierName: register.user.name,
           registerName: register.name,
@@ -126,9 +132,12 @@ export async function POST(request: NextRequest) {
           ivaRate: settings?.ivaRate || 0,
           pdfBuffer,
         })
+        console.log('[Email] Cash close email sent successfully')
       } catch (e) {
         console.error('[Email] Failed to generate/send PDF for cash close:', e)
       }
+    }).catch((e) => {
+      console.error('[Email] Failed to import email module:', e)
     })
 
     // Create notification for the cashier whose register was closed
