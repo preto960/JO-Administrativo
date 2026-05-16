@@ -41,7 +41,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import { Plus, Search, Edit, Trash2, Package, Eye, EyeOff, Upload, ImageIcon, X, Loader2, Printer } from 'lucide-react'
+import { Plus, Search, Edit, Trash2, Package, Eye, EyeOff, Upload, ImageIcon, X, Loader2, Printer, Barcode } from 'lucide-react'
 import { toast } from 'sonner'
 import { ProductImportDialog } from './product-import-dialog'
 import { BarcodeLabelSelector } from './barcode-label-selector'
@@ -313,6 +313,27 @@ export function ProductsTable() {
     }
   }
 
+  const handlePrintLabel = async (product: Product) => {
+    try {
+      const res = await fetch('/api/products/barcode-labels', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ products: [{ productId: product.id, quantity: 1 }] }),
+      })
+      if (!res.ok) throw new Error()
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `etiqueta_${product.name.replace(/\s+/g, '_')}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+      toast.success('Etiqueta generada')
+    } catch {
+      toast.error('Error al generar etiqueta')
+    }
+  }
+
   const handleToggleActive = async (product: Product) => {
     const newActive = !product.active
     try {
@@ -488,6 +509,15 @@ export function ProductsTable() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                            onClick={() => handlePrintLabel(product)}
+                            title="Etiqueta"
+                          >
+                            <Barcode className="h-3.5 w-3.5" />
+                          </Button>
                           <Button
                             variant="ghost"
                             size="icon"
