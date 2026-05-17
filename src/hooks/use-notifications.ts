@@ -117,11 +117,22 @@ export function useNotifications(userId: string | undefined, onNewNotification?:
     }
   }, [])
 
+  const clearAll = useCallback(async () => {
+    try {
+      await fetch(`/api/notifications?userId=${userId}`, { method: 'DELETE' })
+      setNotifications([])
+      setUnreadCount(0)
+    } catch {
+      // Silent fail
+    }
+  }, [userId])
+
   return {
     notifications,
     unreadCount,
     markAsRead,
     markAllAsRead,
+    clearAll,
     fetchNotifications,
   }
 }

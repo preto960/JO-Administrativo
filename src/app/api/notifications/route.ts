@@ -57,3 +57,18 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: 'Error al actualizar notificación' }, { status: 500 })
   }
 }
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url)
+    const userId = searchParams.get('userId') || ''
+
+    const where: Record<string, unknown> = {}
+    if (userId) where.userId = userId
+
+    await db.notification.deleteMany({ where })
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    return NextResponse.json({ error: 'Error al limpiar notificaciones' }, { status: 500 })
+  }
+}
