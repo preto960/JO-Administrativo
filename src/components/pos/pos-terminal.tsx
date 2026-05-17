@@ -3,6 +3,7 @@
 import { api } from '@/lib/api'
 import { usePosStore } from '@/stores/use-pos-store'
 import { useSetting, useAppStore } from '@/stores/use-app-store'
+import { useAuth } from '@/hooks/use-auth'
 import { PosCart } from './pos-cart'
 import { PosPaymentModal } from './pos-payment-modal'
 import { Input } from '@/components/ui/input'
@@ -10,7 +11,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Drawer, DrawerTrigger, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription } from '@/components/ui/drawer'
-import { Search, ShoppingCart, AlertTriangle, ScanBarcode, X, Camera } from 'lucide-react'
+import { Search, ShoppingCart, AlertTriangle, ScanBarcode, X, Camera, Lock } from 'lucide-react'
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { toast } from 'sonner'
@@ -42,6 +43,7 @@ export function PosTerminal() {
   const exchangeRate = useSetting('exchangeRate')
   const referenceCurrency = useSetting('referenceCurrency')
   const selectedBranchId = useAppStore((s) => s.selectedBranchId)
+  const { user } = useAuth()
   const [products, setProducts] = useState<ProductWithInventory[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [showPayment, setShowPayment] = useState(false)
@@ -50,10 +52,39 @@ export function PosTerminal() {
   const [showBarcodeInput, setShowBarcodeInput] = useState(false)
   const [barcodeValue, setBarcodeValue] = useState('')
   const [showCameraScanner, setShowCameraScanner] = useState(false)
+  const [checkingCaja, setCheckingCaja] = useState(true)
+  const [cajaOpen, setCajaOpen] = useState(true)
   const searchRef = useRef<HTMLInputElement>(null)
   const barcodeRef = useRef<HTMLInputElement>(null)
   const isMobile = useIsMobile()
   const currencySymbol = referenceCurrency === 'EUR' ? '€' : '$'
+  const isCashier = user?.role === 'cajero'
+
+  // Check if there's an open cash register (blocks cashiers)
+  useEffect(() => {
+    if (!user?.id) return
+    api.get<Array<{ id: string; status: string }>>('/api/cash-register')
+      .then((registers) => {
+        const hasOpen = registers?.some((r) => r.status === 'abierta') ?? false
+        setCajaOpen(hasOpen)
+      })
+      .catch(() => setCajaOpen(false))
+      .finally(() => setCheckingCaja(false))
+  }, [user?.id, selectedBranchId])
+
+  // Poll for caja status every 15s when blocked (so cashier auto-unblocks when admin opens caja)
+  useEffect(() => {
+    if (!isCashier || cajaOpen) return
+    const interval = setInterval(() => {
+      api.get<Array<{ id: string; status: string }>>('/api/cash-register')
+        .then((registers) => {
+          const hasOpen = registers?.some((r) => r.status === 'abierta') ?? false
+          if (hasOpen) setCajaOpen(true)
+        })
+        .catch(() => {})
+    }, 15000)
+    return () => clearInterval(interval)
+  }, [isCashier, cajaOpen])
 
   // Validate saved cart against current branch on mount
   useEffect(() => {
@@ -77,7 +108,12 @@ export function PosTerminal() {
     })
   }, [])
 
-  useEffect(() => { fetchProducts() }, [fetchProducts, selectedBranchId])
+  // Fetch products only when caja is verified open (or user is not a cashier)
+  useEffect(() => {
+    if (checkingCaja) return
+    if (isCashier && !cajaOpen) return
+    fetchProducts()
+  }, [fetchProducts, selectedBranchId, checkingCaja, cajaOpen, isCashier])
 
   const filteredProducts = useMemo(() => {
     let result = products
@@ -240,6 +276,40 @@ export function PosTerminal() {
       setShowPayment(true)
     }} />
   )
+
+  // Show loading while checking caja status
+  if (checkingCaja) {
+    return (
+      <div className="flex h-[calc(100vh-7rem)] md:h-[calc(100vh-8rem)] items-center justify-center">
+        <div className="text-center space-y-3">
+          <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+          <p className="text-sm text-muted-foreground">Verificando estado de caja...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Block POS for cashiers without open register
+  if (isCashier && !cajaOpen) {
+    return (
+      <div className="flex h-[calc(100vh-7rem)] md:h-[calc(100vh-8rem)] items-center justify-center">
+        <div className="text-center space-y-4 max-w-sm mx-auto p-6">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-950/30">
+            <Lock className="h-8 w-8 text-amber-600 dark:text-amber-400" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold">Caja Cerrada</h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              No hay ninguna caja abierta. Un administrador debe abrir una caja antes de poder realizar ventas.
+            </p>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Contacta a un administrador o gerente para que abra una caja en la seccion de Caja.
+          </p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col md:flex-row h-[calc(100vh-7rem)] md:h-[calc(100vh-8rem)] gap-3 md:gap-4">
