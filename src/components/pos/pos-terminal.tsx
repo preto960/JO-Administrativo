@@ -72,9 +72,9 @@ export function PosTerminal() {
       .finally(() => setCheckingCaja(false))
   }, [user?.id, selectedBranchId])
 
-  // Poll for caja status every 15s when blocked (so cashier auto-unblocks when admin opens caja)
+  // Poll for caja status every 15s when blocked (auto-unblocks when admin opens caja)
   useEffect(() => {
-    if (!isCashier || cajaOpen) return
+    if (cajaOpen) return
     const interval = setInterval(() => {
       api.get<Array<{ id: string; status: string }>>('/api/cash-register')
         .then((registers) => {
@@ -84,7 +84,7 @@ export function PosTerminal() {
         .catch(() => {})
     }, 15000)
     return () => clearInterval(interval)
-  }, [isCashier, cajaOpen])
+  }, [cajaOpen])
 
   // Validate saved cart against current branch on mount
   useEffect(() => {
@@ -108,12 +108,11 @@ export function PosTerminal() {
     })
   }, [])
 
-  // Fetch products only when caja is verified open (or user is not a cashier)
+  // Fetch products only when caja is verified open
   useEffect(() => {
-    if (checkingCaja) return
-    if (isCashier && !cajaOpen) return
+    if (checkingCaja || !cajaOpen) return
     fetchProducts()
-  }, [fetchProducts, selectedBranchId, checkingCaja, cajaOpen, isCashier])
+  }, [fetchProducts, selectedBranchId, checkingCaja, cajaOpen])
 
   const filteredProducts = useMemo(() => {
     let result = products
@@ -289,8 +288,8 @@ export function PosTerminal() {
     )
   }
 
-  // Block POS for cashiers without open register
-  if (isCashier && !cajaOpen) {
+  // Block POS when no cash register is open
+  if (!cajaOpen) {
     return (
       <div className="flex h-[calc(100vh-7rem)] md:h-[calc(100vh-8rem)] items-center justify-center">
         <div className="text-center space-y-4 max-w-sm mx-auto p-6">
@@ -300,11 +299,13 @@ export function PosTerminal() {
           <div>
             <h2 className="text-lg font-semibold">Caja Cerrada</h2>
             <p className="text-sm text-muted-foreground mt-1">
-              No hay ninguna caja abierta. Un administrador debe abrir una caja antes de poder realizar ventas.
+              No hay ninguna caja abierta. Debe abrir una caja antes de poder realizar ventas.
             </p>
           </div>
           <p className="text-xs text-muted-foreground">
-            Contacta a un administrador o gerente para que abra una caja en la seccion de Caja.
+            {isCashier
+              ? 'Contacta a un administrador o gerente para que abra una caja en la seccion de Caja.'
+              : 'Ve a la seccion de Caja y abre un registro para comenzar a vender.'}
           </p>
         </div>
       </div>

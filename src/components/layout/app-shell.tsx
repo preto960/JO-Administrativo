@@ -49,12 +49,11 @@ export function AppShell() {
     }
   }, [user, activeView, isLoading, setActiveView])
 
-  // Clear activeView from localStorage on logout
+  // Clear activeView and cart from localStorage on logout
   useEffect(() => {
     if (!isLoading && !user) {
-      // User logged out — the persist middleware will keep the old view
-      // Reset to pos so next login starts clean
       localStorage.removeItem('jo-admin-store')
+      localStorage.removeItem('jo-admin-cart')
     }
   }, [isLoading, user])
 

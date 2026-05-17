@@ -160,13 +160,6 @@ export function SettingsView() {
   const [branchAddress, setBranchAddress] = useState('')
   const [branchPhone, setBranchPhone] = useState('')
 
-  // Categories state
-  const [categories, setCategories] = useState<CategoryItem[]>([])
-  const [showCategoryDialog, setShowCategoryDialog] = useState(false)
-  const [editingCategory, setEditingCategory] = useState<CategoryItem | null>(null)
-  const [categorySaving, setCategorySaving] = useState(false)
-  const [categoryName, setCategoryName] = useState('')
-
   const fetchSettings = useCallback(async () => {
     // Fetch settings independently — this is the critical load
     try {
@@ -336,10 +329,6 @@ export function SettingsView() {
           <TabsTrigger value="apariencia" className="gap-1.5">
             <Palette className="h-3.5 w-3.5 hidden sm:block" />
             <span>Apariencia</span>
-          </TabsTrigger>
-          <TabsTrigger value="categorias" className="gap-1.5">
-            <Tag className="h-3.5 w-3.5 hidden sm:block" />
-            <span>Categorias</span>
           </TabsTrigger>
         </TabsList>
 
@@ -1368,167 +1357,6 @@ export function SettingsView() {
             <Button className="w-full bg-primary hover:bg-primary/90 text-white" onClick={saveUser} disabled={userSaving}>
               {userSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               {userSaving ? 'Guardando...' : editingUser ? 'Actualizar' : 'Crear Usuario'}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-        {/* ── Categorias Tab ────────────────────────────── */}
-        <TabsContent value="categorias">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="text-base">Categorias de Productos</CardTitle>
-                  <CardDescription>Gestiona las categorias para organizar tus productos y filtros en el POS</CardDescription>
-                </div>
-                <Button size="sm" className="bg-primary hover:bg-primary/90 text-white" onClick={() => {
-                  setEditingCategory(null)
-                  setCategoryName('')
-                  setShowCategoryDialog(true)
-                }}>
-                  <Plus className="mr-1 h-3.5 w-3.5" /> Nueva
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Nombre</TableHead>
-                      <TableHead className="text-center">Productos</TableHead>
-                      <TableHead className="text-right">Acciones</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {categories.map((cat) => (
-                      <TableRow key={cat.id}>
-                        <TableCell className="font-medium">{cat.name}</TableCell>
-                        <TableCell className="text-center">
-                          <Badge variant="outline">{cat._count.products}</Badge>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-1">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8"
-                              onClick={() => {
-                                setEditingCategory(cat)
-                                setCategoryName(cat.name)
-                                setShowCategoryDialog(true)
-                              }}
-                              title="Editar"
-                            >
-                              <Edit className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 text-red-400 hover:text-red-600"
-                              onClick={async () => {
-                                if (cat._count.products > 0) {
-                                  toast.error(`No se puede eliminar: tiene ${cat._count.products} producto(s) asociado(s)`)
-                                  return
-                                }
-                                if (!confirm(`¿Estas seguro de eliminar la categoria "${cat.name}"?`)) return
-                                try {
-                                  await api.del(`/api/categories?id=${cat.id}`)
-                                  setCategories(prev => prev.filter(c => c.id !== cat.id))
-                                  toast.success('Categoria eliminada')
-                                } catch {
-                                  toast.error('Error al eliminar categoria')
-                                }
-                              }}
-                              title="Eliminar"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                    {categories.length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={3} className="text-center py-8 text-muted-foreground">
-                          <Tag className="mx-auto mb-2 h-8 w-8 opacity-50" />
-                          No hay categorias registradas
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-      {/* Category Dialog */}
-      <Dialog open={showCategoryDialog} onOpenChange={setShowCategoryDialog}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>{editingCategory ? 'Editar Categoria' : 'Nueva Categoria'}</DialogTitle>
-            <DialogDescription>
-              {editingCategory ? 'Modifica el nombre de la categoria' : 'Crea una nueva categoria para organizar tus productos'}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label>Nombre de la Categoria</Label>
-              <Input
-                placeholder="Ej: Bebidas, Limpieza, Snacks..."
-                value={categoryName}
-                onChange={(e) => setCategoryName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault()
-                    document.getElementById('category-save-btn')?.click()
-                  }
-                }}
-                autoFocus
-              />
-            </div>
-            <Button
-              id="category-save-btn"
-              className="w-full bg-primary hover:bg-primary/90 text-white"
-              onClick={async () => {
-                if (!categoryName.trim()) {
-                  toast.error('El nombre es obligatorio')
-                  return
-                }
-                setCategorySaving(true)
-                try {
-                  if (editingCategory) {
-                    const updated = await api.put<CategoryItem>('/api/categories', {
-                      id: editingCategory.id,
-                      name: categoryName.trim(),
-                    })
-                    setCategories(prev => prev.map(c => c.id === updated.id ? updated : c))
-                    toast.success('Categoria actualizada')
-                  } else {
-                    const created = await api.post<CategoryItem>('/api/categories', {
-                      name: categoryName.trim(),
-                    })
-                    setCategories(prev => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)))
-                    toast.success('Categoria creada')
-                  }
-                  setShowCategoryDialog(false)
-                } catch (err: unknown) {
-                  const message = err instanceof Error ? err.message : ''
-                  if (message.includes('409') || message.includes('ya existe')) {
-                    toast.error('Ya existe una categoria con ese nombre')
-                  } else {
-                    toast.error('Error al guardar categoria')
-                  }
-                } finally {
-                  setCategorySaving(false)
-                }
-              }}
-              disabled={categorySaving}
-            >
-              {categorySaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              {categorySaving ? 'Guardando...' : editingCategory ? 'Actualizar' : 'Crear Categoria'}
             </Button>
           </div>
         </DialogContent>
