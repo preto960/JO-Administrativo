@@ -50,10 +50,12 @@ interface AppState {
   settings: AppSettings | null
   selectedBranchId: string | null
   branches: BranchItem[]
+  permissionsVersion: number
   setActiveView: (view: AppView) => void
   setSettings: (settings: AppSettings) => void
   setSelectedBranchId: (id: string | null) => void
   setBranches: (branches: BranchItem[]) => void
+  bumpPermissions: () => void
 }
 
 const defaultSettings: AppSettings = {
@@ -85,6 +87,7 @@ export const useAppStore = create<AppState>()(
       settings: null,
       selectedBranchId: null,
       branches: [],
+      permissionsVersion: 0,
       setActiveView: (view) => {
         if (VALID_VIEWS.includes(view)) {
           set({ activeView: view })
@@ -93,6 +96,7 @@ export const useAppStore = create<AppState>()(
       setSettings: (settings) => set({ settings }),
       setSelectedBranchId: (id) => set({ selectedBranchId: id }),
       setBranches: (branches) => set({ branches }),
+      bumpPermissions: () => set((s) => ({ permissionsVersion: s.permissionsVersion + 1 })),
     }),
     {
       name: 'jo-admin-store',

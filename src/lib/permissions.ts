@@ -65,9 +65,14 @@ let customPermissions: Record<string, UserPermissions> = {}
 
 /**
  * Set custom permissions (called from settings initializer after loading from DB).
+ * Also triggers a Zustand state bump so components re-render with updated perms.
  */
 export function setCustomPermissions(perms: Record<string, UserPermissions>) {
   customPermissions = perms
+  // Import dynamically to avoid circular dependency — bumpPermissions triggers re-renders
+  import('@/stores/use-app-store').then(({ useAppStore }) => {
+    useAppStore.getState().bumpPermissions()
+  })
 }
 
 export function getPermissions(role: string): UserPermissions {

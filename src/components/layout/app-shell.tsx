@@ -34,6 +34,9 @@ const viewComponents: Record<AppView, React.ComponentType> = {
 export function AppShell() {
   const { activeView, setActiveView } = useAppStore()
   const { user, isLoading } = useAuth()
+  // Subscribe to permissions changes so view resolution stays in sync
+  const permissionsVersion = useAppStore((s) => s.permissionsVersion)
+  void permissionsVersion
 
   // When user session loads or changes, check if current view is permitted
   useEffect(() => {
@@ -47,7 +50,7 @@ export function AppShell() {
         : 'pos'
       setActiveView(fallback)
     }
-  }, [user, activeView, isLoading, setActiveView])
+  }, [user, activeView, isLoading, setActiveView, permissionsVersion])
 
   // Clear activeView and cart from localStorage on logout
   useEffect(() => {

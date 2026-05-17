@@ -48,6 +48,9 @@ export function AppSidebar() {
   const businessName = useSetting('businessName')
   const logoUrl = useSetting('logoUrl')
   const { setOpenMobile } = useSidebar()
+  // Subscribe to permissionsVersion so sidebar re-renders when custom perms load
+  const permissionsVersion = useAppStore((s) => s.permissionsVersion)
+  void permissionsVersion
 
   const visibleItems = navItems.filter(item => canAccessView(userRole, item.view))
 
