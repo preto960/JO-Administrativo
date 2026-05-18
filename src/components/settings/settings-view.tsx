@@ -292,41 +292,41 @@ export function SettingsView() {
         </p>
       </div>
 
-      <Tabs defaultValue="empresa" className="space-y-4">
+      <Tabs data-tutorial="settings-tabs" defaultValue="empresa" className="space-y-4">
         <TabsList className="flex flex-wrap h-auto gap-1">
-          <TabsTrigger value="empresa" className="gap-1.5">
+          <TabsTrigger data-tutorial="settings-tab-empresa" value="empresa" className="gap-1.5">
             <Building2 className="h-3.5 w-3.5 hidden sm:block" />
             <span>Empresa</span>
           </TabsTrigger>
-          <TabsTrigger value="moneda" className="gap-1.5">
+          <TabsTrigger data-tutorial="settings-tab-moneda" value="moneda" className="gap-1.5">
             <DollarSign className="h-3.5 w-3.5 hidden sm:block" />
             <span>Moneda</span>
           </TabsTrigger>
-          <TabsTrigger value="iva" className="gap-1.5">
+          <TabsTrigger data-tutorial="settings-tab-iva" value="iva" className="gap-1.5">
             <Percent className="h-3.5 w-3.5 hidden sm:block" />
             <span>I.V.A.</span>
           </TabsTrigger>
-          <TabsTrigger value="sucursales" className="gap-1.5">
+          <TabsTrigger data-tutorial="settings-tab-sucursales" value="sucursales" className="gap-1.5">
             <GitBranch className="h-3.5 w-3.5 hidden sm:block" />
             <span>Sucursales</span>
           </TabsTrigger>
-          <TabsTrigger value="usuarios" className="gap-1.5">
+          <TabsTrigger data-tutorial="settings-tab-usuarios" value="usuarios" className="gap-1.5">
             <Users className="h-3.5 w-3.5 hidden sm:block" />
             <span>Usuarios</span>
           </TabsTrigger>
-          <TabsTrigger value="roles" className="gap-1.5">
+          <TabsTrigger data-tutorial="settings-tab-roles" value="roles" className="gap-1.5">
             <Shield className="h-3.5 w-3.5 hidden sm:block" />
             <span>Roles</span>
           </TabsTrigger>
-          <TabsTrigger value="sistema" className="gap-1.5">
+          <TabsTrigger data-tutorial="settings-tab-sistema" value="sistema" className="gap-1.5">
             <Monitor className="h-3.5 w-3.5 hidden sm:block" />
             <span>Sistema</span>
           </TabsTrigger>
-          <TabsTrigger value="categorias" className="gap-1.5">
+          <TabsTrigger data-tutorial="settings-tab-categorias" value="categorias" className="gap-1.5">
             <Tag className="h-3.5 w-3.5 hidden sm:block" />
             <span>Categorías</span>
           </TabsTrigger>
-          <TabsTrigger value="apariencia" className="gap-1.5">
+          <TabsTrigger data-tutorial="settings-tab-apariencia" value="apariencia" className="gap-1.5">
             <Palette className="h-3.5 w-3.5 hidden sm:block" />
             <span>Apariencia</span>
           </TabsTrigger>

@@ -426,7 +426,7 @@ export function PosTerminal() {
               ))}
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 p-1">
+            <div data-tutorial="pos-products" className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 p-1">
               {filteredProducts.map((product) => {
                 const { stock, effectivePrice } = getBranchInfo(product)
                 const outOfStock = stock <= 0

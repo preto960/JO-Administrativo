@@ -454,7 +454,7 @@ export function CashRegisterView() {
           <div className="border-t lg:border-t-0 lg:border-l p-4 lg:p-6 bg-muted/30 flex flex-col gap-2 justify-center min-w-[200px]">
             {!isCashier && (
               <>
-                <Button className="w-full justify-start gap-2 bg-primary hover:bg-primary/90 text-white" onClick={() => setShowOpen(true)}>
+                <Button data-tutorial="cash-open-btn" className="w-full justify-start gap-2 bg-primary hover:bg-primary/90 text-white" onClick={() => setShowOpen(true)}>
                   <Plus className="h-4 w-4" /> Abrir Caja
                 </Button>
                 {openRegisters.length > 0 && (
@@ -624,7 +624,7 @@ export function CashRegisterView() {
                 Abre una nueva caja para comenzar a registrar ventas y movimientos.
               </p>
             </div>
-            <Button className="bg-primary hover:bg-primary/90 text-white" onClick={() => setShowOpen(true)}>
+            <Button data-tutorial="cash-open-btn" className="bg-primary hover:bg-primary/90 text-white" onClick={() => setShowOpen(true)}>
               <Plus className="mr-2 h-4 w-4" /> Abrir Caja
             </Button>
           </CardContent>
