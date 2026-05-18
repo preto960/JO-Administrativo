@@ -4,12 +4,14 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { useAppStore } from '@/stores/use-app-store'
 import { useAuth } from '@/hooks/use-auth'
 import { canAccessView } from '@/lib/permissions'
-import { ArrowLeft, ArrowRight, X, Wallet, ShoppingCart, Store, Package, Building2, DollarSign, Percent, Tag } from 'lucide-react'
+import { ArrowLeft, ArrowRight, X, Wallet, ShoppingCart, Store, Package, Building2, DollarSign, Percent, Tag, Loader2, CheckCircle2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { api } from '@/lib/api'
 
 // ── Types ───────────────────────────────────────────────
+
+type ValidationType = 'has-categories' | 'has-products' | 'caja-open'
 
 interface TourStep {
   /** CSS selector for the element to highlight. Omit for welcome/finish steps. */
@@ -22,6 +24,43 @@ interface TourStep {
   side?: 'top' | 'bottom' | 'left' | 'right'
   /** Icon to show in the step header. */
   icon?: React.ReactNode
+  /** Validation: block "Siguiente" until this condition is met. */
+  validation?: ValidationType
+  /** Message shown while waiting for validation. */
+  validationMessage?: string
+  /** If true, click on the target element before highlighting (for tabs). */
+  clickBeforeHighlight?: boolean
+}
+
+// ── Validation functions ────────────────────────────────
+
+async function checkValidation(type: ValidationType): Promise<boolean> {
+  try {
+    switch (type) {
+      case 'has-categories': {
+        const cats = await api.get<Array<unknown>>('/api/categories')
+        return Array.isArray(cats) && cats.length > 0
+      }
+      case 'has-products': {
+        const res = await api.get<{ products: Array<unknown> }>('/api/products?active=true')
+        return Array.isArray(res.products) && res.products.length > 0
+      }
+      case 'caja-open': {
+        const registers = await api.get<Array<{ status: string }>>('/api/cash-register')
+        return Array.isArray(registers) && registers.some((r) => r.status === 'abierta')
+      }
+      default:
+        return true
+    }
+  } catch {
+    return false
+  }
+}
+
+const DEFAULT_VALIDATION_MESSAGES: Record<ValidationType, string> = {
+  'has-categories': 'Crea al menos una categoria para continuar.',
+  'has-products': 'Crea al menos un producto para continuar.',
+  'caja-open': 'Abre una caja para continuar al Punto de Venta.',
 }
 
 // ── Helper: find element and scroll into view ──────────
@@ -64,9 +103,9 @@ function getTargetRect(el: HTMLElement, padding = 8): Rect {
 // 2. Configurar Empresa (nombre, RIF, etc.)
 // 3. Configurar Moneda (tasa de cambio)
 // 4. Configurar IVA
-// 5. Crear Categorías (para organizar productos)
-// 6. Crear Productos (sin productos no hay POS)
-// 7. Abrir Caja (sin caja no hay POS)
+// 5. Crear Categorías (VALIDAR: ≥1 categoría)
+// 6. Crear Productos (VALIDAR: ≥1 producto)
+// 7. Abrir Caja (VALIDAR: caja abierta)
 // 8. Punto de Venta (buscar, agregar, cobrar)
 // 9. Dashboard, Clientes, Proveedores, Gastos, Sucursales, Usuarios, Roles, Sistema, Apariencia
 // 10. Completado
@@ -94,7 +133,6 @@ function buildAdminSteps(): TourStep[] {
   // FASE 2: CONFIGURACION INICIAL
   // ═══════════════════════════════════════════════════════
 
-  // --- Paso 1: Ir a Configuración ---
   steps.push({
     target: '[data-tutorial="nav-settings"]',
     title: 'Vamos a Configurar',
@@ -104,54 +142,57 @@ function buildAdminSteps(): TourStep[] {
     icon: <Building2 className="h-5 w-5" />,
   })
 
-  // --- Paso 2: Datos de la Empresa ---
   steps.push({
     target: '[data-tutorial="settings-tab-empresa"]',
     title: 'Paso 1: Datos de la Empresa',
-    description: 'Aqui debes registrar el nombre de tu negocio, RIF, correo, telefono y direccion. Estos datos aparecen en tus comprobantes de venta y reportes. Haz click en la pestana "Empresa" para configurarlos.',
+    description: 'Registra aqui el nombre de tu negocio, RIF, correo, telefono y direccion. Estos datos aparecen en tus comprobantes de venta y reportes.',
     side: 'bottom',
     navigateTo: 'settings',
     icon: <Building2 className="h-5 w-5" />,
+    clickBeforeHighlight: true,
   })
 
-  // --- Paso 3: Moneda y Tasa de Cambio ---
   steps.push({
     target: '[data-tutorial="settings-tab-moneda"]',
     title: 'Paso 2: Tasa de Cambio',
-    description: 'Configura la moneda de referencia (USD o EUR) y la tasa de cambio. Puedes actualizar automaticamente con las tasas del BCV o ingresar una tasa personalizada. Esto es clave para que los precios se conviertan correctamente.',
+    description: 'Configura la moneda de referencia (USD o EUR) y la tasa de cambio. Puedes actualizar con las tasas del BCV o ingresar una manual. Esto es clave para los precios.',
     side: 'bottom',
     navigateTo: 'settings',
     icon: <DollarSign className="h-5 w-5" />,
+    clickBeforeHighlight: true,
   })
 
-  // --- Paso 4: IVA ---
   steps.push({
     target: '[data-tutorial="settings-tab-iva"]',
     title: 'Paso 3: Impuesto I.V.A.',
-    description: 'Activa o desactiva el IVA y define el porcentaje (por defecto 16%). Si tu negocio cobra IVA, activa esta opcion antes de hacer la primera venta para que se calcule en cada operacion.',
+    description: 'Activa o desactiva el IVA y define el porcentaje (por defecto 16%). Si tu negocio cobra IVA, activa esta opcion antes de la primera venta.',
     side: 'bottom',
     navigateTo: 'settings',
     icon: <Percent className="h-5 w-5" />,
+    clickBeforeHighlight: true,
   })
 
-  // --- Paso 5: Categorías ---
+  // --- Categorías (VALIDADO) ---
   steps.push({
     target: '[data-tutorial="settings-tab-categorias"]',
     title: 'Paso 4: Crear Categorias',
-    description: 'Antes de crear productos, define las categorias para organizar tu catalogo. Por ejemplo: Alimentos, Bebidas, Limpieza, etc. Las categorias se usan como filtros en el Punto de Venta. Haz click en "Categorias" y luego en "Nueva".',
+    description: 'Define las categorias para organizar tu catalogo: Alimentos, Bebidas, Limpieza, etc. Se usan como filtros en el Punto de Venta. Haz click en "Nueva" para crear una.',
     side: 'bottom',
     navigateTo: 'settings',
     icon: <Tag className="h-5 w-5" />,
+    clickBeforeHighlight: true,
+    validation: 'has-categories',
+    validationMessage: 'Crea al menos una categoria para continuar. Presiona "Nueva" en esta seccion.',
   })
 
   // ═══════════════════════════════════════════════════════
-  // FASE 3: PRODUCTOS
+  // FASE 3: PRODUCTOS (VALIDADO)
   // ═══════════════════════════════════════════════════════
 
   steps.push({
     target: '[data-tutorial="nav-products"]',
     title: 'Paso 5: Crear Productos',
-    description: 'Sin productos no hay nada que vender. Vamos a la seccion de Productos para crear tu catalogo. Define nombre, precio, categoria y stock de cada uno.',
+    description: 'Sin productos no hay nada que vender. Vamos a la seccion de Productos para crear tu catalogo.',
     side: 'right',
     navigateTo: 'products',
     icon: <Package className="h-5 w-5" />,
@@ -160,19 +201,21 @@ function buildAdminSteps(): TourStep[] {
   steps.push({
     target: '[data-tutorial="products-new-btn"]',
     title: 'Boton "Nuevo" Producto',
-    description: 'Presiona este boton para registrar un nuevo producto. Completa los campos: nombre, SKU, precio, categoria, stock y sube una foto si quieres. Repite este proceso para todos tus productos.',
+    description: 'Presiona este boton para registrar un nuevo producto. Completa nombre, SKU, precio, categoria y stock. Repite para todos tus productos.',
     side: 'left',
     navigateTo: 'products',
+    validation: 'has-products',
+    validationMessage: 'Crea al menos un producto para continuar.',
   })
 
   // ═══════════════════════════════════════════════════════
-  // FASE 4: CAJA
+  // FASE 4: CAJA (VALIDADO)
   // ═══════════════════════════════════════════════════════
 
   steps.push({
     target: '[data-tutorial="nav-cash"]',
     title: 'Paso 6: Abrir Caja',
-    description: 'Ya tienes todo configurado. El ultimo paso antes de vender es abrir una caja. Sin caja abierta el Punto de Venta esta bloqueado.',
+    description: 'El ultimo paso antes de vender. Sin caja abierta el Punto de Venta esta bloqueado.',
     side: 'right',
     navigateTo: 'cash',
     icon: <Wallet className="h-5 w-5" />,
@@ -181,9 +224,11 @@ function buildAdminSteps(): TourStep[] {
   steps.push({
     target: '[data-tutorial="cash-open-btn"]',
     title: 'Pulsa "Abrir Caja"',
-    description: 'Haz click aqui para registrar la apertura de caja. Indica el monto inicial con el que arranca el dia y asigna un cajero. Una vez abierta, el Punto de Venta se desbloqueara automaticamente.',
+    description: 'Haz click aqui para registrar la apertura. Indica el monto inicial y asigna un cajero. Una vez abierta, el POS se desbloqueara.',
     side: 'right',
     navigateTo: 'cash',
+    validation: 'caja-open',
+    validationMessage: 'Abre una caja para continuar al Punto de Venta.',
   })
 
   // ═══════════════════════════════════════════════════════
@@ -193,7 +238,7 @@ function buildAdminSteps(): TourStep[] {
   steps.push({
     target: '[data-tutorial="nav-pos"]',
     title: 'Paso 7: Punto de Venta',
-    description: 'Ahora si, tu sistema esta listo. Vamos al Punto de Venta donde procesaras todas las ventas diarias.',
+    description: 'Ahora si, tu sistema esta listo. Aqui procesaras todas las ventas diarias.',
     side: 'right',
     navigateTo: 'pos',
     icon: <ShoppingCart className="h-5 w-5" />,
@@ -202,7 +247,7 @@ function buildAdminSteps(): TourStep[] {
   steps.push({
     target: '[data-tutorial="pos-search"]',
     title: 'Buscar Productos',
-    description: 'Escribe el nombre o marca del producto para encontrarlo rapido. Tambien puedes escanear el codigo de barras con un lector externo o con la camara.',
+    description: 'Escribe el nombre o marca del producto para encontrarlo rapido. Tambien puedes escanear el codigo de barras.',
     side: 'bottom',
     navigateTo: 'pos',
   })
@@ -210,7 +255,7 @@ function buildAdminSteps(): TourStep[] {
   steps.push({
     target: '[data-tutorial="pos-products"]',
     title: 'Tu Catalogo',
-    description: 'Aqui se muestran todos tus productos con precio y stock. Haz click en un producto para agregarlo al carrito. Usa los filtros de categoria para buscar mas rapido.',
+    description: 'Aqui se muestran todos tus productos con precio y stock. Haz click para agregar al carrito.',
     side: 'top',
     navigateTo: 'pos',
   })
@@ -218,7 +263,7 @@ function buildAdminSteps(): TourStep[] {
   steps.push({
     target: '[data-tutorial="pos-pay"]',
     title: 'Cobrar',
-    description: 'Cuando tengas productos en el carrito, presiona aqui para procesar el pago: efectivo, punto de venta, transferencia o pago mixto.',
+    description: 'Presiona aqui para procesar el pago: efectivo, punto de venta, transferencia o pago mixto.',
     side: 'left',
     navigateTo: 'pos',
   })
@@ -259,21 +304,22 @@ function buildAdminSteps(): TourStep[] {
     navigateTo: 'expenses',
   })
 
-  // --- Resto de Configuración (ya se mostró antes) ---
   steps.push({
     target: '[data-tutorial="settings-tab-sucursales"]',
     title: 'Sucursales',
-    description: 'Si tienes mas de una sede, puedes crear sucursales aqui. Cada una tiene su propio inventario y cajas. Ya tienes una "Sucursal Principal" por defecto.',
+    description: 'Si tienes mas de una sede, crea sucursales aqui. Cada una con su propio inventario y cajas.',
     side: 'bottom',
     navigateTo: 'settings',
+    clickBeforeHighlight: true,
   })
 
   steps.push({
     target: '[data-tutorial="settings-tab-usuarios"]',
     title: 'Usuarios',
-    description: 'Crea cuentas para tu equipo: cajeros, vendedores y gerentes. Cada rol tiene permisos diferentes sobre las vistas y acciones del sistema.',
+    description: 'Crea cuentas para tu equipo: cajeros, vendedores y gerentes con permisos diferentes.',
     side: 'bottom',
     navigateTo: 'settings',
+    clickBeforeHighlight: true,
   })
 
   steps.push({
@@ -282,6 +328,7 @@ function buildAdminSteps(): TourStep[] {
     description: 'Personaliza que vistas y acciones puede realizar cada rol segun las necesidades de tu negocio.',
     side: 'bottom',
     navigateTo: 'settings',
+    clickBeforeHighlight: true,
   })
 
   steps.push({
@@ -290,6 +337,7 @@ function buildAdminSteps(): TourStep[] {
     description: 'Ajusta la duracion de las sesiones de usuario y administra las notificaciones.',
     side: 'bottom',
     navigateTo: 'settings',
+    clickBeforeHighlight: true,
   })
 
   steps.push({
@@ -298,14 +346,12 @@ function buildAdminSteps(): TourStep[] {
     description: 'Personaliza los colores del sistema para que coincidan con la identidad visual de tu negocio.',
     side: 'bottom',
     navigateTo: 'settings',
+    clickBeforeHighlight: true,
   })
 
-  // ═══════════════════════════════════════════════════════
-  // COMPLETADO
-  // ═══════════════════════════════════════════════════════
   steps.push({
     title: 'Tutorial Completado',
-    description: 'Tu sistema esta listo para operar. Recuerda: configura datos de empresa, tasa de cambio, crea categorias y productos, abre caja al inicio del turno y cierrala al final. Puedes ver este tutorial de nuevo desde tu menu de perfil.',
+    description: 'Tu sistema esta listo para operar. Recuerda: abre caja al inicio del turno, cierrala al final. Puedes ver este tutorial de nuevo desde tu menu de perfil.',
     icon: <Store className="h-5 w-5" />,
   })
 
@@ -315,10 +361,9 @@ function buildAdminSteps(): TourStep[] {
 function buildGerenteSteps(): TourStep[] {
   const steps: TourStep[] = []
 
-  // FASE 1: Bienvenida
   steps.push({
     title: 'Bienvenido a JO-Administrativo',
-    description: 'Hola Gerente. Te mostraremos las funciones principales a las que tienes acceso y como usar el sistema para operar diariamente.',
+    description: 'Hola Gerente. Te mostraremos las funciones principales a las que tienes acceso y como usar el sistema diariamente.',
     icon: <Store className="h-5 w-5" />,
   })
 
@@ -329,11 +374,11 @@ function buildGerenteSteps(): TourStep[] {
     side: 'right',
   })
 
-  // FASE 2: Productos
+  // Products (validated)
   steps.push({
     target: '[data-tutorial="nav-products"]',
     title: 'Productos e Inventario',
-    description: 'Aqui puedes crear y gestionar productos, ajustar precios, categorias y monitorea el stock por sucursal. Es importante tener productos registrados para poder vender.',
+    description: 'Aqui puedes crear y gestionar productos. Es importante tener productos registrados para poder vender.',
     side: 'right',
     navigateTo: 'products',
     icon: <Package className="h-5 w-5" />,
@@ -345,13 +390,15 @@ function buildGerenteSteps(): TourStep[] {
     description: 'Presiona "Nuevo" para registrar un producto con nombre, precio, categoria y stock.',
     side: 'left',
     navigateTo: 'products',
+    validation: 'has-products',
+    validationMessage: 'Crea al menos un producto para continuar.',
   })
 
-  // FASE 3: Caja
+  // Caja (validated)
   steps.push({
     target: '[data-tutorial="nav-cash"]',
     title: 'Caja',
-    description: 'Para poder vender necesitas una caja abierta. Si no hay una abierta, ve aqui y presiona "Abrir Caja" con el monto inicial del dia.',
+    description: 'Para poder vender necesitas una caja abierta. Presiona "Abrir Caja" con el monto inicial del dia.',
     side: 'right',
     navigateTo: 'cash',
     icon: <Wallet className="h-5 w-5" />,
@@ -360,16 +407,18 @@ function buildGerenteSteps(): TourStep[] {
   steps.push({
     target: '[data-tutorial="cash-open-btn"]',
     title: 'Abrir Caja',
-    description: 'Haz click aqui para registrar la apertura. Indica el monto inicial y el cajero asignado. Sin caja abierta el Punto de Venta estara bloqueado.',
+    description: 'Indica el monto inicial y el cajero asignado. Sin caja abierta el POS estara bloqueado.',
     side: 'right',
     navigateTo: 'cash',
+    validation: 'caja-open',
+    validationMessage: 'Abre una caja para continuar al Punto de Venta.',
   })
 
-  // FASE 4: Punto de Venta
+  // POS
   steps.push({
     target: '[data-tutorial="nav-pos"]',
     title: 'Punto de Venta',
-    description: 'Con productos y caja abierta, estas listo para vender. Vamos al POS.',
+    description: 'Con productos y caja abierta, estas listo para vender.',
     side: 'right',
     navigateTo: 'pos',
     icon: <ShoppingCart className="h-5 w-5" />,
@@ -378,7 +427,7 @@ function buildGerenteSteps(): TourStep[] {
   steps.push({
     target: '[data-tutorial="pos-search"]',
     title: 'Buscar Productos',
-    description: 'Escribe el nombre o usa el scanner de codigo de barras para encontrar productos.',
+    description: 'Escribe el nombre o usa el scanner para encontrar productos.',
     side: 'bottom',
     navigateTo: 'pos',
   })
@@ -394,12 +443,12 @@ function buildGerenteSteps(): TourStep[] {
   steps.push({
     target: '[data-tutorial="pos-pay"]',
     title: 'Boton de Cobrar',
-    description: 'Procesa el pago cuando tengas productos: efectivo, punto de venta, transferencia o pago mixto.',
+    description: 'Procesa el pago: efectivo, punto de venta, transferencia o pago mixto.',
     side: 'left',
     navigateTo: 'pos',
   })
 
-  // FASE 5: Resto
+  // Rest
   steps.push({
     target: '[data-tutorial="nav-dashboard"]',
     title: 'Dashboard Financiero',
@@ -426,8 +475,8 @@ function buildGerenteSteps(): TourStep[] {
 
   steps.push({
     target: '[data-tutorial="nav-cash"]',
-    title: 'Caja (Revisión)',
-    description: 'Aquí puedes registrar movimientos, hacer retiros de excedente y cerrar al final del turno.',
+    title: 'Caja (Revision)',
+    description: 'Aqui puedes registrar movimientos, retiros de excedente y cerrar al final del turno.',
     side: 'right',
     navigateTo: 'cash',
   })
@@ -442,7 +491,7 @@ function buildGerenteSteps(): TourStep[] {
 
   steps.push({
     title: 'Tutorial Completado',
-    description: 'Ya conoces las funciones principales. No tienes acceso a Configuracion ni Usuarios, esas son funciones del Administrador. Puedes ver este tutorial de nuevo desde tu menu de perfil.',
+    description: 'Ya conoces las funciones principales. No tienes acceso a Configuracion ni Usuarios. Puedes ver este tutorial de nuevo desde tu menu de perfil.',
     icon: <Store className="h-5 w-5" />,
   })
 
@@ -465,11 +514,10 @@ function buildCajeroSteps(): TourStep[] {
     side: 'right',
   })
 
-  // POS
   steps.push({
     target: '[data-tutorial="nav-pos"]',
     title: 'Punto de Venta',
-    description: 'Aqui procesas todas las ventas. Si la caja no esta abierta, veras un mensaje de bloqueo y deberas contactar al administrador.',
+    description: 'Aqui procesas todas las ventas. Si la caja no esta abierta, veras un mensaje de bloqueo. Contacta al administrador.',
     side: 'right',
     navigateTo: 'pos',
     icon: <ShoppingCart className="h-5 w-5" />,
@@ -478,7 +526,7 @@ function buildCajeroSteps(): TourStep[] {
   steps.push({
     target: '[data-tutorial="pos-search"]',
     title: 'Buscar Productos',
-    description: 'Escribe el nombre del producto o escanea el codigo de barras para agregarlo a la venta.',
+    description: 'Escribe el nombre o escanea el codigo de barras para agregarlo a la venta.',
     side: 'bottom',
     navigateTo: 'pos',
   })
@@ -486,7 +534,7 @@ function buildCajeroSteps(): TourStep[] {
   steps.push({
     target: '[data-tutorial="pos-products"]',
     title: 'Productos Disponibles',
-    description: 'Haz click en un producto para agregarlo al carrito de la venta. Se muestra el precio y stock disponible.',
+    description: 'Haz click en un producto para agregarlo al carrito de la venta.',
     side: 'top',
     navigateTo: 'pos',
   })
@@ -494,23 +542,22 @@ function buildCajeroSteps(): TourStep[] {
   steps.push({
     target: '[data-tutorial="pos-pay"]',
     title: 'Cobrar',
-    description: 'Cuando tengas productos en el carrito, presiona aqui para procesar el pago: efectivo, punto de venta, transferencia o pago mixto.',
+    description: 'Cuando tengas productos en el carrito, presiona aqui para procesar el pago.',
     side: 'left',
     navigateTo: 'pos',
   })
 
-  // Caja
   steps.push({
     target: '[data-tutorial="nav-cash"]',
     title: 'Tu Caja',
-    description: 'Puedes ver el resumen de tu caja abierta y consultar movimientos. Solo el administrador puede abrir, cerrar o hacer movimientos de caja.',
+    description: 'Puedes ver el resumen de tu caja abierta y consultar movimientos. Solo el admin puede abrir, cerrar o hacer movimientos.',
     side: 'right',
     navigateTo: 'cash',
   })
 
   steps.push({
     title: 'Tutorial Completado',
-    description: 'Ya estas listo para procesar ventas. Recuerda: si la caja se cierra, contacta a un administrador. Puedes ver este tutorial de nuevo desde tu menu de perfil.',
+    description: 'Ya estas listo para procesar ventas. Si la caja se cierra, contacta a un administrador. Puedes ver este tutorial de nuevo desde tu menu de perfil.',
     icon: <Store className="h-5 w-5" />,
   })
 
@@ -533,11 +580,10 @@ function buildVendedorSteps(): TourStep[] {
     side: 'right',
   })
 
-  // POS
   steps.push({
     target: '[data-tutorial="nav-pos"]',
     title: 'Punto de Venta',
-    description: 'Aqui procesas las ventas. Si no hay caja abierta, veras un mensaje de bloqueo. Contacta a un administrador o gerente para que la abran.',
+    description: 'Aqui procesas las ventas. Si no hay caja abierta, veras un bloqueo. Contacta a un admin o gerente.',
     side: 'right',
     navigateTo: 'pos',
     icon: <ShoppingCart className="h-5 w-5" />,
@@ -567,7 +613,6 @@ function buildVendedorSteps(): TourStep[] {
     navigateTo: 'pos',
   })
 
-  // Products
   steps.push({
     target: '[data-tutorial="nav-products"]',
     title: 'Productos',
@@ -577,11 +622,10 @@ function buildVendedorSteps(): TourStep[] {
     icon: <Package className="h-5 w-5" />,
   })
 
-  // Clients
   steps.push({
     target: '[data-tutorial="nav-clients"]',
     title: 'Clientes',
-    description: 'Registra clientes, consulta sus datos y genera estados de cuenta para ventas a credito. Es una de tus funciones principales.',
+    description: 'Registra clientes, consulta sus datos y genera estados de cuenta para ventas a credito.',
     side: 'right',
     navigateTo: 'clients',
   })
@@ -627,8 +671,13 @@ export function OnboardingTutorial() {
     side: 'bottom',
   })
 
+  // Validation state
+  const [isValidated, setIsValidated] = useState(true)
+  const [isValidating, setIsValidating] = useState(false)
+
   const stepsRef = useRef<TourStep[]>([])
   const waitForViewRef = useRef(false)
+  const validationTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const role = user?.role || 'cajero'
   const steps = stepsRef.current
@@ -637,6 +686,7 @@ export function OnboardingTutorial() {
   const isFirst = stepIndex === 0
   const isLast = stepIndex === totalSteps - 1
   const hasTarget = !!currentStep?.target
+  const needsValidation = !!currentStep?.validation
 
   // ── Highlight logic ──────────────────────────────────
 
@@ -647,10 +697,27 @@ export function OnboardingTutorial() {
       return
     }
 
+    // If this step needs a click before highlighting (e.g. tabs), click it
+    if (step.clickBeforeHighlight) {
+      const el = document.querySelector<HTMLElement>(step.target)
+      if (el) {
+        el.click()
+        // Wait a moment for the tab content to switch
+        setTimeout(() => {
+          const freshEl = findElement(step.target!)
+          if (freshEl) {
+            const rect = getTargetRect(freshEl)
+            setTargetRect(rect)
+            positionPopover(rect, step.side || 'bottom')
+          }
+        }, 200)
+        return
+      }
+    }
+
     // Try to find the element, retry if view hasn't loaded yet
     let el = findElement(step.target)
     if (!el) {
-      // Element not found — might need a frame to render after view change
       requestAnimationFrame(() => {
         el = findElement(step.target!)
         if (el) {
@@ -674,7 +741,7 @@ export function OnboardingTutorial() {
     const vw = window.innerWidth
     const vh = window.innerHeight
     const popoverW = 360
-    const popoverH = 240 // approximate
+    const popoverH = 260 // approximate (slightly larger for validation msg)
     const gap = 12
 
     let top = 0
@@ -685,7 +752,6 @@ export function OnboardingTutorial() {
       case 'right': {
         left = rect.right + gap
         top = rect.top + rect.height / 2 - popoverH / 2
-        // If doesn't fit on right, go left
         if (left + popoverW > vw - 16) {
           left = rect.left - popoverW - gap
         }
@@ -717,12 +783,48 @@ export function OnboardingTutorial() {
       }
     }
 
-    // Clamp to viewport
     left = Math.max(16, Math.min(left, vw - popoverW - 16))
     top = Math.max(16, Math.min(top, vh - popoverH - 16))
 
     setPopoverPos({ top, left, side: resolvedSide })
   }
+
+  // ── Validation polling ───────────────────────────────
+
+  useEffect(() => {
+    // Clear previous polling
+    if (validationTimerRef.current) {
+      clearInterval(validationTimerRef.current)
+      validationTimerRef.current = null
+    }
+
+    if (!isOpen || !currentStep?.validation) {
+      setIsValidated(true)
+      setIsValidating(false)
+      return
+    }
+
+    // Start validation
+    const runValidation = async () => {
+      setIsValidating(true)
+      const result = await checkValidation(currentStep.validation!)
+      setIsValidated(result)
+      setIsValidating(false)
+    }
+
+    // Check immediately
+    runValidation()
+
+    // Then poll every 3 seconds
+    validationTimerRef.current = setInterval(runValidation, 3000)
+
+    return () => {
+      if (validationTimerRef.current) {
+        clearInterval(validationTimerRef.current)
+        validationTimerRef.current = null
+      }
+    }
+  }, [isOpen, stepIndex, currentStep?.validation])
 
   // ── Navigation ───────────────────────────────────────
 
@@ -736,7 +838,6 @@ export function OnboardingTutorial() {
       const currentView = useAppStore.getState().activeView
       if (currentView !== step.navigateTo) {
         setActiveView(step.navigateTo)
-        // Wait for the view to render, then highlight
         waitForViewRef.current = true
         setStepIndex(index)
         return
@@ -751,12 +852,11 @@ export function OnboardingTutorial() {
   useEffect(() => {
     if (!isOpen) return
     if (waitForViewRef.current) {
-      // Wait for the view to render (give it time to mount)
       const timer = setTimeout(() => {
         waitForViewRef.current = false
         const step = steps[stepIndex]
         if (step) updateHighlight(step)
-      }, 350)
+      }, 400) // slightly longer to account for tab click + content render
       return () => clearTimeout(timer)
     }
     const step = steps[stepIndex]
@@ -813,6 +913,8 @@ export function OnboardingTutorial() {
   if (!isOpen || !currentStep) return null
 
   // ── Render ───────────────────────────────────────────
+
+  const canAdvance = !needsValidation || isValidated
 
   return (
     <div className="fixed inset-0 z-[9999] pointer-events-none">
@@ -896,6 +998,22 @@ export function OnboardingTutorial() {
             <p className="text-sm text-muted-foreground leading-relaxed mt-1.5">
               {currentStep.description}
             </p>
+
+            {/* Validation message */}
+            {needsValidation && !isValidated && (
+              <div className={cn(
+                'mt-3 rounded-lg p-2.5 text-sm flex items-start gap-2',
+                isValidated
+                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-800 dark:text-emerald-400'
+                  : 'bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/30 dark:border-amber-800 dark:text-amber-400'
+              )}>
+                {isValidated
+                  ? <CheckCircle2 className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                  : <Loader2 className="h-4 w-4 flex-shrink-0 mt-0.5 animate-spin" />
+                }
+                <span>{currentStep.validationMessage || DEFAULT_VALIDATION_MESSAGES[currentStep.validation!]}</span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -909,7 +1027,9 @@ export function OnboardingTutorial() {
                 'h-1.5 rounded-full transition-all duration-200',
                 i === stepIndex
                   ? 'w-4 bg-primary'
-                  : 'w-1.5 bg-muted-foreground/25 hover:bg-muted-foreground/50'
+                  : i < stepIndex
+                    ? 'w-1.5 bg-primary/50'
+                    : 'w-1.5 bg-muted-foreground/25 hover:bg-muted-foreground/50'
               )}
             />
           ))}
@@ -942,11 +1062,17 @@ export function OnboardingTutorial() {
             )}
             <Button
               size="sm"
-              className="bg-primary hover:bg-primary/90 text-white h-8"
+              className={cn(
+                'h-8',
+                canAdvance
+                  ? 'bg-primary hover:bg-primary/90 text-white'
+                  : 'bg-muted text-muted-foreground cursor-not-allowed'
+              )}
+              disabled={!canAdvance && !isLast}
               onClick={() => {
                 if (isLast) {
                   stopTour()
-                } else {
+                } else if (canAdvance) {
                   goToStep(stepIndex + 1)
                 }
               }}
