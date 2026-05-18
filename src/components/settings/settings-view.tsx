@@ -130,6 +130,16 @@ export function SettingsView() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [fetchingRate, setFetchingRate] = useState(false)
+  const [activeTab, setActiveTab] = useState('empresa')
+
+  // Listen for tutorial tab switching via custom event
+  useEffect(() => {
+    const handler = (e: Event) => {
+      setActiveTab((e as CustomEvent<string>).detail)
+    }
+    window.addEventListener('tutorial-switch-tab', handler)
+    return () => window.removeEventListener('tutorial-switch-tab', handler)
+  }, [])
 
   // Users state
   const [users, setUsers] = useState<UserItem[]>([])
@@ -292,7 +302,7 @@ export function SettingsView() {
         </p>
       </div>
 
-      <Tabs data-tutorial="settings-tabs" defaultValue="empresa" className="space-y-4">
+      <Tabs data-tutorial="settings-tabs" value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <TabsList className="flex flex-wrap h-auto gap-1">
           <TabsTrigger data-tutorial="settings-tab-empresa" value="empresa" className="gap-1.5">
             <Building2 className="h-3.5 w-3.5 hidden sm:block" />

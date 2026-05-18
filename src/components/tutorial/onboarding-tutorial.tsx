@@ -28,8 +28,8 @@ interface TourStep {
   validation?: ValidationType
   /** Message shown while waiting for validation. */
   validationMessage?: string
-  /** If true, click on the target element before highlighting (for tabs). */
-  clickBeforeHighlight?: boolean
+  /** If set, dispatches a custom event to switch the Settings tab before highlighting. */
+  switchTab?: string
 }
 
 // ── Validation functions ────────────────────────────────
@@ -149,7 +149,7 @@ function buildAdminSteps(): TourStep[] {
     side: 'bottom',
     navigateTo: 'settings',
     icon: <Building2 className="h-5 w-5" />,
-    clickBeforeHighlight: true,
+    switchTab: 'empresa',
   })
 
   steps.push({
@@ -159,7 +159,7 @@ function buildAdminSteps(): TourStep[] {
     side: 'bottom',
     navigateTo: 'settings',
     icon: <DollarSign className="h-5 w-5" />,
-    clickBeforeHighlight: true,
+    switchTab: 'moneda',
   })
 
   steps.push({
@@ -169,7 +169,7 @@ function buildAdminSteps(): TourStep[] {
     side: 'bottom',
     navigateTo: 'settings',
     icon: <Percent className="h-5 w-5" />,
-    clickBeforeHighlight: true,
+    switchTab: 'moneda',
   })
 
   // --- Categorías (VALIDADO) ---
@@ -180,7 +180,7 @@ function buildAdminSteps(): TourStep[] {
     side: 'bottom',
     navigateTo: 'settings',
     icon: <Tag className="h-5 w-5" />,
-    clickBeforeHighlight: true,
+    switchTab: 'iva',
     validation: 'has-categories',
     validationMessage: 'Crea al menos una categoria para continuar. Presiona "Nueva" en esta seccion.',
   })
@@ -310,7 +310,7 @@ function buildAdminSteps(): TourStep[] {
     description: 'Si tienes mas de una sede, crea sucursales aqui. Cada una con su propio inventario y cajas.',
     side: 'bottom',
     navigateTo: 'settings',
-    clickBeforeHighlight: true,
+    switchTab: 'sucursales',
   })
 
   steps.push({
@@ -319,7 +319,7 @@ function buildAdminSteps(): TourStep[] {
     description: 'Crea cuentas para tu equipo: cajeros, vendedores y gerentes con permisos diferentes.',
     side: 'bottom',
     navigateTo: 'settings',
-    clickBeforeHighlight: true,
+    switchTab: 'usuarios',
   })
 
   steps.push({
@@ -328,7 +328,7 @@ function buildAdminSteps(): TourStep[] {
     description: 'Personaliza que vistas y acciones puede realizar cada rol segun las necesidades de tu negocio.',
     side: 'bottom',
     navigateTo: 'settings',
-    clickBeforeHighlight: true,
+    switchTab: 'roles',
   })
 
   steps.push({
@@ -337,7 +337,7 @@ function buildAdminSteps(): TourStep[] {
     description: 'Ajusta la duracion de las sesiones de usuario y administra las notificaciones.',
     side: 'bottom',
     navigateTo: 'settings',
-    clickBeforeHighlight: true,
+    switchTab: 'sistema',
   })
 
   steps.push({
@@ -346,7 +346,7 @@ function buildAdminSteps(): TourStep[] {
     description: 'Personaliza los colores del sistema para que coincidan con la identidad visual de tu negocio.',
     side: 'bottom',
     navigateTo: 'settings',
-    clickBeforeHighlight: true,
+    switchTab: 'apariencia',
   })
 
   steps.push({
@@ -697,22 +697,19 @@ export function OnboardingTutorial() {
       return
     }
 
-    // If this step needs a click before highlighting (e.g. tabs), click it
-    if (step.clickBeforeHighlight) {
-      const el = document.querySelector<HTMLElement>(step.target)
-      if (el) {
-        el.click()
-        // Wait a moment for the tab content to switch
-        setTimeout(() => {
-          const freshEl = findElement(step.target!)
-          if (freshEl) {
-            const rect = getTargetRect(freshEl)
-            setTargetRect(rect)
-            positionPopover(rect, step.side || 'bottom')
-          }
-        }, 200)
-        return
-      }
+    // If this step needs to switch a Settings tab, dispatch the custom event
+    if (step.switchTab) {
+      window.dispatchEvent(new CustomEvent('tutorial-switch-tab', { detail: step.switchTab }))
+      // Wait for the tab content to render, then highlight
+      setTimeout(() => {
+        const el = findElement(step.target!)
+        if (el) {
+          const rect = getTargetRect(el)
+          setTargetRect(rect)
+          positionPopover(rect, step.side || 'bottom')
+        }
+      }, 300)
+      return
     }
 
     // Try to find the element, retry if view hasn't loaded yet
