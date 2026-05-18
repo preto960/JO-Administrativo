@@ -915,8 +915,12 @@ export function OnboardingTutorial() {
 
   return (
     <div className="fixed inset-0 z-[9999] pointer-events-none">
-      {/* Overlay with spotlight hole */}
-      <svg className="absolute inset-0 w-full h-full pointer-events-auto" aria-hidden="true">
+      {/* Overlay with spotlight hole — pointer-events-auto blocks clicks outside the hole.
+          When step has validation, we use pointer-events-none so the user can click the highlighted element. */}
+      <svg className={cn(
+        "absolute inset-0 w-full h-full",
+        needsValidation ? "pointer-events-none" : "pointer-events-auto"
+      )} aria-hidden="true">
         <defs>
           <mask id="tour-spotlight">
             <rect x="0" y="0" width="100%" height="100%" fill="white" />
