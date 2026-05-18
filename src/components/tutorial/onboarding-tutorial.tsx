@@ -915,39 +915,39 @@ export function OnboardingTutorial() {
 
   return (
     <div className="fixed inset-0 z-[9999] pointer-events-none">
-      {/* Overlay with spotlight hole — pointer-events-auto blocks clicks outside the hole.
-          When step has validation, we use pointer-events-none so the user can click the highlighted element. */}
-      <svg className={cn(
-        "absolute inset-0 w-full h-full",
-        needsValidation ? "pointer-events-none" : "pointer-events-auto"
-      )} aria-hidden="true">
-        <defs>
-          <mask id="tour-spotlight">
-            <rect x="0" y="0" width="100%" height="100%" fill="white" />
-            {targetRect && (
-              <rect
-                x={targetRect.left}
-                y={targetRect.top}
-                width={targetRect.width}
-                height={targetRect.height}
-                rx="8"
-                fill="black"
-              />
-            )}
-          </mask>
-        </defs>
-        <rect
-          x="0"
-          y="0"
-          width="100%"
-          height="100%"
-          fill="rgba(0, 0, 0, 0.65)"
-          mask="url(#tour-spotlight)"
-        />
-      </svg>
+      {/* Dark overlay with spotlight hole — ONLY for non-validation steps.
+          For validation steps we hide the overlay entirely so the user can freely
+          interact with buttons, forms, and modals (e.g. "Abrir Caja" dialog). */}
+      {hasTarget && !needsValidation && (
+        <svg className="absolute inset-0 w-full h-full pointer-events-auto" aria-hidden="true">
+          <defs>
+            <mask id="tour-spotlight">
+              <rect x="0" y="0" width="100%" height="100%" fill="white" />
+              {targetRect && (
+                <rect
+                  x={targetRect.left}
+                  y={targetRect.top}
+                  width={targetRect.width}
+                  height={targetRect.height}
+                  rx="8"
+                  fill="black"
+                />
+              )}
+            </mask>
+          </defs>
+          <rect
+            x="0"
+            y="0"
+            width="100%"
+            height="100%"
+            fill="rgba(0, 0, 0, 0.65)"
+            mask="url(#tour-spotlight)"
+          />
+        </svg>
+      )}
 
-      {/* Highlighted element border glow */}
-      {targetRect && (
+      {/* Highlighted element border glow — only for non-validation steps */}
+      {targetRect && !needsValidation && (
         <div
           className="absolute rounded-lg border-2 border-white/80 shadow-[0_0_0_4px_rgba(59,130,246,0.5)] transition-all duration-300 pointer-events-none"
           style={{
@@ -959,14 +959,19 @@ export function OnboardingTutorial() {
         />
       )}
 
-      {/* Popover */}
+      {/* Popover — fixed bottom-right for validation steps to avoid blocking centered modals */}
       <div
         className={cn(
-          'absolute z-[10000] pointer-events-auto w-[360px] rounded-xl border bg-popover p-5 shadow-2xl transition-all duration-300',
-          !hasTarget && 'fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2'
+          'z-[10000] pointer-events-auto w-[360px] rounded-xl border bg-popover p-5 shadow-2xl transition-all duration-300',
+          // Centered for welcome/finish (no target)
+          !hasTarget && 'fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2',
+          // Fixed bottom-right for validation steps (stays out of the way of modals)
+          needsValidation && hasTarget && 'fixed bottom-4 right-4',
+          // Absolute positioned near target for normal steps
+          hasTarget && !needsValidation && 'absolute'
         )}
         style={
-          hasTarget
+          hasTarget && !needsValidation
             ? { top: popoverPos.top, left: popoverPos.left }
             : undefined
         }
