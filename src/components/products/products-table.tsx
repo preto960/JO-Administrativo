@@ -408,6 +408,7 @@ export function ProductsTable() {
             </Label>
           </div>
           <Button
+            data-tutorial="products-new-btn"
             onClick={openCreate}
             className="bg-primary hover:bg-primary/90 text-white"
           >

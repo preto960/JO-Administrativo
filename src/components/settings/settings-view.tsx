@@ -1026,7 +1026,7 @@ export function SettingsView() {
                   <CardTitle className="text-base">Categorías de Productos</CardTitle>
                   <CardDescription>Gestiona las categorías para organizar tus productos y el punto de venta</CardDescription>
                 </div>
-                <Button size="sm" className="bg-primary hover:bg-primary/90 text-white" onClick={() => {
+                <Button data-tutorial="categories-new-btn" size="sm" className="bg-primary hover:bg-primary/90 text-white" onClick={() => {
                   setEditingCat(null)
                   setCatName('')
                   setShowCatDialog(true)
