@@ -169,7 +169,7 @@ function buildAdminSteps(): TourStep[] {
     side: 'bottom',
     navigateTo: 'settings',
     icon: <Percent className="h-5 w-5" />,
-    switchTab: 'moneda',
+    switchTab: 'iva',
   })
 
   // --- Categorías (VALIDADO) ---
@@ -180,7 +180,7 @@ function buildAdminSteps(): TourStep[] {
     side: 'bottom',
     navigateTo: 'settings',
     icon: <Tag className="h-5 w-5" />,
-    switchTab: 'iva',
+    switchTab: 'categorias',
     validation: 'has-categories',
     validationMessage: 'Crea al menos una categoria para continuar. Presiona "Nueva" en esta seccion.',
   })
