@@ -246,6 +246,7 @@ export function PosCart({ onPayment }: PosCartProps) {
             size="lg"
             disabled={items.length === 0}
             onClick={onPayment}
+            data-tutorial="pos-pay"
           >
             Cobrar {exchangeRate > 0 ? `Bs. ${totalBs.toFixed(2)}` : `${currencySymbol}${total.toFixed(2)}`}
           </Button>

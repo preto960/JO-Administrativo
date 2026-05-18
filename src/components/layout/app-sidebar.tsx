@@ -82,7 +82,7 @@ export function AppSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               {visibleItems.map((item) => (
-                <SidebarMenuItem key={item.view}>
+                <SidebarMenuItem key={item.view} data-tutorial={'nav-' + item.view}>
                   <SidebarMenuButton
                     isActive={activeView === item.view}
                     onClick={() => handleNavClick(item.view)}
@@ -100,7 +100,7 @@ export function AppSidebar() {
       <SidebarFooter>
         {canAccessView(userRole, 'settings') && (
           <SidebarMenu>
-            <SidebarMenuItem>
+            <SidebarMenuItem data-tutorial="nav-settings">
               <SidebarMenuButton
                 tooltip="Configuración"
                 isActive={activeView === 'settings'}

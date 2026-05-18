@@ -368,6 +368,7 @@ export function PosTerminal() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-10"
+              data-tutorial="pos-search"
             />
           </div>
           {isMobile && (

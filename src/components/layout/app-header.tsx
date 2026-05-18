@@ -22,13 +22,14 @@ import {
 } from '@/components/ui/select'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
-import { Moon, Sun, LogOut, Settings, GitBranch } from 'lucide-react'
+import { Moon, Sun, LogOut, Settings, GitBranch, BookOpen } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { Button } from '@/components/ui/button'
 import { NotificationBell } from '@/components/layout/notification-bell'
 import { SessionTimer } from '@/components/settings/session-timer'
 import { useAuth } from '@/hooks/use-auth'
 import { signOut } from 'next-auth/react'
+import { startTutorial } from '@/components/tutorial/onboarding-tutorial'
 import { api } from '@/lib/api'
 
 const viewLabels: Record<string, string> = {
@@ -215,6 +216,11 @@ export function AppHeader() {
               </DropdownMenuItem>
             )}
             {user?.role === 'admin' && <DropdownMenuSeparator />}
+            <DropdownMenuItem onClick={startTutorial}>
+              <BookOpen className="mr-2 h-4 w-4" />
+              Ver Tutorial
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             <DropdownMenuItem className="text-red-600" onClick={() => signOut({ callbackUrl: '/login' })}>
               <LogOut className="mr-2 h-4 w-4" />
               Cerrar Sesión
