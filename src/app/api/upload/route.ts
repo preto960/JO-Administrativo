@@ -15,10 +15,16 @@ export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData()
     const file = formData.get('file') as File | null
+    const folder = formData.get('folder') as string | null
 
     if (!file) {
       return NextResponse.json({ error: 'No se envió ningún archivo' }, { status: 400 })
     }
+
+    // Sanitize folder: only allow alphanumeric, hyphens, underscores
+    const safeFolder = folder
+      ? folder.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 50)
+      : 'general'
 
     if (!ALLOWED_TYPES.includes(file.type)) {
       return NextResponse.json(
@@ -46,7 +52,7 @@ export async function POST(request: NextRequest) {
       .replace(/\.[^.]+$/, '')
       .replace(/[^a-zA-Z0-9_-]/g, '_')
       .slice(0, 50)
-    const filename = `${safePrefix}-${Date.now()}.${ext}`
+    const filename = `${safeFolder}/${safePrefix}-${Date.now()}.${ext}`
 
     // Upload to Vercel Blob
     const blob = await put(filename, file, {

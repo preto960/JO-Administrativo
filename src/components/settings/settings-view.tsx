@@ -426,6 +426,7 @@ export function SettingsView() {
                         }
                         const formData = new FormData()
                         formData.append('file', file)
+                        formData.append('folder', 'logos')
                         try {
                           const res = await fetch('/api/upload', { method: 'POST', body: formData })
                           const data = await res.json()
