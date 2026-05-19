@@ -122,7 +122,7 @@ export default function LoginPage() {
       if (result?.error) {
         setError('Credenciales inválidas. Verifique su email y contraseña.')
       } else {
-        router.push('/')
+        router.replace('/')
         router.refresh()
       }
     } catch {
