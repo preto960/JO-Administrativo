@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { writeFile, mkdir } from 'fs/promises'
-import path from 'path'
+import { put } from '@vercel/blob'
 
-const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
-const MAX_SIZE = 2 * 1024 * 1024 // 2MB
+const ALLOWED_TYPES = [
+  'image/jpeg',
+  'image/png',
+  'image/gif',
+  'image/webp',
+  'image/svg+xml',
+  'application/pdf',
+]
+const MAX_SIZE = 5 * 1024 * 1024 // 5MB
 
 export async function POST(request: NextRequest) {
   try {
@@ -15,29 +21,40 @@ export async function POST(request: NextRequest) {
     }
 
     if (!ALLOWED_TYPES.includes(file.type)) {
-      return NextResponse.json({ error: 'Tipo de archivo no soportado. Usa JPG, PNG, GIF o WebP.' }, { status: 400 })
+      return NextResponse.json(
+        { error: 'Tipo de archivo no soportado. Usa JPG, PNG, GIF, WebP, SVG o PDF.' },
+        { status: 400 },
+      )
     }
 
     if (file.size > MAX_SIZE) {
-      return NextResponse.json({ error: 'El archivo no debe superar 2MB' }, { status: 400 })
+      return NextResponse.json({ error: 'El archivo no debe superar 5MB' }, { status: 400 })
     }
 
-    // Ensure uploads directory exists
-    const uploadsDir = path.join(process.cwd(), 'public', 'uploads')
-    await mkdir(uploadsDir, { recursive: true })
+    // Check that Vercel Blob token is available
+    const blobToken = process.env.BLOB_READ_WRITE_TOKEN
+    if (!blobToken) {
+      return NextResponse.json(
+        { error: 'BLOB_READ_WRITE_TOKEN no está configurado. Configúralo en las variables de entorno de Vercel.' },
+        { status: 500 },
+      )
+    }
 
-    // Generate unique filename
-    const ext = file.name.split('.').pop() || 'jpg'
-    const uniqueName = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
-    const filePath = path.join(uploadsDir, uniqueName)
+    // Build a clean filename preserving extension
+    const ext = file.name.split('.').pop() || file.type.split('/')[1] || 'bin'
+    const safePrefix = file.name
+      .replace(/\.[^.]+$/, '')
+      .replace(/[^a-zA-Z0-9_-]/g, '_')
+      .slice(0, 50)
+    const filename = `${safePrefix}-${Date.now()}.${ext}`
 
-    // Write file
-    const bytes = await file.arrayBuffer()
-    await writeFile(filePath, Buffer.from(bytes))
+    // Upload to Vercel Blob
+    const blob = await put(filename, file, {
+      access: 'public',
+      addRandomSuffix: true,
+    })
 
-    const url = `/uploads/${uniqueName}`
-
-    return NextResponse.json({ url })
+    return NextResponse.json({ url: blob.url })
   } catch (error) {
     console.error('[Upload] Error:', error)
     return NextResponse.json({ error: 'Error al subir archivo' }, { status: 500 })
