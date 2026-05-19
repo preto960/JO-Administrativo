@@ -74,7 +74,7 @@ const ACTION_COLORS: Record<string, string> = {
 }
 
 const ENTITY_OPTIONS = [
-  { value: '', label: 'Todas las entidades' },
+  { value: '__all__', label: 'Todas las entidades' },
   { value: 'client', label: 'Cliente' },
   { value: 'supplier', label: 'Proveedor' },
   { value: 'product', label: 'Producto' },
@@ -88,7 +88,7 @@ const ENTITY_OPTIONS = [
 ]
 
 const ACTION_OPTIONS = [
-  { value: '', label: 'Todas las acciones' },
+  { value: '__all__', label: 'Todas las acciones' },
   { value: 'create', label: 'Creación' },
   { value: 'update', label: 'Actualización' },
   { value: 'delete', label: 'Eliminación' },
@@ -127,8 +127,8 @@ export function AuditLogView() {
 
   // Filters
   const [search, setSearch] = useState('')
-  const [entity, setEntity] = useState('')
-  const [action, setAction] = useState('')
+  const [entity, setEntity] = useState('__all__')
+  const [action, setAction] = useState('__all__')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [userId, setUserId] = useState('')
@@ -146,8 +146,8 @@ export function AuditLogView() {
       params.set('page', page.toString())
       params.set('limit', '25')
       if (search) params.set('search', search)
-      if (entity) params.set('entity', entity)
-      if (action) params.set('action', action)
+      if (entity && entity !== '__all__') params.set('entity', entity)
+      if (action && action !== '__all__') params.set('action', action)
       if (dateFrom) params.set('dateFrom', dateFrom)
       if (dateTo) params.set('dateTo', dateTo)
       if (userId) params.set('userId', userId)
@@ -172,8 +172,8 @@ export function AuditLogView() {
 
   const resetFilters = () => {
     setSearch('')
-    setEntity('')
-    setAction('')
+    setEntity('__all__')
+    setAction('__all__')
     setDateFrom('')
     setDateTo('')
     setUserId('')
