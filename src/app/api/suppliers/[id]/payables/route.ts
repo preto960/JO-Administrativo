@@ -69,7 +69,7 @@ export async function POST(
   try {
     const { id } = await params
     const body = await request.json()
-    const { amount, description, dueDate, products } = body
+    const { amount, description, dueDate, products, invoiceNumber, invoiceUrl } = body
 
     if (!amount || amount <= 0) {
       return NextResponse.json({ error: 'El monto debe ser mayor a 0' }, { status: 400 })
@@ -90,6 +90,8 @@ export async function POST(
           dueDate: dueDate ? new Date(dueDate) : null,
           status: 'pendiente',
           description: description || null,
+          invoiceNumber: invoiceNumber || null,
+          invoiceUrl: invoiceUrl || null,
         },
       })
 

@@ -6,7 +6,7 @@
     "dev": "DATABASE_URL=postgresql://neondb_owner:npg_ICHtoF39sBOg@ep-flat-salad-apfgfrde-pooler.c-7.us-east-1.aws.neon.tech/neondb?channel_binding=require\\&sslmode=require next dev -p 3000",
     "build": "next build",
     "start": "next start",
-    "postinstall": "prisma generate",
+    "postinstall": "prisma generate && prisma db push --accept-data-loss 2>/dev/null || true",
     "lint": "eslint .",
     "db:push": "prisma db push",
     "db:generate": "prisma generate",

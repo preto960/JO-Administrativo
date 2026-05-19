@@ -1,6 +1,8 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 
+const RIF_REGEX = /^[JVEG]-\d{8,9}-\d$/
+
 export async function GET() {
   try {
     const suppliers = await db.supplier.findMany({
@@ -42,25 +44,55 @@ export async function POST(request: Request) {
     const body = await request.json()
     const { name, rif, phone, email, address } = body
 
-    if (!name || name.trim() === '') {
+    const trimmedName = (name || '').trim()
+    if (!trimmedName) {
       return NextResponse.json({ error: 'El nombre del proveedor es obligatorio' }, { status: 400 })
     }
+    if (trimmedName.length < 2) {
+      return NextResponse.json({ error: 'El nombre debe tener al menos 2 caracteres' }, { status: 400 })
+    }
 
-    // Check if RIF already exists
-    if (rif && rif.trim() !== '') {
-      const existing = await db.supplier.findUnique({ where: { rif: rif.trim() } })
+    const trimmedRif = (rif || '').trim()
+    if (trimmedRif) {
+      if (!RIF_REGEX.test(trimmedRif)) {
+        return NextResponse.json({ error: 'Formato de RIF inválido. Ejemplo: J-00000000-0' }, { status: 400 })
+      }
+      const existing = await db.supplier.findUnique({ where: { rif: trimmedRif } })
       if (existing) {
         return NextResponse.json({ error: 'Ya existe un proveedor con ese RIF' }, { status: 400 })
       }
     }
 
+    // Validate phone: if provided, must have at least 7 digits
+    const trimmedPhone = (phone || '').trim()
+    if (trimmedPhone) {
+      const digitsOnly = trimmedPhone.replace(/\D/g, '')
+      if (digitsOnly.length < 7) {
+        return NextResponse.json({ error: 'El teléfono debe tener al menos 7 dígitos' }, { status: 400 })
+      }
+    }
+
+    // Validate email: if provided, must contain @ and .
+    const trimmedEmail = (email || '').trim()
+    if (trimmedEmail) {
+      if (!trimmedEmail.includes('@') || !trimmedEmail.includes('.')) {
+        return NextResponse.json({ error: 'Formato de email inválido' }, { status: 400 })
+      }
+    }
+
+    // Validate address: if provided, min 3 chars
+    const trimmedAddress = (address || '').trim()
+    if (trimmedAddress && trimmedAddress.length < 3) {
+      return NextResponse.json({ error: 'La dirección debe tener al menos 3 caracteres' }, { status: 400 })
+    }
+
     const supplier = await db.supplier.create({
       data: {
-        name: name.trim(),
-        rif: rif?.trim() || null,
-        phone: phone?.trim() || null,
-        email: email?.trim() || null,
-        address: address?.trim() || null,
+        name: trimmedName,
+        rif: trimmedRif || null,
+        phone: trimmedPhone || null,
+        email: trimmedEmail || null,
+        address: trimmedAddress || null,
       },
     })
 

@@ -354,6 +354,8 @@ model AccountPayable {
   dueDate        DateTime?
   status         String    @default("pendiente")
   description    String?
+  invoiceNumber  String?
+  invoiceUrl     String?
   createdAt      DateTime  @default(now())
 
   supplier       Supplier?          @relation(fields: [supplierId], references: [id])

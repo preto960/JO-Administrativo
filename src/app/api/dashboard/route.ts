@@ -41,16 +41,24 @@ export async function GET(request: NextRequest) {
         break
     }
 
-    const now = new Date()
+    // Custom date range overrides period
+    const customFrom = searchParams.get('from')
+    const customTo = searchParams.get('to')
+    let endDate = new Date()
+    if (customFrom) startDate = new Date(customFrom)
+    if (customTo) {
+      endDate = new Date(customTo)
+      endDate.setHours(23, 59, 59, 999)
+    }
 
     // Sales in period
     const salesPeriod = await db.sale.findMany({
-      where: { date: { gte: startDate, lte: now }, status: 'completada', branchId },
+      where: { date: { gte: startDate, lte: endDate }, status: 'completada', branchId },
       include: { lines: { include: { product: { select: { name: true } } } }, payments: true },
     })
 
     // Expenses in period
-    const expensesPeriod = await db.expense.findMany({ where: { date: { gte: startDate, lte: now }, branchId } })
+    const expensesPeriod = await db.expense.findMany({ where: { date: { gte: startDate, lte: endDate }, branchId, deletedAt: null } })
 
     // Adjustments in period (losses)
     const adjustmentsPeriod = await db.inventoryAdjustment.findMany({
@@ -62,7 +70,7 @@ export async function GET(request: NextRequest) {
     const salesToday = await db.sale.findMany({
       where: { date: { gte: today }, status: 'completada', branchId },
     })
-    const expensesToday = await db.expense.findMany({ where: { date: { gte: today }, branchId } })
+    const expensesToday = await db.expense.findMany({ where: { date: { gte: today }, branchId, deletedAt: null } })
 
     // Sales this month (always for KPI)
     const monthStart = new Date(today.getFullYear(), today.getMonth(), 1)
@@ -70,7 +78,7 @@ export async function GET(request: NextRequest) {
       where: { date: { gte: monthStart }, status: 'completada', branchId },
       include: { lines: { include: { product: { select: { name: true } } } } },
     })
-    const expensesMonth = await db.expense.findMany({ where: { date: { gte: monthStart }, branchId } })
+    const expensesMonth = await db.expense.findMany({ where: { date: { gte: monthStart }, branchId, deletedAt: null } })
 
     // Calculate KPIs
     const ingresosHoy = salesToday.reduce((s, sale) => s + sale.total, 0)
@@ -107,9 +115,9 @@ export async function GET(request: NextRequest) {
       .sort((a, b) => b.revenue - a.revenue)
       .slice(0, 5)
 
-    // Last 10 sales
+    // Last 10 sales in period
     const recentSales = await db.sale.findMany({
-      where: { status: 'completada', branchId },
+      where: { date: { gte: startDate, lte: endDate }, status: 'completada', branchId },
       include: {
         client: { select: { name: true } },
         user: { select: { name: true } },
@@ -183,7 +191,7 @@ export async function GET(request: NextRequest) {
         })
         const hourTotal = hourSales.reduce((s, sale) => s + sale.total, 0)
 
-        if (hourTotal > 0 || h <= now.getHours()) {
+        if (hourTotal > 0 || h <= new Date().getHours()) {
           chartData.push({
             date: `${h}:00`,
             total: Math.round(hourTotal * 100) / 100,

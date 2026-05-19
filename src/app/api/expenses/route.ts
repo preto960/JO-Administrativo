@@ -36,15 +36,33 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
+
+    // Server-side validation
+    if (!body.currencyId || typeof body.currencyId !== 'string' || body.currencyId.trim() === '') {
+      return NextResponse.json({ error: 'currencyId es requerido' }, { status: 400 })
+    }
+    if (!body.userId || typeof body.userId !== 'string' || body.userId.trim() === '') {
+      return NextResponse.json({ error: 'userId es requerido' }, { status: 400 })
+    }
+    if (!body.category || typeof body.category !== 'string' || body.category.trim() === '') {
+      return NextResponse.json({ error: 'La categoría es requerida' }, { status: 400 })
+    }
+    if (!body.description || typeof body.description !== 'string' || body.description.trim() === '') {
+      return NextResponse.json({ error: 'La descripción es requerida' }, { status: 400 })
+    }
+    if (typeof body.amount !== 'number' || isNaN(body.amount) || body.amount <= 0) {
+      return NextResponse.json({ error: 'El monto debe ser un número mayor a cero' }, { status: 400 })
+    }
+
     const branchId = body.branchId || await resolveBranchId()
     const expense = await db.expense.create({
       data: {
         branchId,
-        category: body.category,
-        description: body.description,
+        category: body.category.trim(),
+        description: body.description.trim(),
         amount: body.amount,
-        currencyId: body.currencyId,
-        userId: body.userId,
+        currencyId: body.currencyId.trim(),
+        userId: body.userId.trim(),
       },
       include: { currency: true, user: { select: { name: true } } },
     })

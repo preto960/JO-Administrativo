@@ -31,8 +31,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Plus, Search, Users, DollarSign, Loader2, Receipt, Truck, X, Trash2, Printer, FileText, Mail, Pencil, Phone, MapPin, ShoppingCart } from 'lucide-react'
+import { Plus, Search, Users, DollarSign, Loader2, Receipt, Truck, X, Trash2, Printer, FileText, Mail, Pencil, Phone, MapPin, ShoppingCart, Eye, EyeOff, AlertTriangle } from 'lucide-react'
 import { toast } from 'sonner'
 import { useSetting } from '@/stores/use-app-store'
 
@@ -45,6 +46,7 @@ interface Client {
   email: string | null
   address: string | null
   note: string | null
+  deletedAt: string | null
   pendingBalance: number
   _count: { sales: number }
 }
@@ -109,7 +111,7 @@ export function ClientsTable() {
   const [showPaymentDialog, setShowPaymentDialog] = useState(false)
   const [paying, setPaying] = useState(false)
   const [openCashRegId, setOpenCashRegId] = useState<string | null>(null)
-  const baseCurrencyId = useAppStore((s) => s.settings?.baseCurrencyId || '')
+  const baseCurrencyId = useAppStore((s) => s.baseCurrencyId || '')
 
   const exchangeRate = useSetting('exchangeRate')
   const referenceCurrency = useSetting('referenceCurrency')
@@ -127,9 +129,13 @@ export function ClientsTable() {
   const [dispatchLines, setDispatchLines] = useState<DispatchLine[]>([])
   const [savingDispatch, setSavingDispatch] = useState(false)
 
+  // Show deleted clients toggle
+  const [showInactive, setShowInactive] = useState(false)
+
   const fetchClients = async () => {
     try {
-      const data = await api.get<Client[]>('/api/clients')
+      const params = showInactive ? '?includeDeleted=true' : ''
+      const data = await api.get<Client[]>(`/api/clients${params}`)
       setClients(data)
     } catch {
       toast.error('Error al cargar clientes')
@@ -138,7 +144,7 @@ export function ClientsTable() {
     }
   }
 
-  useEffect(() => { fetchClients() }, [])
+  useEffect(() => { fetchClients() }, [showInactive])
 
   // Fetch open cash register
   useEffect(() => {
@@ -149,6 +155,8 @@ export function ClientsTable() {
       })
       .catch(() => {})
   }, [])
+
+  const inactiveCount = clients.filter((c) => c.deletedAt !== null).length
 
   const filtered = clients.filter(
     (c) => !search || c.name.toLowerCase().includes(search.toLowerCase()) || (c.phone && c.phone.includes(search)) || (c.email && c.email.toLowerCase().includes(search.toLowerCase()))
@@ -175,29 +183,59 @@ export function ClientsTable() {
   }
 
   const handleSave = async () => {
-    if (!formName) {
+    // Name validation
+    const trimmedName = formName.trim()
+    if (!trimmedName) {
       toast.error('El nombre es obligatorio')
       return
     }
+    if (trimmedName.length < 2) {
+      toast.error('El nombre debe tener al menos 2 caracteres')
+      return
+    }
+
+    // Phone validation
+    if (formPhone.trim()) {
+      const digitsOnly = formPhone.trim().replace(/[\s\-()]/g, '')
+      if (!/^\+?\d{7,}$/.test(digitsOnly)) {
+        toast.error('El teléfono debe tener al menos 7 dígitos (solo números, se permite +)')
+        return
+      }
+    }
+
+    // Email validation
+    if (formEmail.trim()) {
+      if (!formEmail.trim().includes('@') || !formEmail.trim().includes('.')) {
+        toast.error('El formato del email no es válido')
+        return
+      }
+    }
+
+    // Address validation
+    if (formAddress.trim() && formAddress.trim().length < 3) {
+      toast.error('La dirección debe tener al menos 3 caracteres')
+      return
+    }
+
     setSaving(true)
     try {
       if (editingClient) {
         await api.put('/api/clients', {
           id: editingClient.id,
-          name: formName,
-          phone: formPhone || null,
-          email: formEmail || null,
-          address: formAddress || null,
-          note: formNote || null,
+          name: trimmedName,
+          phone: formPhone.trim() || null,
+          email: formEmail.trim() || null,
+          address: formAddress.trim() || null,
+          note: formNote.trim() || null,
         })
         toast.success('Cliente actualizado')
       } else {
         await api.post('/api/clients', {
-          name: formName,
-          phone: formPhone || null,
-          email: formEmail || null,
-          address: formAddress || null,
-          note: formNote || null,
+          name: trimmedName,
+          phone: formPhone.trim() || null,
+          email: formEmail.trim() || null,
+          address: formAddress.trim() || null,
+          note: formNote.trim() || null,
         })
         toast.success('Cliente creado')
       }
@@ -312,6 +350,14 @@ export function ClientsTable() {
 
   const handlePayment = async () => {
     if (!paymentClient) return
+    if (!user?.id) {
+      toast.error('No se pudo identificar al usuario. Inicie sesión de nuevo.')
+      return
+    }
+    if (!baseCurrencyId) {
+      toast.error('No hay moneda base configurada. Configure la moneda base en ajustes.')
+      return
+    }
     const amt = parseFloat(paymentAmount)
     if (!amt || amt <= 0) {
       toast.error('El monto debe ser mayor a 0')
@@ -321,6 +367,10 @@ export function ClientsTable() {
       toast.error(`El monto no puede ser mayor al saldo pendiente (${currencySymbol}${paymentClient.pendingBalance.toFixed(2)})`)
       return
     }
+    if (paymentMethod === 'efectivo' && !openCashRegId) {
+      toast.error('No hay caja abierta. Abra una caja registradora antes de cobrar en efectivo.')
+      return
+    }
     setPaying(true)
     try {
       await api.post(`/api/clients/${paymentClient.id}/payment`, {
@@ -328,8 +378,8 @@ export function ClientsTable() {
         method: paymentMethod,
         reference: paymentReference || undefined,
         cashRegId: openCashRegId || undefined,
-        userId: user?.id || '',
-        currencyId: baseCurrencyId || undefined,
+        userId: user.id,
+        currencyId: baseCurrencyId,
       })
       const displayLabel = isLocalMethod ? `Bs. ${parseFloat(paymentAmount).toFixed(2)}` : `${currencySymbol}${paymentAmountInRef.toFixed(2)}`
       toast.success(`Cobro de ${displayLabel} registrado exitosamente`)
@@ -418,12 +468,33 @@ export function ClientsTable() {
     }
   }
 
+  const handleReactivate = async (client: Client) => {
+    try {
+      await api.put('/api/clients', { id: client.id, reactivate: true })
+      toast.success(`Cliente "${client.name}" reactivado`)
+      fetchClients()
+    } catch {
+      toast.error('Error al reactivar cliente')
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input placeholder="Buscar cliente..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" />
+        </div>
+        <div className="flex items-center gap-2 text-sm">
+          <Switch
+            id="show-inactive-clients"
+            checked={showInactive}
+            onCheckedChange={setShowInactive}
+          />
+          <Label htmlFor="show-inactive-clients" className="cursor-pointer select-none">
+            {showInactive ? <Eye className="inline h-4 w-4 mr-1" /> : <EyeOff className="inline h-4 w-4 mr-1" />}
+            Inactivos ({inactiveCount})
+          </Label>
         </div>
         <Button onClick={openCreate} className="bg-primary hover:bg-primary/90 text-white">
           <Plus className="mr-2 h-4 w-4" /> Nuevo Cliente
@@ -444,22 +515,29 @@ export function ClientsTable() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map((client) => (
-            <Card key={client.id} className="relative overflow-hidden hover:shadow-md transition-shadow">
+            <Card key={client.id} className={`relative overflow-hidden hover:shadow-md transition-shadow ${client.deletedAt ? 'opacity-60' : ''}`}>
               <div className={`h-1 ${client.pendingBalance > 0 ? 'bg-red-500' : 'bg-green-500'}`} />
               <CardContent className="p-4 space-y-3">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
                     <h3 className="font-semibold text-sm truncate">{client.name}</h3>
                   </div>
-                  <span className={`shrink-0 text-xs font-bold px-2 py-0.5 rounded-full ${client.pendingBalance > 0
-                    ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400'
-                    : 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400'
-                  }`}>
-                    {client.pendingBalance > 0
-                      ? `${currencySymbol}${client.pendingBalance.toFixed(2)}`
-                      : 'Sin deuda'
-                    }
-                  </span>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {client.deletedAt && (
+                      <Badge variant="outline" className="text-muted-foreground text-[10px] px-1.5 py-0">
+                        Deshabilitado
+                      </Badge>
+                    )}
+                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${client.pendingBalance > 0
+                      ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400'
+                      : 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400'
+                    }`}>
+                      {client.pendingBalance > 0
+                        ? `${currencySymbol}${client.pendingBalance.toFixed(2)}`
+                        : 'Sin deuda'
+                      }
+                    </span>
+                  </div>
                 </div>
 
                 <div className="space-y-1 text-xs text-muted-foreground">
@@ -496,44 +574,56 @@ export function ClientsTable() {
                 </div>
 
                 <div className="flex items-center gap-1 pt-2 border-t">
-                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Ver Historial" onClick={() => openHistory(client)}>
-                    <Receipt className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Estado de Cuenta (PDF)" onClick={() => handleDownloadStatement(client)}>
-                    <FileText className="h-3.5 w-3.5" />
-                  </Button>
-                  {client.email && (
-                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Enviar por Email" onClick={() => handleSendStatement(client)} disabled={sendingStatement === client.id}>
-                      {sendingStatement === client.id
-                        ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        : <Mail className="h-3.5 w-3.5" />
-                      }
-                    </Button>
+                  {!client.deletedAt && (
+                    <>
+                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Ver Historial" onClick={() => openHistory(client)}>
+                        <Receipt className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Estado de Cuenta (PDF)" onClick={() => handleDownloadStatement(client)}>
+                        <FileText className="h-3.5 w-3.5" />
+                      </Button>
+                      {client.email && (
+                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Enviar por Email" onClick={() => handleSendStatement(client)} disabled={sendingStatement === client.id}>
+                          {sendingStatement === client.id
+                            ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            : <Mail className="h-3.5 w-3.5" />
+                          }
+                        </Button>
+                      )}
+                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Despachar" onClick={() => openDispatch(client)}>
+                        <Truck className="h-3.5 w-3.5" />
+                      </Button>
+                      {client.pendingBalance > 0 && (
+                        <Button size="sm" variant="outline" className="h-7 text-xs text-primary hover:text-primary" onClick={() => openPayment(client)}>
+                          <DollarSign className="mr-1 h-3 w-3" /> Cobrar
+                        </Button>
+                      )}
+                      <div className="flex-1" />
+                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Editar" onClick={() => openEdit(client)}>
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-400 hover:text-red-600" title="Eliminar" onClick={async () => {
+                        if (!confirm(`¿Estás seguro de eliminar el cliente "${client.name}"?`)) return
+                        try {
+                          await api.del(`/api/clients?id=${client.id}`)
+                          toast.success('Cliente eliminado')
+                          fetchClients()
+                        } catch {
+                          toast.error('Error al eliminar cliente')
+                        }
+                      }}>
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </>
                   )}
-                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Despachar" onClick={() => openDispatch(client)}>
-                    <Truck className="h-3.5 w-3.5" />
-                  </Button>
-                  {client.pendingBalance > 0 && (
-                    <Button size="sm" variant="outline" className="h-7 text-xs text-primary hover:text-primary" onClick={() => openPayment(client)}>
-                      <DollarSign className="mr-1 h-3 w-3" /> Cobrar
-                    </Button>
+                  {client.deletedAt && (
+                    <>
+                      <div className="flex-1" />
+                      <Button size="sm" variant="outline" className="h-7 text-xs" title="Reactivar cliente" onClick={() => handleReactivate(client)}>
+                        <Eye className="mr-1 h-3 w-3" /> Reactivar
+                      </Button>
+                    </>
                   )}
-                  <div className="flex-1" />
-                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Editar" onClick={() => openEdit(client)}>
-                    <Pencil className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-400 hover:text-red-600" title="Eliminar" onClick={async () => {
-                    if (!confirm(`¿Estás seguro de eliminar el cliente "${client.name}"?`)) return
-                    try {
-                      await api.del(`/api/clients?id=${client.id}`)
-                      toast.success('Cliente eliminado')
-                      fetchClients()
-                    } catch {
-                      toast.error('Error al eliminar cliente')
-                    }
-                  }}>
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
                 </div>
               </CardContent>
             </Card>
@@ -727,10 +817,11 @@ export function ClientsTable() {
                       <Table>
                         <TableHeader>
                           <TableRow>
+                            <TableHead>N° Factura</TableHead>
                             <TableHead>Fecha</TableHead>
-                            <TableHead>Productos</TableHead>
+                            <TableHead className="hidden md:table-cell">Productos</TableHead>
                             <TableHead className="text-right">Total</TableHead>
-                            <TableHead>Método</TableHead>
+                            <TableHead className="hidden lg:table-cell">Método</TableHead>
                             <TableHead>Estado</TableHead>
                             <TableHead className="w-10"></TableHead>
                           </TableRow>
@@ -740,10 +831,13 @@ export function ClientsTable() {
                             const isCredit = sale.payments.some(p => p.method === 'credito') || sale.receivables.some(r => r.status === 'pendiente')
                             return (
                               <TableRow key={sale.id}>
+                                <TableCell className="text-xs font-mono whitespace-nowrap">
+                                  {sale.id.slice(0, 8)}
+                                </TableCell>
                                 <TableCell className="text-xs whitespace-nowrap pr-4">
                                   {new Date(sale.date).toLocaleDateString('es-VE')}
                                 </TableCell>
-                                <TableCell className="text-xs max-w-[150px]">
+                                <TableCell className="text-xs max-w-[150px] hidden md:table-cell">
                                   <div className="truncate">
                                     {sale.lines.map(l => l.product.name).join(', ')}
                                   </div>
@@ -751,7 +845,7 @@ export function ClientsTable() {
                                 <TableCell className="text-sm font-medium text-right whitespace-nowrap">
                                   ${sale.total.toFixed(2)}
                                 </TableCell>
-                                <TableCell className="text-xs">
+                                <TableCell className="text-xs hidden lg:table-cell">
                                   {sale.payments.map(p => p.method).join(', ') || '—'}
                                 </TableCell>
                                 <TableCell>
@@ -871,8 +965,12 @@ export function ClientsTable() {
               </div>
             )}
             {paymentMethod === 'efectivo' && !openCashRegId && (
-              <div className="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-2 text-xs text-amber-700 dark:text-amber-400">
-                No hay caja abierta. El cobro no se registrará como entrada de caja.
+              <div className="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-3 text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2">
+                <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-semibold">No hay caja registradora abierta</p>
+                  <p>Debe abrir una caja antes de registrar pagos en efectivo. El cobro no quedará registrado como entrada de caja.</p>
+                </div>
               </div>
             )}
             <Button

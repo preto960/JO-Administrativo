@@ -1,12 +1,12 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { api } from '@/lib/api'
 import { useAppStore } from '@/stores/use-app-store'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { TrendingUp, TrendingDown, DollarSign, ShoppingCart, Target, PiggyBank, Package, Users, Receipt, Filter } from 'lucide-react'
+import { TrendingUp, TrendingDown, DollarSign, ShoppingCart, Target, PiggyBank, Package, Users, Receipt, Filter, CalendarDays } from 'lucide-react'
 import {
   AreaChart,
   Area,
@@ -45,13 +45,14 @@ interface DashboardData {
   period: string
 }
 
-type PeriodOption = 'today' | 'week' | 'month' | 'year'
+type PeriodOption = 'today' | 'week' | 'month' | 'year' | 'custom'
 
 const periodOptions: { value: PeriodOption; label: string }[] = [
   { value: 'today', label: 'Hoy' },
   { value: 'week', label: 'Semana' },
   { value: 'month', label: 'Mes' },
   { value: 'year', label: 'Año' },
+  { value: 'custom', label: 'Personalizado' },
 ]
 
 function KpiCard({
@@ -103,19 +104,41 @@ export function FinancialDashboard() {
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
   const [period, setPeriod] = useState<PeriodOption>('month')
+  const [customFrom, setCustomFrom] = useState('')
+  const [customTo, setCustomTo] = useState('')
+
+  // Validate custom date range (derived value, no setState)
+  const { dateError, isCustomValid } = useMemo(() => {
+    if (!customFrom || !customTo) return { dateError: '', isCustomValid: false }
+    const from = new Date(customFrom)
+    const to = new Date(customTo)
+    if (from > to) {
+      return { dateError: 'La fecha "Desde" no puede ser posterior a "Hasta"', isCustomValid: false }
+    }
+    const diffMs = to.getTime() - from.getTime()
+    const diffDays = diffMs / (1000 * 60 * 60 * 24)
+    if (diffDays > 365) {
+      return { dateError: 'El rango no puede superar 1 año', isCustomValid: false }
+    }
+    return { dateError: '', isCustomValid: true }
+  }, [customFrom, customTo])
 
   useEffect(() => {
+    // Don't fetch if custom period is selected but dates are invalid/empty
+    if (period === 'custom' && !isCustomValid) return
+
     setLoading(true)
-    const branchParam = selectedBranchId ? `?branchId=${selectedBranchId}` : '?'
-    const periodParam = `period=${period}`
-    const query = selectedBranchId
-      ? `?branchId=${selectedBranchId}&period=${period}`
-      : `?period=${period}`
+    const params = new URLSearchParams()
+    if (selectedBranchId) params.set('branchId', selectedBranchId)
+    params.set('period', period)
+    if (period === 'custom' && customFrom) params.set('from', customFrom)
+    if (period === 'custom' && customTo) params.set('to', customTo)
+    const query = `?${params.toString()}`
     api.get<DashboardData>(`/api/dashboard${query}`)
       .then(setData)
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [selectedBranchId, period])
+  }, [selectedBranchId, period, customFrom, customTo, isCustomValid])
 
   const totalProducts = data?.topProducts.length || 0
   const totalClients = new Set(data?.recentSales.map(s => s.client?.name).filter(Boolean)).size || 0
@@ -135,20 +158,53 @@ export function FinancialDashboard() {
   return (
     <div className="space-y-6">
       {/* Period Filter */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <Filter className="h-4 w-4 text-muted-foreground" />
-        <span className="text-sm text-muted-foreground">Filtrar:</span>
-        {periodOptions.map((opt) => (
-          <Button
-            key={opt.value}
-            size="sm"
-            variant={period === opt.value ? 'default' : 'outline'}
-            className={period === opt.value ? 'bg-primary hover:bg-primary/90 text-white' : ''}
-            onClick={() => setPeriod(opt.value)}
-          >
-            {opt.label}
-          </Button>
-        ))}
+      <div className="space-y-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Filter className="h-4 w-4 text-muted-foreground" />
+          <span className="text-sm text-muted-foreground">Filtrar:</span>
+          {periodOptions.map((opt) => (
+            <Button
+              key={opt.value}
+              size="sm"
+              variant={period === opt.value ? 'default' : 'outline'}
+              className={period === opt.value ? 'bg-primary hover:bg-primary/90 text-white' : ''}
+              onClick={() => setPeriod(opt.value)}
+            >
+              {opt.label}
+            </Button>
+          ))}
+        </div>
+
+        {/* Custom Date Range Picker */}
+        {period === 'custom' && (
+          <div className="flex items-center gap-3 flex-wrap rounded-lg border bg-muted/30 p-3">
+            <CalendarDays className="h-4 w-4 text-muted-foreground shrink-0" />
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-muted-foreground">Desde</label>
+              <input
+                type="date"
+                value={customFrom}
+                onChange={(e) => setCustomFrom(e.target.value)}
+                className="rounded-md border bg-background px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                max={customTo || undefined}
+              />
+            </div>
+            <span className="text-muted-foreground">—</span>
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-muted-foreground">Hasta</label>
+              <input
+                type="date"
+                value={customTo}
+                onChange={(e) => setCustomTo(e.target.value)}
+                className="rounded-md border bg-background px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                min={customFrom || undefined}
+              />
+            </div>
+            {dateError && (
+              <p className="text-xs text-red-500">{dateError}</p>
+            )}
+          </div>
+        )}
       </div>
 
       {/* KPI Cards - Row 1 */}

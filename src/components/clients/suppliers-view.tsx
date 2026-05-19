@@ -1,7 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { api } from '@/lib/api'
+import { useAuth } from '@/hooks/use-auth'
+import { useAppStore, useSetting } from '@/stores/use-app-store'
 import {
   Table,
   TableBody,
@@ -22,8 +24,17 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog'
-import { Building2, Plus, Loader2, Eye, Pencil, DollarSign, CalendarDays, FileText, Trash2, Search, Phone, Mail, MapPin, UserCircle } from 'lucide-react'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { Building2, Plus, Loader2, Eye, Pencil, DollarSign, CalendarDays, FileText, Trash2, Search, Phone, Mail, MapPin, UserCircle, Upload, ExternalLink } from 'lucide-react'
 import { toast } from 'sonner'
+
+const RIF_REGEX = /^[JVEG]-\d{8,9}-\d$/
 
 interface Supplier {
   id: string
@@ -44,6 +55,8 @@ interface PayableRecord {
   dueDate: string | null
   description: string | null
   createdAt: string
+  invoiceNumber: string | null
+  invoiceUrl: string | null
   purchase: {
     id: string
     date: string
@@ -54,6 +67,13 @@ interface PayableRecord {
 }
 
 export function SuppliersView() {
+  const { user } = useAuth()
+  const baseCurrencyId = useAppStore((s) => s.settings?.baseCurrencyId || '')
+  const exchangeRate = useSetting('exchangeRate')
+  const referenceCurrency = useSetting('referenceCurrency')
+  const currencySymbol = referenceCurrency === 'EUR' ? '€' : '$'
+  const localCurrencyMethods = ['efectivo', 'pago_movil', 'tarjeta', 'transferencia']
+
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
@@ -75,13 +95,17 @@ export function SuppliersView() {
   const [showEditDialog, setShowEditDialog] = useState(false)
   const [editing, setEditing] = useState(false)
 
-  // Add Payable dialog state
+  // Add Payable (Pedido) dialog state
   const [payableSupplier, setPayableSupplier] = useState<Supplier | null>(null)
   const [showPayableDialog, setShowPayableDialog] = useState(false)
   const [payableAmount, setPayableAmount] = useState('')
   const [payableDescription, setPayableDescription] = useState('')
   const [payableDueDate, setPayableDueDate] = useState('')
+  const [payableInvoiceNumber, setPayableInvoiceNumber] = useState('')
+  const [payableInvoiceUrl, setPayableInvoiceUrl] = useState('')
+  const [uploadingInvoice, setUploadingInvoice] = useState(false)
   const [savingPayable, setSavingPayable] = useState(false)
+  const invoiceFileRef = useRef<HTMLInputElement>(null)
 
   // Debt/Payables dialog state
   const [debtSupplier, setDebtSupplier] = useState<Supplier | null>(null)
@@ -89,6 +113,15 @@ export function SuppliersView() {
   const [totalDebt, setTotalDebt] = useState(0)
   const [loadingDebt, setLoadingDebt] = useState(false)
   const [showDebtDialog, setShowDebtDialog] = useState(false)
+
+  // Payment dialog state
+  const [paymentSupplier, setPaymentSupplier] = useState<Supplier | null>(null)
+  const [showPaymentDialog, setShowPaymentDialog] = useState(false)
+  const [paymentAmount, setPaymentAmount] = useState('')
+  const [paymentMethod, setPaymentMethod] = useState('efectivo')
+  const [paymentReference, setPaymentReference] = useState('')
+  const [savingPayment, setSavingPayment] = useState(false)
+  const [openCashRegId, setOpenCashRegId] = useState<string | null>(null)
 
   const fetchSuppliers = async () => {
     setLoading(true)
@@ -104,6 +137,16 @@ export function SuppliersView() {
 
   useEffect(() => { fetchSuppliers() }, [])
 
+  // Fetch open cash register
+  useEffect(() => {
+    api.get<Array<{ id: string; status: string }>>('/api/cash-register')
+      .then(regs => {
+        const openReg = regs?.find(r => r.status === 'abierta')
+        if (openReg) setOpenCashRegId(openReg.id)
+      })
+      .catch(() => {})
+  }, [])
+
   const filtered = suppliers.filter(
     (s) =>
       !search ||
@@ -112,6 +155,48 @@ export function SuppliersView() {
       (s.phone && s.phone.includes(search)) ||
       (s.email && s.email.toLowerCase().includes(search.toLowerCase()))
   )
+
+  // --- Field Validation Helpers ---
+  const validateSupplierFields = (
+    fieldName: string,
+    fieldValue: string
+  ): string | null => {
+    switch (fieldName) {
+      case 'name': {
+        const trimmed = fieldValue.trim()
+        if (!trimmed) return 'El nombre del proveedor es obligatorio'
+        if (trimmed.length < 2) return 'El nombre debe tener al menos 2 caracteres'
+        return null
+      }
+      case 'rif': {
+        const trimmed = fieldValue.trim()
+        if (!trimmed) return null // optional
+        if (!RIF_REGEX.test(trimmed)) return 'Formato de RIF inválido. Ejemplo: J-00000000-0'
+        return null
+      }
+      case 'phone': {
+        const trimmed = fieldValue.trim()
+        if (!trimmed) return null // optional
+        const digitsOnly = trimmed.replace(/\D/g, '')
+        if (digitsOnly.length < 7) return 'El teléfono debe tener al menos 7 dígitos'
+        return null
+      }
+      case 'email': {
+        const trimmed = fieldValue.trim()
+        if (!trimmed) return null // optional
+        if (!trimmed.includes('@') || !trimmed.includes('.')) return 'Formato de email inválido'
+        return null
+      }
+      case 'address': {
+        const trimmed = fieldValue.trim()
+        if (!trimmed) return null // optional
+        if (trimmed.length < 3) return 'La dirección debe tener al menos 3 caracteres'
+        return null
+      }
+      default:
+        return null
+    }
+  }
 
   const openCreateDialog = () => {
     setName('')
@@ -135,6 +220,8 @@ export function SuppliersView() {
   const openPayableDialog = (supplier: Supplier) => {
     setPayableSupplier(supplier)
     setPayableAmount('')
+    setPayableInvoiceNumber('')
+    setPayableInvoiceUrl('')
     setPayableDescription('')
     setPayableDueDate('')
     setShowPayableDialog(true)
@@ -155,11 +242,40 @@ export function SuppliersView() {
     }
   }
 
+  const openPaymentDialog = (supplier: Supplier) => {
+    setPaymentSupplier(supplier)
+    setPaymentMethod('efectivo')
+    setPaymentReference('')
+    setPaymentAmount(supplier.balance.toFixed(2))
+    setShowPaymentDialog(true)
+  }
+
+  const handlePaymentMethodChange = (method: string) => {
+    setPaymentMethod(method)
+    setPaymentReference('')
+  }
+
   const handleSave = async () => {
-    if (!name.trim()) {
-      toast.error('El nombre del proveedor es obligatorio')
-      return
-    }
+    // Validate name
+    const nameErr = validateSupplierFields('name', name)
+    if (nameErr) { toast.error(nameErr); return }
+
+    // Validate RIF
+    const rifErr = validateSupplierFields('rif', rif)
+    if (rifErr) { toast.error(rifErr); return }
+
+    // Validate phone
+    const phoneErr = validateSupplierFields('phone', phone)
+    if (phoneErr) { toast.error(phoneErr); return }
+
+    // Validate email
+    const emailErr = validateSupplierFields('email', email)
+    if (emailErr) { toast.error(emailErr); return }
+
+    // Validate address
+    const addrErr = validateSupplierFields('address', address)
+    if (addrErr) { toast.error(addrErr); return }
+
     setSaving(true)
     try {
       await api.post('/api/suppliers', {
@@ -181,10 +297,28 @@ export function SuppliersView() {
   }
 
   const handleEditSave = async () => {
-    if (!editingSupplier || !editName.trim()) {
-      toast.error('El nombre del proveedor es obligatorio')
-      return
-    }
+    if (!editingSupplier) return
+
+    // Validate name
+    const nameErr = validateSupplierFields('name', editName)
+    if (nameErr) { toast.error(nameErr); return }
+
+    // Validate RIF
+    const rifErr = validateSupplierFields('rif', editRif)
+    if (rifErr) { toast.error(rifErr); return }
+
+    // Validate phone
+    const phoneErr = validateSupplierFields('phone', editPhone)
+    if (phoneErr) { toast.error(phoneErr); return }
+
+    // Validate email
+    const emailErr = validateSupplierFields('email', editEmail)
+    if (emailErr) { toast.error(emailErr); return }
+
+    // Validate address
+    const addrErr = validateSupplierFields('address', editAddress)
+    if (addrErr) { toast.error(addrErr); return }
+
     setEditing(true)
     try {
       await api.put(`/api/suppliers/${editingSupplier.id}`, {
@@ -205,11 +339,42 @@ export function SuppliersView() {
     }
   }
 
+  const handleUploadInvoice = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('La factura no debe superar 5MB')
+      return
+    }
+    setUploadingInvoice(true)
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('folder', 'facturas-proveedores')
+    try {
+      const res = await fetch('/api/upload', { method: 'POST', body: formData })
+      const data = await res.json()
+      if (data.url) {
+        setPayableInvoiceUrl(data.url)
+      } else {
+        toast.error(data.error || 'Error al subir factura')
+      }
+    } catch {
+      toast.error('Error al subir factura')
+    } finally {
+      setUploadingInvoice(false)
+      e.target.value = ''
+    }
+  }
+
   const handleCreatePayable = async () => {
     if (!payableSupplier) return
     const amt = parseFloat(payableAmount)
     if (!amt || amt <= 0) {
       toast.error('El monto debe ser mayor a 0')
+      return
+    }
+    if (!payableInvoiceNumber.trim()) {
+      toast.error('El número de factura es obligatorio')
       return
     }
     setSavingPayable(true)
@@ -218,15 +383,58 @@ export function SuppliersView() {
         amount: amt,
         description: payableDescription.trim() || null,
         dueDate: payableDueDate || null,
+        invoiceNumber: payableInvoiceNumber.trim(),
+        invoiceUrl: payableInvoiceUrl || null,
       })
-      toast.success(`Cuenta por pagar de $${amt.toFixed(2)} registrada`)
+      toast.success(`Pedido por $${amt.toFixed(2)} registrado`)
       setShowPayableDialog(false)
       fetchSuppliers()
     } catch (error) {
-      const msg = error instanceof Error ? error.message : 'Error al crear cuenta por pagar'
+      const msg = error instanceof Error ? error.message : 'Error al crear pedido'
       toast.error(msg)
     } finally {
       setSavingPayable(false)
+    }
+  }
+
+  const handlePayment = async () => {
+    if (!paymentSupplier) return
+    const amt = parseFloat(paymentAmount)
+    if (!amt || amt <= 0) {
+      toast.error('El monto debe ser mayor a 0')
+      return
+    }
+    if (amt > paymentSupplier.balance) {
+      toast.error(`El monto no puede ser mayor al balance ($${paymentSupplier.balance.toFixed(2)})`)
+      return
+    }
+    const requiresRef = ['pago_movil', 'tarjeta', 'transferencia'].includes(paymentMethod)
+    if (requiresRef && !paymentReference.trim()) {
+      toast.error('La referencia es obligatoria para este método de pago')
+      return
+    }
+    setSavingPayment(true)
+    try {
+      await api.post(`/api/suppliers/${paymentSupplier.id}/payment`, {
+        amount: amt,
+        method: paymentMethod,
+        reference: paymentReference || undefined,
+        cashRegId: openCashRegId || undefined,
+        userId: user?.id || '',
+        currencyId: baseCurrencyId || undefined,
+      })
+      toast.success(`Pago de $${amt.toFixed(2)} registrado exitosamente`)
+      setShowPaymentDialog(false)
+      fetchSuppliers()
+      // Refresh debt dialog if open
+      if (debtSupplier && debtSupplier.id === paymentSupplier.id) {
+        openDebtDialog(paymentSupplier)
+      }
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Error al registrar pago'
+      toast.error(msg)
+    } finally {
+      setSavingPayment(false)
     }
   }
 
@@ -352,8 +560,8 @@ export function SuppliersView() {
                     <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Ver Deudas" onClick={() => openDebtDialog(supplier)}>
                       <DollarSign className="h-3.5 w-3.5" />
                     </Button>
-                    <Button size="sm" variant="outline" className="h-7 text-xs text-primary hover:text-primary" title="Agregar Deuda" onClick={() => openPayableDialog(supplier)}>
-                      <Plus className="mr-1 h-3 w-3" /> Deuda
+                    <Button size="sm" variant="outline" className="h-7 text-xs text-primary hover:text-primary" title="Agregar Pedido" onClick={() => openPayableDialog(supplier)}>
+                      <Plus className="mr-1 h-3 w-3" /> Pedido
                     </Button>
                     <div className="flex-1" />
                     <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Editar" onClick={() => openEditDialog(supplier)}>
@@ -395,6 +603,7 @@ export function SuppliersView() {
               <div className="space-y-2">
                 <Label>RIF</Label>
                 <Input value={rif} onChange={(e) => setRif(e.target.value)} placeholder="J-00000000-0" />
+                <p className="text-xs text-muted-foreground">Formato: J-00000000-0</p>
               </div>
               <div className="space-y-2">
                 <Label>Teléfono</Label>
@@ -433,6 +642,7 @@ export function SuppliersView() {
               <div className="space-y-2">
                 <Label>RIF</Label>
                 <Input value={editRif} onChange={(e) => setEditRif(e.target.value)} placeholder="J-00000000-0" />
+                <p className="text-xs text-muted-foreground">Formato: J-00000000-0</p>
               </div>
               <div className="space-y-2">
                 <Label>Teléfono</Label>
@@ -455,12 +665,12 @@ export function SuppliersView() {
         </DialogContent>
       </Dialog>
 
-      {/* Add Payable Dialog */}
+      {/* Add Payable (Pedido) Dialog */}
       <Dialog open={showPayableDialog} onOpenChange={setShowPayableDialog}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Agregar Deuda a {payableSupplier?.name}</DialogTitle>
-            <DialogDescription>Registra una cuenta por pagar a este proveedor</DialogDescription>
+            <DialogTitle>Agregar Pedido a {payableSupplier?.name}</DialogTitle>
+            <DialogDescription>Registra un pedido / cuenta por pagar a este proveedor</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             {payableSupplier && (
@@ -471,6 +681,59 @@ export function SuppliersView() {
                 </div>
               </div>
             )}
+
+            {/* Invoice Number */}
+            <div className="space-y-2">
+              <Label htmlFor="pinvoice">Nº de Factura *</Label>
+              <Input
+                id="pinvoice"
+                value={payableInvoiceNumber}
+                onChange={(e) => setPayableInvoiceNumber(e.target.value)}
+                placeholder="Ej: 001-0001234"
+              />
+            </div>
+
+            {/* Invoice File Upload */}
+            <div className="space-y-2">
+              <Label>Factura (Archivo)</Label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="file"
+                  accept=".pdf,.jpg,.jpeg,.png"
+                  ref={invoiceFileRef}
+                  onChange={handleUploadInvoice}
+                  className="hidden"
+                  id="invoice-file-upload"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={uploadingInvoice}
+                  onClick={() => invoiceFileRef.current?.click()}
+                >
+                  {uploadingInvoice ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Upload className="mr-2 h-4 w-4" />
+                  )}
+                  {uploadingInvoice ? 'Subiendo...' : 'Subir Factura'}
+                </Button>
+                {payableInvoiceUrl && (
+                  <a
+                    href={payableInvoiceUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-primary hover:underline flex items-center gap-1"
+                  >
+                    <ExternalLink className="h-3 w-3" />
+                    Ver factura
+                  </a>
+                )}
+              </div>
+            </div>
+
+            {/* Amount */}
             <div className="space-y-2">
               <Label htmlFor="pamount">Monto a Deber *</Label>
               <Input
@@ -483,6 +746,8 @@ export function SuppliersView() {
                 placeholder="0.00"
               />
             </div>
+
+            {/* Description */}
             <div className="space-y-2">
               <Label htmlFor="pdesc">Descripción / Productos</Label>
               <Input
@@ -492,6 +757,8 @@ export function SuppliersView() {
                 placeholder="Ej: 10 cajas de cerveza Polar, 5 bolsas de harina PAN..."
               />
             </div>
+
+            {/* Due Date */}
             <div className="space-y-2">
               <Label htmlFor="pduedate">Plazo de Pago</Label>
               <Input
@@ -502,13 +769,14 @@ export function SuppliersView() {
               />
               <p className="text-xs text-muted-foreground">Fecha límite para realizar el pago</p>
             </div>
+
             <Button
               className="w-full bg-primary hover:bg-primary/90 text-white"
               onClick={handleCreatePayable}
-              disabled={savingPayable || !parseFloat(payableAmount) || parseFloat(payableAmount) <= 0}
+              disabled={savingPayable || !parseFloat(payableAmount) || parseFloat(payableAmount) <= 0 || !payableInvoiceNumber.trim()}
             >
               {savingPayable ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
-              {savingPayable ? 'Registrando...' : 'Registrar Deuda'}
+              {savingPayable ? 'Registrando...' : 'Registrar Pedido'}
             </Button>
           </div>
         </DialogContent>
@@ -543,6 +811,18 @@ export function SuppliersView() {
                 </Card>
               </div>
 
+              {/* Abonar Button */}
+              {totalDebt > 0 && debtSupplier && (
+                <Button
+                  variant="outline"
+                  className="w-full border-green-300 text-green-700 hover:bg-green-50 hover:text-green-800"
+                  onClick={() => openPaymentDialog(debtSupplier)}
+                >
+                  <DollarSign className="mr-2 h-4 w-4" />
+                  Abonar a {debtSupplier.name}
+                </Button>
+              )}
+
               {/* Payables Table */}
               <Card>
                 <CardHeader className="pb-2">
@@ -557,6 +837,7 @@ export function SuppliersView() {
                         <TableHeader>
                           <TableRow>
                             <TableHead>Fecha</TableHead>
+                            <TableHead>Nº Factura</TableHead>
                             <TableHead>Descripción</TableHead>
                             <TableHead>Total</TableHead>
                             <TableHead>Pendiente</TableHead>
@@ -569,6 +850,26 @@ export function SuppliersView() {
                             <TableRow key={p.id}>
                               <TableCell className="text-xs">
                                 {new Date(p.createdAt).toLocaleDateString('es-VE')}
+                              </TableCell>
+                              <TableCell className="text-xs">
+                                {p.invoiceNumber ? (
+                                  <div className="flex items-center gap-1">
+                                    <span className="font-mono">{p.invoiceNumber}</span>
+                                    {p.invoiceUrl && (
+                                      <a
+                                        href={p.invoiceUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-primary hover:underline"
+                                        title="Ver factura"
+                                      >
+                                        <FileText className="h-3 w-3" />
+                                      </a>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <span className="text-muted-foreground">—</span>
+                                )}
                               </TableCell>
                               <TableCell className="text-xs max-w-[150px] truncate">
                                 {p.description || p.purchase?.lines?.map(l => l.product.name).join(', ') || '—'}
@@ -607,6 +908,90 @@ export function SuppliersView() {
               </Card>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Payment Dialog */}
+      <Dialog open={showPaymentDialog} onOpenChange={setShowPaymentDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Pagar a {paymentSupplier?.name}</DialogTitle>
+            <DialogDescription>Registrar un pago al proveedor</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {paymentSupplier && (
+              <div className="rounded-md bg-muted p-3 space-y-1 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Deuda total:</span>
+                  <span className="font-medium text-red-600">${paymentSupplier.balance.toFixed(2)}</span>
+                </div>
+              </div>
+            )}
+
+            {/* Payment Method */}
+            <div className="space-y-2">
+              <Label>Método de Pago</Label>
+              <Select value={paymentMethod} onValueChange={handlePaymentMethodChange}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="efectivo">Efectivo</SelectItem>
+                  <SelectItem value="transferencia">Transferencia</SelectItem>
+                  <SelectItem value="pago_movil">Pago Móvil</SelectItem>
+                  <SelectItem value="tarjeta">Tarjeta</SelectItem>
+                  <SelectItem value="divisas">Divisas ({currencySymbol})</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Amount */}
+            <div className="space-y-2">
+              <Label htmlFor="spaymentAmt">Monto a Pagar</Label>
+              <Input
+                id="spaymentAmt"
+                type="number"
+                step="0.01"
+                min="0"
+                value={paymentAmount}
+                onChange={(e) => setPaymentAmount(e.target.value)}
+                placeholder="0.00"
+              />
+              {paymentSupplier && (
+                <p className="text-xs text-muted-foreground">
+                  Saldo después del pago: ${((paymentSupplier.balance || 0) - (parseFloat(paymentAmount) || 0)).toFixed(2)}
+                </p>
+              )}
+            </div>
+
+            {/* Reference (required for certain methods) */}
+            {(paymentMethod === 'pago_movil' || paymentMethod === 'tarjeta' || paymentMethod === 'transferencia') && (
+              <div className="space-y-2">
+                <Label>Referencia *</Label>
+                <Input
+                  value={paymentReference}
+                  onChange={(e) => setPaymentReference(e.target.value)}
+                  placeholder="Número de referencia"
+                />
+              </div>
+            )}
+
+            {/* Cash register warning */}
+            {paymentMethod === 'efectivo' && !openCashRegId && (
+              <div className="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-2 text-xs text-amber-700 dark:text-amber-400">
+                No hay caja abierta. El pago no se registrará como salida de caja.
+              </div>
+            )}
+
+            <Button
+              className="w-full bg-primary hover:bg-primary/90 text-white"
+              onClick={handlePayment}
+              disabled={savingPayment || !parseFloat(paymentAmount) || parseFloat(paymentAmount) <= 0}
+            >
+              {savingPayment ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <DollarSign className="mr-2 h-4 w-4" />}
+              {savingPayment ? 'Procesando...' : 'Registrar Pago'}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

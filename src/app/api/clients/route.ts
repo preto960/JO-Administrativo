@@ -1,12 +1,25 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 
+function isValidEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+}
+
+function isValidPhone(phone: string): boolean {
+  // Allow optional + prefix, then at least 7 digits
+  return /^\+?\d{7,}$/.test(phone.replace(/[\s\-()]/g, ''))
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const search = searchParams.get('search') || ''
+    const includeDeleted = searchParams.get('includeDeleted') === 'true'
 
-    const where: Record<string, unknown> = { deletedAt: null }
+    const where: Record<string, unknown> = {}
+    if (!includeDeleted) {
+      where.deletedAt = null
+    }
     if (search) {
       where.OR = [
         { name: { contains: search } },
@@ -45,13 +58,39 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
+
+    const name = (body.name || '').trim()
+    if (!name) {
+      return NextResponse.json({ error: 'El nombre es obligatorio' }, { status: 400 })
+    }
+    if (name.length < 2) {
+      return NextResponse.json({ error: 'El nombre debe tener al menos 2 caracteres' }, { status: 400 })
+    }
+
+    const phone = body.phone ? body.phone.trim() : null
+    if (phone && !isValidPhone(phone)) {
+      return NextResponse.json({ error: 'El teléfono debe tener al menos 7 dígitos' }, { status: 400 })
+    }
+
+    const email = body.email ? body.email.trim() : null
+    if (email && !isValidEmail(email)) {
+      return NextResponse.json({ error: 'El formato del email no es válido' }, { status: 400 })
+    }
+
+    const address = body.address ? body.address.trim() : null
+    if (address && address.length < 3) {
+      return NextResponse.json({ error: 'La dirección debe tener al menos 3 caracteres' }, { status: 400 })
+    }
+
+    const note = body.note ? body.note.trim() : null
+
     const client = await db.client.create({
       data: {
-        name: body.name,
-        phone: body.phone || null,
-        email: body.email || null,
-        address: body.address || null,
-        note: body.note || null,
+        name,
+        phone,
+        email,
+        address,
+        note,
       },
     })
     return NextResponse.json(client, { status: 201 })
@@ -63,20 +102,60 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json()
-    const { id, name, phone, email, address, note } = body
+    const { id } = body
 
     if (!id) {
       return NextResponse.json({ error: 'ID es requerido' }, { status: 400 })
     }
 
+    // Verify client exists
+    const existing = await db.client.findUnique({ where: { id } })
+    if (!existing) {
+      return NextResponse.json({ error: 'Cliente no encontrado' }, { status: 404 })
+    }
+
+    // Handle reactivation
+    if (body.reactivate) {
+      const client = await db.client.update({
+        where: { id },
+        data: { deletedAt: null },
+      })
+      return NextResponse.json(client)
+    }
+
+    const name = (body.name || '').trim()
+    if (!name) {
+      return NextResponse.json({ error: 'El nombre es obligatorio' }, { status: 400 })
+    }
+    if (name.length < 2) {
+      return NextResponse.json({ error: 'El nombre debe tener al menos 2 caracteres' }, { status: 400 })
+    }
+
+    const phone = body.phone ? body.phone.trim() : null
+    if (phone && !isValidPhone(phone)) {
+      return NextResponse.json({ error: 'El teléfono debe tener al menos 7 dígitos' }, { status: 400 })
+    }
+
+    const email = body.email ? body.email.trim() : null
+    if (email && !isValidEmail(email)) {
+      return NextResponse.json({ error: 'El formato del email no es válido' }, { status: 400 })
+    }
+
+    const address = body.address ? body.address.trim() : null
+    if (address && address.length < 3) {
+      return NextResponse.json({ error: 'La dirección debe tener al menos 3 caracteres' }, { status: 400 })
+    }
+
+    const note = body.note ? body.note.trim() : null
+
     const client = await db.client.update({
       where: { id },
       data: {
         name,
-        phone: phone || null,
-        email: email || null,
-        address: address || null,
-        note: note || null,
+        phone,
+        email,
+        address,
+        note,
       },
     })
 
