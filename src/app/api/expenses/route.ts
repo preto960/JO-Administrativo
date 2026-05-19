@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { resolveBranchId } from '@/lib/resolve-branch'
+import { logAction } from '@/lib/audit-log'
 
 export async function GET(request: NextRequest) {
   try {
@@ -66,6 +67,7 @@ export async function POST(request: NextRequest) {
       },
       include: { currency: true, user: { select: { name: true } } },
     })
+    await logAction({ action: 'create', entity: 'expense', entityId: expense.id, details: { description: body.description, amount: body.amount }, request })
     return NextResponse.json(expense, { status: 201 })
   } catch (error) {
     return NextResponse.json({ error: 'Error al crear gasto' }, { status: 500 })
@@ -86,6 +88,7 @@ export async function DELETE(request: NextRequest) {
       where: { id },
       data: { deletedAt: new Date() },
     })
+    await logAction({ action: 'delete', entity: 'expense', entityId: id, request })
 
     return NextResponse.json({ message: 'Gasto eliminado (soft delete)' })
   } catch (error) {

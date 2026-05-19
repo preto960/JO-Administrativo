@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
+import { logAction } from '@/lib/audit-log'
 
 function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
@@ -93,6 +94,7 @@ export async function POST(request: NextRequest) {
         note,
       },
     })
+    await logAction({ action: 'create', entity: 'client', entityId: client.id, details: { name }, request })
     return NextResponse.json(client, { status: 201 })
   } catch (error) {
     return NextResponse.json({ error: 'Error al crear cliente' }, { status: 500 })
@@ -158,6 +160,7 @@ export async function PUT(request: NextRequest) {
         note,
       },
     })
+    await logAction({ action: 'update', entity: 'client', entityId: id, details: { name }, request })
 
     return NextResponse.json(client)
   } catch (error) {
@@ -179,6 +182,7 @@ export async function DELETE(request: NextRequest) {
       where: { id },
       data: { deletedAt: new Date() },
     })
+    await logAction({ action: 'delete', entity: 'client', entityId: id, request })
 
     return NextResponse.json({ message: 'Cliente eliminado (soft delete)' })
   } catch (error) {

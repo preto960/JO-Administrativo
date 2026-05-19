@@ -27,6 +27,7 @@ model User {
   notifications     Notification[]
   supplierPayments  SupplierPayment[]
   audits            CashAudit[]
+  auditLogs         AuditLog[]
   branch            Branch?           @relation(fields: [branchId], references: [id])
 }
 
@@ -433,4 +434,25 @@ model Notification {
   createdAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String
+  userName  String
+  userRole  String
+  action    String
+  entity    String
+  entityId  String?
+  details   Json?
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([entity])
+  @@index([action])
+  @@index([createdAt])
 }

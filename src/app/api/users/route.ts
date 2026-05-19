@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { hashPassword } from '@/lib/password'
+import { logAction } from '@/lib/audit-log'
 
 export async function GET(request: NextRequest) {
   try {
@@ -68,6 +69,7 @@ export async function POST(request: NextRequest) {
         branch: { select: { id: true, name: true } },
       },
     })
+    await logAction({ action: 'create', entity: 'user', entityId: user.id, details: { name, email, role: role || 'cajero' }, request })
 
     return NextResponse.json(user, { status: 201 })
   } catch (error) {
@@ -105,6 +107,7 @@ export async function PUT(request: NextRequest) {
         branch: { select: { id: true, name: true } },
       },
     })
+    await logAction({ action: 'update', entity: 'user', entityId: id, details: { name, role }, request })
 
     return NextResponse.json(user)
   } catch (error) {
@@ -126,6 +129,7 @@ export async function DELETE(request: NextRequest) {
       where: { id },
       data: { deletedAt: new Date() },
     })
+    await logAction({ action: 'delete', entity: 'user', entityId: id, request })
 
     return NextResponse.json({ message: 'Usuario eliminado (soft delete)' })
   } catch (error) {

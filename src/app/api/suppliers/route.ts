@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
+import { logAction } from '@/lib/audit-log'
 
 const RIF_REGEX = /^[JVEG]-\d{8,9}-\d$/
 
@@ -39,7 +40,7 @@ export async function GET() {
   }
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
     const { name, rif, phone, email, address } = body
@@ -95,6 +96,7 @@ export async function POST(request: Request) {
         address: trimmedAddress || null,
       },
     })
+    await logAction({ action: 'create', entity: 'supplier', entityId: supplier.id, details: { name: trimmedName }, request })
 
     return NextResponse.json({ ...supplier, nextDueDate: null })
   } catch (error) {
@@ -117,6 +119,7 @@ export async function DELETE(request: NextRequest) {
       where: { id },
       data: { deletedAt: new Date() },
     })
+    await logAction({ action: 'delete', entity: 'supplier', entityId: id, request })
 
     return NextResponse.json({ message: 'Proveedor eliminado (soft delete)' })
   } catch (error) {

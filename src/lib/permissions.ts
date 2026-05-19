@@ -13,7 +13,7 @@ export interface UserPermissions {
 const defaultRolePermissions: Record<string, UserPermissions> = {
   admin: {
     role: 'admin',
-    views: ['pos', 'dashboard', 'products', 'clients', 'suppliers', 'cash', 'expenses', 'settings'],
+    views: ['pos', 'dashboard', 'products', 'clients', 'suppliers', 'cash', 'expenses', 'audit', 'settings'],
     canManageUsers: true,
     canAccessSettings: true,
     canManageProducts: true,
