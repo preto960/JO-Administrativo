@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { resolveBranchId } from '@/lib/resolve-branch'
+import { Prisma } from '@prisma/client'
 
 export async function GET(
   _request: NextRequest,
@@ -42,6 +43,60 @@ export async function PUT(
   try {
     const { id } = await params
     const body = await request.json()
+
+    // Validate SKU uniqueness (exclude current product)
+    if (body.sku && body.sku.trim()) {
+      const existing = await db.product.findFirst({
+        where: {
+          sku: { equals: body.sku.trim(), mode: 'insensitive' },
+          id: { not: id },
+        },
+        select: { id: true, name: true, sku: true },
+      })
+      if (existing) {
+        return NextResponse.json(
+          { error: `El SKU "${body.sku.trim()}" ya está en uso por el producto "${existing.name}"` },
+          { status: 409 }
+        )
+      }
+    }
+
+    // Handle per-branch disable via inventory
+    if (body.disableInBranch && body.branchId) {
+      const inventory = await db.inventory.findFirst({
+        where: { productId: id, branchId: body.branchId },
+      })
+      if (inventory) {
+        await db.inventory.update({
+          where: { id: inventory.id },
+          data: { stock: 0 }, // Set stock to 0 to effectively disable in this branch
+        })
+      }
+      const product = await db.product.findUnique({
+        where: { id },
+        include: { currency: true, category: true, inventories: true },
+      })
+      return NextResponse.json(product)
+    }
+
+    // Handle per-branch enable via inventory
+    if (body.enableInBranch && body.branchId) {
+      const inventory = await db.inventory.findFirst({
+        where: { productId: id, branchId: body.branchId },
+      })
+      if (inventory) {
+        await db.inventory.update({
+          where: { id: inventory.id },
+          data: { stock: body.stock !== undefined ? body.stock : 1 },
+        })
+      }
+      const product = await db.product.findUnique({
+        where: { id },
+        include: { currency: true, category: true, inventories: true },
+      })
+      return NextResponse.json(product)
+    }
+
     const product = await db.product.update({
       where: { id },
       data: {
@@ -78,7 +133,6 @@ export async function PUT(
           data: updateData,
         })
       } else if (body.branchId) {
-        // Create inventory for this branch if it doesn't exist yet
         await db.inventory.create({
           data: {
             productId: id,
@@ -93,16 +147,59 @@ export async function PUT(
 
     return NextResponse.json(product)
   } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      return NextResponse.json(
+        { error: 'El SKU ya existe en la base de datos' },
+        { status: 409 }
+      )
+    }
     return NextResponse.json({ error: 'Error al actualizar producto' }, { status: 500 })
   }
 }
 
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params
+    const url = new URL(request.url)
+    const hardDelete = url.searchParams.get('hard') === 'true'
+
+    if (hardDelete) {
+      // Check for dependencies before hard delete
+      const saleLines = await db.saleLine.count({ where: { productId: id } })
+      const purchaseLines = await db.purchaseLine.count({ where: { productId: id } })
+      const recipeParent = await db.recipeComponent.count({ where: { parentProductId: id } })
+      const recipeComponent = await db.recipeComponent.count({ where: { componentProductId: id } })
+      const inventoryCount = await db.inventory.count({ where: { productId: id } })
+      const adjustmentLines = await db.inventoryAdjustmentLine.count({ where: { productId: id } })
+
+      const dependencies: string[] = []
+      if (saleLines > 0) dependencies.push(`${saleLines} línea(s) de venta`)
+      if (purchaseLines > 0) dependencies.push(`${purchaseLines} línea(s) de compra`)
+      if (recipeParent > 0) dependencies.push(`${recipeParent} receta(s) como producto padre`)
+      if (recipeComponent > 0) dependencies.push(`${recipeComponent} receta(s) como componente`)
+      if (inventoryCount > 0) dependencies.push(`${inventoryCount} inventario(s)`)
+      if (adjustmentLines > 0) dependencies.push(`${adjustmentLines} ajuste(s) de inventario`)
+
+      if (dependencies.length > 0) {
+        return NextResponse.json(
+          {
+            error: 'No se puede eliminar el producto porque tiene registros asociados.',
+            dependencies,
+            canHardDelete: false,
+          },
+          { status: 409 }
+        )
+      }
+
+      // Safe to hard delete
+      await db.product.delete({ where: { id } })
+      return NextResponse.json({ success: true, message: 'Producto eliminado permanentemente' })
+    }
+
+    // Default: soft delete
     const product = await db.product.update({
       where: { id },
       data: { active: false },

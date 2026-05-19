@@ -54,6 +54,7 @@ export function PosTerminal() {
   const [showCameraScanner, setShowCameraScanner] = useState(false)
   const [checkingCaja, setCheckingCaja] = useState(true)
   const [cajaOpen, setCajaOpen] = useState(true)
+  const [barcodeMatches, setBarcodeMatches] = useState<ProductWithInventory[]>([])
   const searchRef = useRef<HTMLInputElement>(null)
   const barcodeRef = useRef<HTMLInputElement>(null)
   const isMobile = useIsMobile()
@@ -192,22 +193,7 @@ export function PosTerminal() {
   }
 
   // Handle barcode scan — find product by SKU and add to cart. Returns true on success.
-  const handleBarcodeScan = useCallback((value: string): boolean => {
-    const trimmed = value.trim()
-    if (!trimmed) return false
-
-    // Search by exact SKU match first, then partial
-    const product = products.find(
-      (p) => p.sku && p.sku.toLowerCase() === trimmed.toLowerCase()
-    ) || products.find(
-      (p) => p.sku && p.sku.toLowerCase().includes(trimmed.toLowerCase())
-    )
-
-    if (!product) {
-      toast.error(`Producto no encontrado: ${trimmed}`)
-      return false
-    }
-
+  const addProductToCart = useCallback((product: ProductWithInventory) => {
     const { stock, effectivePrice } = getBranchInfo(product)
     if (stock <= 0) {
       toast.error(`Sin stock: ${product.name}`)
@@ -237,7 +223,42 @@ export function PosTerminal() {
       toast.error('No se puede agregar. Stock insuficiente.')
       return false
     }
-  }, [products, getCurrentQty, addItem, getBranchInfo])
+  }, [getCurrentQty, addItem, getBranchInfo])
+
+  const handleBarcodeScan = useCallback((value: string): boolean => {
+    const trimmed = value.trim()
+    if (!trimmed) return false
+
+    // Find ALL products matching the barcode/SKU
+    const matches = products.filter(
+      (p) => p.sku && p.sku.toLowerCase() === trimmed.toLowerCase()
+    )
+
+    if (matches.length === 0) {
+      // Try partial match
+      const partialMatches = products.filter(
+        (p) => p.sku && p.sku.toLowerCase().includes(trimmed.toLowerCase())
+      )
+      if (partialMatches.length === 0) {
+        toast.error(`Producto no encontrado: ${trimmed}`)
+        return false
+      }
+      if (partialMatches.length === 1) {
+        return addProductToCart(partialMatches[0])
+      }
+      // Multiple partial matches — show selection
+      setBarcodeMatches(partialMatches)
+      return false
+    }
+
+    if (matches.length === 1) {
+      return addProductToCart(matches[0])
+    }
+
+    // Multiple exact matches — show selection dialog
+    setBarcodeMatches(matches)
+    return false
+  }, [products, addProductToCart])
 
   const handleBarcodeKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
@@ -519,6 +540,48 @@ export function PosTerminal() {
         onClose={() => setShowCameraScanner(false)}
         onScan={handleBarcodeScan}
       />
+
+      {/* Barcode Match Selection Dialog */}
+      {barcodeMatches.length > 0 && (
+        <div className="fixed inset-0 z-[9998] bg-black/50 flex items-center justify-center p-4">
+          <div className="bg-popover rounded-xl border shadow-2xl max-w-sm w-full p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold">Selecciona un producto</h3>
+              <button
+                onClick={() => setBarcodeMatches([])}
+                className="h-6 w-6 flex items-center justify-center rounded-md hover:bg-muted text-muted-foreground"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+            <div className="space-y-1 max-h-60 overflow-auto">
+              {barcodeMatches.map((product) => {
+                const { stock, effectivePrice } = getBranchInfo(product)
+                return (
+                  <button
+                    key={product.id}
+                    onClick={() => {
+                      addProductToCart(product)
+                      setBarcodeMatches([])
+                    }}
+                    className="w-full flex items-center gap-3 p-2.5 rounded-lg hover:bg-muted/50 border border-transparent hover:border-primary/20 transition-colors text-left"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{product.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {product.sku || 'Sin SKU'} · Stock: {stock}
+                      </p>
+                    </div>
+                    <span className="text-sm font-bold text-primary shrink-0">
+                      {product.currency.symbol}{effectivePrice.toFixed(2)}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

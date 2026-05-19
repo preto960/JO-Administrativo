@@ -41,7 +41,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import { Plus, Search, Edit, Trash2, Package, Eye, EyeOff, Upload, ImageIcon, X, Loader2, Printer, Barcode } from 'lucide-react'
+import { Plus, Search, Edit, Trash2, Package, Eye, EyeOff, Upload, ImageIcon, X, Loader2, Printer, Barcode, AlertTriangle, Ban } from 'lucide-react'
 import { toast } from 'sonner'
 import { ProductImportDialog } from './product-import-dialog'
 import { BarcodeLabelSelector } from './barcode-label-selector'
@@ -112,6 +112,9 @@ export function ProductsTable() {
   const [editProduct, setEditProduct] = useState<Product | null>(null)
   const [importOpen, setImportOpen] = useState(false)
   const [labelsOpen, setLabelsOpen] = useState(false)
+  const [generatingLabel, setGeneratingLabel] = useState(false)
+  const [hardDeleteDialogOpen, setHardDeleteDialogOpen] = useState(false)
+  const [hardDeleteResult, setHardDeleteResult] = useState<{ dependencies: string[]; canHardDelete: boolean } | null>(null)
 
   // Form state
   const [formName, setFormName] = useState('')
@@ -231,7 +234,7 @@ export function ProductsTable() {
         const branchInv = product.inventories.find(i => i.branchId === selectedBranchId)
         setFormStock(branchInv?.stock?.toString() || '')
         setFormMinStock(branchInv?.minStock?.toString() || '')
-        setFormBranchPrice(branchInv?.price > 0 ? branchInv.price.toString() : '')
+        setFormBranchPrice((branchInv?.price ?? 0) > 0 ? branchInv!.price.toString() : '')
       } else {
         setFormStock(product.inventories[0]?.stock?.toString() || '')
         setFormMinStock(product.inventories[0]?.minStock?.toString() || '')
@@ -276,25 +279,44 @@ export function ProductsTable() {
       }
 
       if (editProduct) {
-        await api.put(`/api/products/${editProduct.id}`, {
-          ...body,
-          active: formActive,
-          initialStock: formStock !== '' ? parseInt(formStock) : undefined,
-          minStock: formMinStock !== '' ? parseInt(formMinStock) : undefined,
+        const res = await fetch(`/api/products/${editProduct.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...body,
+            active: formActive,
+            initialStock: formStock !== '' ? parseInt(formStock) : undefined,
+            minStock: formMinStock !== '' ? parseInt(formMinStock) : undefined,
+          }),
         })
+        const data = await res.json()
+        if (!res.ok) {
+          toast.error(data.error || 'Error al actualizar producto')
+          return
+        }
         toast.success('Producto actualizado')
       } else {
-        await api.post('/api/products', {
-          ...body,
-          initialStock: formStock !== '' ? parseInt(formStock) : undefined,
-          minStock: formMinStock !== '' ? parseInt(formMinStock) : undefined,
+        const res = await fetch('/api/products', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...body,
+            initialStock: formStock !== '' ? parseInt(formStock) : undefined,
+            minStock: formMinStock !== '' ? parseInt(formMinStock) : undefined,
+          }),
         })
+        const data = await res.json()
+        if (!res.ok) {
+          toast.error(data.error || 'Error al crear producto')
+          return
+        }
         toast.success('Producto creado')
       }
       setDialogOpen(false)
       fetchData()
-    } catch {
-      toast.error('Error al guardar producto')
+    } catch (err: unknown) {
+      const message = err && typeof err === 'object' && 'message' in err ? (err as { message: string }).message : 'Error al guardar producto'
+      toast.error(message)
     } finally {
       setSaving(false)
     }
@@ -314,6 +336,7 @@ export function ProductsTable() {
   }
 
   const handlePrintLabel = async (product: Product) => {
+    setGeneratingLabel(true)
     try {
       const res = await fetch('/api/products/barcode-labels', {
         method: 'POST',
@@ -331,26 +354,82 @@ export function ProductsTable() {
       toast.success('Etiqueta generada')
     } catch {
       toast.error('Error al generar etiqueta')
+    } finally {
+      setGeneratingLabel(false)
     }
   }
 
   const handleToggleActive = async (product: Product) => {
     const newActive = !product.active
     try {
-      await api.put(`/api/products/${product.id}`, {
-        name: product.name,
-        sku: product.sku,
-        type: product.type,
-        costAvg: product.costAvg,
-        price: product.price,
-        currencyId: product.currency.id,
-        categoryId: product.category?.id || null,
-        active: newActive,
-      })
-      toast.success(newActive ? `"${product.name}" activado` : `"${product.name}" desactivado`)
+      if (selectedBranchId && !newActive) {
+        // Per-branch disable: set stock to 0 in this branch only
+        await api.put(`/api/products/${product.id}`, {
+          disableInBranch: true,
+          branchId: selectedBranchId,
+        })
+        toast.success(`"${product.name}" desactivado en esta sucursal (stock = 0)`)
+      } else if (selectedBranchId && newActive) {
+        // Per-branch enable: restore stock in this branch
+        await api.put(`/api/products/${product.id}`, {
+          enableInBranch: true,
+          branchId: selectedBranchId,
+          stock: 1,
+        })
+        toast.success(`"${product.name}" reactivado en esta sucursal`)
+      } else {
+        // No branch selected — global toggle
+        await api.put(`/api/products/${product.id}`, {
+          name: product.name,
+          sku: product.sku,
+          type: product.type,
+          costAvg: product.costAvg,
+          price: product.price,
+          currencyId: product.currency.id,
+          categoryId: product.category?.id || null,
+          active: newActive,
+        })
+        toast.success(newActive ? `"${product.name}" activado` : `"${product.name}" desactivado`)
+      }
       fetchData()
     } catch {
       toast.error('Error al cambiar estado del producto')
+    }
+  }
+
+  const handleHardDeleteCheck = async () => {
+    if (!productToDelete) return
+    try {
+      const delRes = await fetch(`/api/products/${productToDelete.id}?hard=true`, { method: 'DELETE' })
+      const data = await delRes.json()
+      if (!delRes.ok && data.dependencies) {
+        setHardDeleteResult({ dependencies: data.dependencies, canHardDelete: false })
+      } else {
+        setHardDeleteResult({ dependencies: [], canHardDelete: true })
+      }
+      setHardDeleteDialogOpen(true)
+    } catch {
+      toast.error('Error al verificar dependencias')
+    }
+  }
+
+  const handleHardDelete = async () => {
+    if (!productToDelete) return
+    try {
+      const res = await fetch(`/api/products/${productToDelete.id}?hard=true`, { method: 'DELETE' })
+      const data = await res.json()
+      if (!res.ok) {
+        setHardDeleteResult({ dependencies: data.dependencies || [], canHardDelete: false })
+        return
+      }
+      toast.success(`"${productToDelete.name}" eliminado permanentemente`)
+      setHardDeleteDialogOpen(false)
+      setProductToDelete(null)
+      setDeleteDialogOpen(false)
+      setHardDeleteResult(null)
+      fetchData()
+    } catch {
+      toast.error('Error al eliminar producto')
     }
   }
 
@@ -370,6 +449,17 @@ export function ProductsTable() {
   const branchName = branches.find(b => b.id === selectedBranchId)?.name
 
   return (
+    <>
+    {/* Global loader for label generation */}
+    {generatingLabel && (
+      <div className="fixed inset-0 z-[9999] bg-black/50 flex items-center justify-center">
+        <div className="bg-popover rounded-xl p-6 shadow-2xl flex flex-col items-center gap-3">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-sm font-medium">Generando etiqueta...</p>
+          <p className="text-xs text-muted-foreground">Por favor espera</p>
+        </div>
+      </div>
+    )}
     <div className="space-y-4">
       {/* Toolbar */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -805,20 +895,64 @@ export function ProductsTable() {
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Desactivar producto?</AlertDialogTitle>
+            <AlertDialogTitle>¿Qué deseas hacer?</AlertDialogTitle>
             <AlertDialogDescription>
-              El producto <strong>&quot;{productToDelete?.name}&quot;</strong> será marcado como
-              inactivo. Podrás reactivarlo más tarde desde la vista de productos inactivos.
+              Elige cómo deseas tratar el producto <strong>&quot;{productToDelete?.name}&quot;</strong>.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-col gap-2 sm:flex-row">
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => { setDeleteDialogOpen(false); setTimeout(() => handleHardDeleteCheck(), 100) }}
+              className="bg-destructive text-white hover:bg-destructive/90"
+            >
+              Eliminar Permanentemente
+            </AlertDialogAction>
+            <AlertDialogAction
+              onClick={handleDelete}
+              className="bg-secondary text-secondary-foreground hover:bg-secondary/80"
+            >
+              Solo Desactivar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Hard Delete Result Dialog */}
+      <AlertDialog open={hardDeleteDialogOpen} onOpenChange={setHardDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {hardDeleteResult?.canHardDelete ? '¿Confirmar eliminación?' : 'No se puede eliminar'}
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div>
+                {hardDeleteResult?.canHardDelete ? (
+                  <p>El producto no tiene registros asociados. Se eliminará permanentemente.</p>
+                ) : (
+                  <div className="space-y-2">
+                    <p>El producto tiene los siguientes registros asociados:</p>
+                    <ul className="list-disc list-inside text-sm space-y-1">
+                      {hardDeleteResult?.dependencies.map((dep, i) => (
+                        <li key={i}>{dep}</li>
+                      ))}
+                    </ul>
+                    <p className="text-xs text-muted-foreground">Debes eliminar los registros asociados primero, o usar la opción &quot;Solo Desactivar&quot;.</p>
+                  </div>
+                )}
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDelete}
-              className="bg-destructive text-white hover:bg-destructive/90"
-            >
-              Desactivar
-            </AlertDialogAction>
+            <AlertDialogCancel onClick={() => setHardDeleteResult(null)}>Cerrar</AlertDialogCancel>
+            {hardDeleteResult?.canHardDelete && (
+              <AlertDialogAction
+                onClick={handleHardDelete}
+                className="bg-destructive text-white hover:bg-destructive/90"
+              >
+                Sí, Eliminar
+              </AlertDialogAction>
+            )}
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -853,5 +987,6 @@ export function ProductsTable() {
         </DialogContent>
       </Dialog>
     </div>
+    </>
   )
 }

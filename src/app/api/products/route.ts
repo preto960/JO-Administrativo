@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { resolveBranchId } from '@/lib/resolve-branch'
+import { Prisma } from '@prisma/client'
 
 export async function GET(request: NextRequest) {
   try {
@@ -51,6 +52,21 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
+
+    // Validate SKU uniqueness
+    if (body.sku && body.sku.trim()) {
+      const existing = await db.product.findFirst({
+        where: { sku: { equals: body.sku.trim(), mode: 'insensitive' } },
+        select: { id: true, name: true, sku: true },
+      })
+      if (existing) {
+        return NextResponse.json(
+          { error: `El SKU "${body.sku.trim()}" ya está en uso por el producto "${existing.name}"` },
+          { status: 409 }
+        )
+      }
+    }
+
     const product = await db.product.create({
       data: {
         name: body.name,
@@ -79,6 +95,12 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(product, { status: 201 })
   } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      return NextResponse.json(
+        { error: 'El SKU ya existe en la base de datos' },
+        { status: 409 }
+      )
+    }
     return NextResponse.json({ error: 'Error al crear producto' }, { status: 500 })
   }
 }

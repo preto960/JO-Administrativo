@@ -95,9 +95,11 @@ export async function POST(request: NextRequest) {
             const name = row.name.toString().trim()
             let sku = row.sku?.toString().trim() || null
 
-            // Auto-generate SKU if not provided
+            // Skip products without SKU — user must add it manually to avoid inconsistencies
             if (!sku) {
-              sku = generateAutoSKU(name)
+              errors.push(`Fila ${i + batch.indexOf(row) + 1}: "${name}" omitido — no tiene SKU. Debes asignar un SKU a cada producto.`)
+              skipped++
+              continue
             }
             const price = parseFloat(String(row.price))
             if (isNaN(price) || price <= 0) {

@@ -184,7 +184,7 @@ export async function POST(request: NextRequest) {
       doc.setFontSize(9)
       doc.setTextColor(17, 24, 39)
       doc.setFont('helvetica', 'bold')
-      doc.text(truncate(label.name, 28), x + padX, y + padY + 7, { maxWidth: innerW })
+      doc.text(truncate(label.name, 28), x + padX + innerW / 2, y + padY + 7, { align: 'center', maxWidth: innerW })
 
       // Barcode image (middle)
       const barcodeDataUrl = barcodeCache.get(label.barcodeText)!
