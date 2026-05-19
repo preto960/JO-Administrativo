@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
+import { logAction } from '@/lib/audit-log'
 
 // GET /api/role-permissions - Get current role permissions
 export async function GET() {
@@ -36,6 +37,15 @@ export async function PUT(request: Request) {
     await db.settings.update({
       where: { id: settings.id },
       data: { rolePermissions: permissions },
+    })
+
+    const rolesModified = Object.keys(permissions)
+    logAction({
+      action: 'update',
+      entity: 'settings',
+      entityId: settings.id,
+      details: { summary: `Permisos de roles actualizados: ${rolesModified.join(', ')}`, rolesModified },
+      request: request as any,
     })
 
     return NextResponse.json({ success: true, permissions })

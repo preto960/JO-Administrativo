@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
+import { logAction } from '@/lib/audit-log'
 
 export async function GET() {
   try {
@@ -43,6 +44,14 @@ export async function POST(request: NextRequest) {
         address: address?.trim() || null,
         phone: phone?.trim() || null,
       },
+    })
+
+    await logAction({
+      action: 'create',
+      entity: 'branch',
+      entityId: branch.id,
+      details: { summary: `Sucursal creada: ${name.trim()}`, name: name.trim(), code },
+      request,
     })
 
     return NextResponse.json(branch, { status: 201 })

@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { buildReportFromRegister, generateCashClosePDF } from '@/lib/cash-close-pdf'
+import { logAction } from '@/lib/audit-log'
 
 export async function POST(request: NextRequest) {
   try {
@@ -140,6 +141,9 @@ export async function POST(request: NextRequest) {
       console.error('[Email] Failed to import email module:', e)
     })
 
+    // Log audit (fire-and-forget, don't block response)
+    logCashClose(request, cashRegId, actualAmt, expected, difference, totalSales, totalExpenses, totalRetiros)
+
     // Create notification for the cashier whose register was closed
     if (register.user.id) {
       await db.notification.create({
@@ -155,5 +159,23 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(cut)
   } catch (error) {
     return NextResponse.json({ error: 'Error al cerrar caja' }, { status: 500 })
+  }
+}
+
+// Keep the module import and audit log in a separate async IIFE to not break response
+async function logCashClose(request: NextRequest, cashRegId: string, actualAmt: number, expected: number, difference: number, totalSales: number, totalExpenses: number, totalRetiros: number) {
+  try {
+    await logAction({
+      action: 'close_cash',
+      entity: 'cash_register',
+      entityId: cashRegId,
+      details: {
+        summary: `Caja cerrada - Esperado: $${expected.toFixed(2)}, Real: $${actualAmt.toFixed(2)}, Diferencia: $${difference.toFixed(2)}`,
+        actual: actualAmt, expected, difference, totalSales, totalExpenses, totalRetiros,
+      },
+      request,
+    })
+  } catch (e) {
+    console.error('[AuditLog] Failed to log cash close:', e)
   }
 }

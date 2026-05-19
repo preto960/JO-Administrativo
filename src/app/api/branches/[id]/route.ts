@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
+import { logAction } from '@/lib/audit-log'
 
 export async function PUT(
   request: NextRequest,
@@ -18,6 +19,17 @@ export async function PUT(
         ...(phone !== undefined ? { phone: phone?.trim() || null } : {}),
         ...(active !== undefined ? { active } : {}),
       },
+    })
+
+    const changes: string[] = []
+    if (name !== undefined) changes.push(`nombre: ${name.trim()}`)
+    if (active !== undefined) changes.push(`estado: ${active ? 'activa' : 'inactiva'}`)
+    logAction({
+      action: 'update',
+      entity: 'branch',
+      entityId: id,
+      details: { summary: `Sucursal actualizada: ${changes.join(', ') || 'sin cambios'}` },
+      request,
     })
 
     return NextResponse.json(branch)
@@ -40,6 +52,15 @@ export async function DELETE(
       return NextResponse.json({ error: 'No se puede eliminar la sucursal principal' }, { status: 400 })
     }
     await db.branch.delete({ where: { id } })
+
+    logAction({
+      action: 'delete',
+      entity: 'branch',
+      entityId: id,
+      details: { summary: `Sucursal eliminada: ${branch.name}` },
+      request: _request,
+    })
+
     return NextResponse.json({ success: true })
   } catch (error) {
     return NextResponse.json({ error: 'Error al eliminar sucursal' }, { status: 500 })

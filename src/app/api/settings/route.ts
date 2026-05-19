@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
+import { logAction } from '@/lib/audit-log'
 
 export async function GET() {
   try {
@@ -50,6 +51,16 @@ export async function PUT(request: Request) {
         data: body,
       })
     }
+
+    // Log which fields changed (excluding sensitive data)
+    const changedFields = Object.keys(body).filter(k => !['id', 'createdAt', 'updatedAt'].includes(k))
+    logAction({
+      action: 'update',
+      entity: 'settings',
+      entityId: settings.id,
+      details: { summary: `Configuración actualizada: ${changedFields.join(', ')}`, fields: changedFields },
+      request: request as any,
+    })
 
     return NextResponse.json(settings)
   } catch (error) {

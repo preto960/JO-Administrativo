@@ -59,7 +59,10 @@ const ACTION_LABELS: Record<string, string> = {
   logout: 'Cierre de sesión',
   open_cash: 'Apertura de caja',
   close_cash: 'Cierre de caja',
-  cut_cash: 'Corte de caja',
+  cut_cash: 'Arqueo de caja',
+  cash_entry: 'Entrada de caja',
+  cash_exit: 'Salida de caja',
+  cash_withdrawal: 'Retiro de excedente',
 }
 
 const ACTION_COLORS: Record<string, string> = {
@@ -71,6 +74,9 @@ const ACTION_COLORS: Record<string, string> = {
   open_cash: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
   close_cash: 'bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300',
   cut_cash: 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900/40 dark:text-cyan-300',
+  cash_entry: 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300',
+  cash_exit: 'bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300',
+  cash_withdrawal: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300',
 }
 
 const ENTITY_OPTIONS = [
@@ -96,6 +102,10 @@ const ACTION_OPTIONS = [
   { value: 'logout', label: 'Cierre de sesión' },
   { value: 'open_cash', label: 'Apertura de caja' },
   { value: 'close_cash', label: 'Cierre de caja' },
+  { value: 'cut_cash', label: 'Arqueo de caja' },
+  { value: 'cash_entry', label: 'Entrada de caja' },
+  { value: 'cash_exit', label: 'Salida de caja' },
+  { value: 'cash_withdrawal', label: 'Retiro de excedente' },
 ]
 
 // ── Types ─────────────────────────────────────────────────────────────

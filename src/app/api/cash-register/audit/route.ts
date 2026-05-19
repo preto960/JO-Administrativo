@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
+import { logAction } from '@/lib/audit-log'
 
 export async function GET(request: NextRequest) {
   try {
@@ -61,6 +62,14 @@ export async function POST(request: NextRequest) {
         user: { select: { id: true, name: true } },
         cashReg: { select: { id: true, name: true } },
       },
+    })
+
+    await logAction({
+      action: 'cut_cash',
+      entity: 'cash_register',
+      entityId: cashRegId,
+      details: { summary: `Arqueo de caja - Esperado: $${expected.toFixed(2)}, Contado: $${counted.toFixed(2)}, Diferencia: $${difference.toFixed(2)}`, expected, counted, difference },
+      request,
     })
 
     return NextResponse.json(audit, { status: 201 })

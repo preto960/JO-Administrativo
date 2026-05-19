@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
+import { logAction } from '@/lib/audit-log'
 
 export async function POST(request: NextRequest) {
   try {
@@ -45,6 +46,14 @@ export async function POST(request: NextRequest) {
           currency: true,
         },
       })
+    })
+
+    await logAction({
+      action: 'cash_withdrawal',
+      entity: 'cash_register',
+      entityId: cashRegId,
+      details: { summary: `Retiro de excedente: $${amount.toFixed(2)}`, amount, concept: concept || 'Retiro de excedente' },
+      request,
     })
 
     return NextResponse.json(movement, { status: 201 })

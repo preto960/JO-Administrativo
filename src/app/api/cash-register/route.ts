@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { resolveBranchId } from '@/lib/resolve-branch'
+import { logAction } from '@/lib/audit-log'
 
 export async function GET(request: NextRequest) {
   try {
@@ -46,6 +47,15 @@ export async function POST(request: NextRequest) {
       },
       include: { user: { select: { id: true, name: true } } },
     })
+
+    await logAction({
+      action: 'open_cash',
+      entity: 'cash_register',
+      entityId: register.id,
+      details: { summary: `Caja abierta: $${(initialAmt || 0).toFixed(2)}`, initialAmount: initialAmt || 0 },
+      request,
+    })
+
     return NextResponse.json(register, { status: 201 })
   } catch (error) {
     return NextResponse.json({ error: 'Error al abrir caja' }, { status: 500 })

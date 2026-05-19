@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
+import { logAction } from '@/lib/audit-log'
 
 export async function GET() {
   try {
@@ -39,6 +40,14 @@ export async function POST(request: NextRequest) {
       include: { _count: { select: { products: true } } },
     })
 
+    await logAction({
+      action: 'create',
+      entity: 'category',
+      entityId: category.id,
+      details: { summary: `Categoría creada: ${trimmedName}`, name: trimmedName },
+      request,
+    })
+
     return NextResponse.json(category, { status: 201 })
   } catch (error) {
     console.error('[Categories POST] Error:', error)
@@ -70,6 +79,14 @@ export async function PUT(request: NextRequest) {
       where: { id },
       data: { name: trimmedName },
       include: { _count: { select: { products: true } } },
+    })
+
+    await logAction({
+      action: 'update',
+      entity: 'category',
+      entityId: id,
+      details: { summary: `Categoría renombrada: ${trimmedName}`, name: trimmedName },
+      request,
     })
 
     return NextResponse.json(category)
@@ -106,6 +123,14 @@ export async function DELETE(request: NextRequest) {
     }
 
     await db.category.delete({ where: { id } })
+
+    await logAction({
+      action: 'delete',
+      entity: 'category',
+      entityId: id,
+      details: { summary: `Categoría eliminada: ${category.name}`, name: category.name },
+      request,
+    })
 
     return NextResponse.json({ success: true })
   } catch (error) {
