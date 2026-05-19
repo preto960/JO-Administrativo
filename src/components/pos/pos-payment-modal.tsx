@@ -60,6 +60,13 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
   const currencySymbol = referenceCurrency === 'EUR' ? '€' : '$'
   const selectedMethod = paymentMethods.find(pm => pm.value === method)
 
+  // Resolve currencyId: prefer baseCurrencyId from settings, fallback to isBase currency or first available
+  const resolvedCurrencyId = baseCurrencyId
+    || currencies.find(c => c.isBase)?.id
+    || currencies[0]?.id
+    || ''
+  const hasNoCurrency = !resolvedCurrencyId && currencies.length > 0
+
   // Determine if current method uses local currency (Bs.)
   const isLocalMethod = selectedMethod?.isLocalCurrency ?? false
 
@@ -105,8 +112,8 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
       toast.error('El monto excede el total')
       return
     }
-    if (!baseCurrencyId) {
-      toast.error('No se pudo determinar la moneda base. Verifica la configuración.')
+    if (!resolvedCurrencyId) {
+      toast.error('No se pudo determinar la moneda. Verifica la configuración o crea una moneda en el sistema.')
       return
     }
 
@@ -126,7 +133,7 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
           {
             method,
             amount: Math.min(amountInRefCurrency, total),
-            currencyId: baseCurrencyId,
+            currencyId: resolvedCurrencyId,
             reference: reference || undefined,
           },
         ],
@@ -182,6 +189,11 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
             {!openCashRegId && (
               <div className="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-2 text-xs text-amber-700 dark:text-amber-400">
                 No hay caja abierta. Las ventas no se asociarán a un registro de caja.
+              </div>
+            )}
+            {!baseCurrencyId && resolvedCurrencyId && (
+              <div className="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-2 text-xs text-amber-700 dark:text-amber-400">
+                Moneda base no configurada. Se usará la moneda predeterminada del sistema. Ve a Configuración → Moneda para definir la moneda base.
               </div>
             )}
 
@@ -247,7 +259,7 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
               className="w-full bg-primary hover:bg-primary/90 text-white"
               size="lg"
               onClick={handlePay}
-              disabled={loading || !baseCurrencyId}
+              disabled={loading || !resolvedCurrencyId}
             >
               {loading ? (
                 <>
