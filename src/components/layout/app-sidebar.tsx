@@ -11,7 +11,6 @@ import {
   Receipt,
   Settings,
   Store,
-  ClipboardList,
 } from 'lucide-react'
 import {
   Sidebar,
@@ -39,7 +38,6 @@ const navItems: { view: AppView; label: string; icon: React.ElementType }[] = [
   { view: 'suppliers', label: 'Proveedores', icon: Building2 },
   { view: 'cash', label: 'Caja', icon: Wallet },
   { view: 'expenses', label: 'Gastos', icon: Receipt },
-  { view: 'audit', label: 'Auditoría', icon: ClipboardList },
 ]
 
 export function AppSidebar() {

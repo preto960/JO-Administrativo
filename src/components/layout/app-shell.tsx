@@ -14,7 +14,6 @@ import { SuppliersView } from '@/components/clients/suppliers-view'
 import { CashRegisterView } from '@/components/cash/cash-register-view'
 import { ExpensesTable } from '@/components/expenses/expenses-table'
 import { SettingsView } from '@/components/settings/settings-view'
-import { AuditLogView } from '@/components/audit/audit-log-view'
 import { OnboardingTutorial } from '@/components/tutorial/onboarding-tutorial'
 import { SettingsInitializer } from '@/components/settings/settings-initializer'
 import { useAuth } from '@/hooks/use-auth'
@@ -29,7 +28,6 @@ const viewComponents: Record<AppView, React.ComponentType> = {
   suppliers: SuppliersView,
   cash: CashRegisterView,
   expenses: ExpensesTable,
-  audit: AuditLogView,
   settings: SettingsView,
 }
 

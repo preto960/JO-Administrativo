@@ -61,11 +61,13 @@ import {
   Upload,
   X,
   Tag,
+  ClipboardList,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { ALL_ROLES, getRoleLabel } from '@/lib/permissions'
 import { ColorPicker, applyBothColors } from './color-picker'
 import { RolePermissionsEditor } from './role-permissions-editor'
+import { AuditLogView } from '@/components/audit/audit-log-view'
 
 interface Branch {
   id: string
@@ -389,6 +391,10 @@ export function SettingsView() {
           <TabsTrigger data-tutorial="settings-tab-apariencia" value="apariencia" className="gap-1.5">
             <Palette className="h-3.5 w-3.5 hidden sm:block" />
             <span>Apariencia</span>
+          </TabsTrigger>
+          <TabsTrigger data-tutorial="settings-tab-audit" value="audit" className="gap-1.5">
+            <ClipboardList className="h-3.5 w-3.5 hidden sm:block" />
+            <span>Auditoría</span>
           </TabsTrigger>
         </TabsList>
 
@@ -1012,6 +1018,11 @@ export function SettingsView() {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* ── Auditoría Tab ─────────────────────────────── */}
+        <TabsContent value="audit">
+          <AuditLogView />
         </TabsContent>
 
         {/* ── Roles & Permisos Tab ────────────────────────── */}
