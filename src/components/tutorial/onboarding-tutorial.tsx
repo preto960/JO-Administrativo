@@ -144,7 +144,7 @@ function buildAdminSteps(): TourStep[] {
 
   steps.push({
     target: '[data-tutorial="settings-tab-empresa"]',
-    title: 'Paso 1: Datos de la Empresa',
+    title: 'Datos de la Empresa',
     description: 'Registra aquí el nombre de tu negocio, identificación fiscal, correo, teléfono y dirección. Estos datos aparecen en tus comprobantes de venta y reportes.',
     side: 'bottom',
     navigateTo: 'settings',
@@ -154,7 +154,7 @@ function buildAdminSteps(): TourStep[] {
 
   steps.push({
     target: '[data-tutorial="settings-tab-moneda"]',
-    title: 'Paso 2: Tasa de Cambio',
+    title: 'Tasa de Cambio',
     description: 'Configura la moneda de referencia y la tasa de cambio. Puedes actualizar con las tasas oficiales o ingresar una manualmente. Esto es clave para los precios.',
     side: 'bottom',
     navigateTo: 'settings',
@@ -164,7 +164,7 @@ function buildAdminSteps(): TourStep[] {
 
   steps.push({
     target: '[data-tutorial="settings-tab-iva"]',
-    title: 'Paso 3: Impuesto I.V.A.',
+    title: 'Impuesto I.V.A.',
     description: 'Activa o desactiva el IVA y define el porcentaje (por defecto 16%). Si tu negocio cobra IVA, activa esta opción antes de la primera venta.',
     side: 'bottom',
     navigateTo: 'settings',
@@ -175,7 +175,7 @@ function buildAdminSteps(): TourStep[] {
   // --- Categorías (VALIDADO) ---
   steps.push({
     target: '[data-tutorial="settings-tab-categorias"]',
-    title: 'Paso 4: Crear Categorías',
+    title: 'Crear Categorías',
     description: 'Define las categorías para organizar tu catálogo: Alimentos, Bebidas, Limpieza, etc. Se usan como filtros en el Punto de Venta. Haz clic en "Nueva" para crear una.',
     side: 'bottom',
     navigateTo: 'settings',
@@ -191,7 +191,7 @@ function buildAdminSteps(): TourStep[] {
 
   steps.push({
     target: '[data-tutorial="nav-products"]',
-    title: 'Paso 5: Crear Productos',
+    title: 'Crear Productos',
     description: 'Sin productos no hay nada que vender. Vamos a la sección de Productos para crear tu catálogo.',
     side: 'right',
     navigateTo: 'products',
@@ -214,7 +214,7 @@ function buildAdminSteps(): TourStep[] {
 
   steps.push({
     target: '[data-tutorial="nav-cash"]',
-    title: 'Paso 6: Abrir Caja',
+    title: 'Abrir Caja',
     description: 'El último paso antes de vender. Sin caja abierta el Punto de Venta está bloqueado.',
     side: 'right',
     navigateTo: 'cash',
@@ -237,7 +237,7 @@ function buildAdminSteps(): TourStep[] {
 
   steps.push({
     target: '[data-tutorial="nav-pos"]',
-    title: 'Paso 7: Punto de Venta',
+    title: 'Punto de Venta',
     description: 'Ahora sí, tu sistema está listo. Aquí procesarás todas las ventas diarias.',
     side: 'right',
     navigateTo: 'pos',
@@ -1038,24 +1038,38 @@ export function OnboardingTutorial() {
           </div>
         </div>
 
-        {/* Step dots — decorative only, not clickable */}
-        <div className="flex items-center gap-1.5 mt-3">
-          {steps.map((_, i) => (
-            <span
-              key={i}
-              className={cn(
-                'h-1.5 rounded-full transition-all duration-200 flex-shrink-0',
-                i === stepIndex
-                  ? 'w-4 bg-primary'
-                  : i < stepIndex
-                    ? 'w-1.5 bg-primary/50'
-                    : 'w-1.5 bg-muted-foreground/25'
-              )}
+        {/* Step indicator */}
+        <div className="mt-4 space-y-2">
+          {/* Progress bar */}
+          <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+            <div
+              className="h-full rounded-full bg-primary transition-all duration-500 ease-out"
+              style={{ width: `${((stepIndex + 1) / totalSteps) * 100}%` }}
             />
-          ))}
-          <span className="ml-auto text-[11px] text-muted-foreground whitespace-nowrap">
-            {stepIndex + 1} / {totalSteps}
-          </span>
+          </div>
+          {/* Step counter + dots */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-primary whitespace-nowrap">
+              Paso {stepIndex + 1} de {totalSteps}
+            </span>
+            <div className="flex-1 overflow-hidden">
+              <div className="flex items-center gap-1">
+                {steps.map((_, i) => (
+                  <span
+                    key={i}
+                    className={cn(
+                      'h-1 rounded-full transition-all duration-200 flex-shrink-0',
+                      i === stepIndex
+                        ? 'w-3 bg-primary'
+                        : i < stepIndex
+                          ? 'w-1 bg-primary/40'
+                          : 'w-1 bg-muted-foreground/20'
+                    )}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Navigation buttons */}

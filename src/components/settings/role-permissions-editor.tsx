@@ -14,7 +14,7 @@ import { ALL_ROLES, getRoleLabel, type UserPermissions } from '@/lib/permissions
 const DEFAULT_PERMISSIONS: Record<string, UserPermissions> = {
   admin: {
     role: 'admin',
-    views: ['pos', 'dashboard', 'products', 'clients', 'suppliers', 'cash', 'expenses', 'settings'],
+    views: ['pos', 'dashboard', 'products', 'clients', 'suppliers', 'cash', 'expenses', 'audit', 'settings'],
     canManageUsers: true,
     canAccessSettings: true,
     canManageProducts: true,
@@ -22,10 +22,11 @@ const DEFAULT_PERMISSIONS: Record<string, UserPermissions> = {
     canManageCash: true,
     canManageExpenses: true,
     canManageSuppliers: true,
+    canManageAudit: true,
   },
   gerente: {
     role: 'gerente',
-    views: ['pos', 'dashboard', 'products', 'clients', 'suppliers', 'cash', 'expenses'],
+    views: ['pos', 'dashboard', 'products', 'clients', 'suppliers', 'cash', 'expenses', 'audit'],
     canManageUsers: false,
     canAccessSettings: false,
     canManageProducts: true,
@@ -33,6 +34,7 @@ const DEFAULT_PERMISSIONS: Record<string, UserPermissions> = {
     canManageCash: true,
     canManageExpenses: true,
     canManageSuppliers: true,
+    canManageAudit: false,
   },
   cajero: {
     role: 'cajero',
@@ -66,6 +68,7 @@ const ALL_VIEWS = [
   { key: 'suppliers', label: 'Proveedores' },
   { key: 'cash', label: 'Caja' },
   { key: 'expenses', label: 'Gastos' },
+  { key: 'audit', label: 'Auditoría' },
   { key: 'settings', label: 'Configuración' },
 ]
 
@@ -77,6 +80,7 @@ const ALL_ABILITIES = [
   { key: 'canManageCash', label: 'Gestionar Caja' },
   { key: 'canManageExpenses', label: 'Gestionar Gastos' },
   { key: 'canManageSuppliers', label: 'Gestionar Proveedores' },
+  { key: 'canManageAudit', label: 'Gestionar Auditoría' },
 ]
 
 export function RolePermissionsEditor() {

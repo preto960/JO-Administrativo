@@ -8,6 +8,7 @@ export interface UserPermissions {
   canManageCash: boolean
   canManageExpenses: boolean
   canManageSuppliers: boolean
+  canManageAudit: boolean
 }
 
 const defaultRolePermissions: Record<string, UserPermissions> = {
@@ -21,6 +22,7 @@ const defaultRolePermissions: Record<string, UserPermissions> = {
     canManageCash: true,
     canManageExpenses: true,
     canManageSuppliers: true,
+    canManageAudit: true,
   },
   gerente: {
     role: 'gerente',
@@ -32,6 +34,7 @@ const defaultRolePermissions: Record<string, UserPermissions> = {
     canManageCash: true,
     canManageExpenses: true,
     canManageSuppliers: true,
+    canManageAudit: false,
   },
   cajero: {
     role: 'cajero',
@@ -43,6 +46,7 @@ const defaultRolePermissions: Record<string, UserPermissions> = {
     canManageCash: true,
     canManageExpenses: false,
     canManageSuppliers: false,
+    canManageAudit: false,
   },
   vendedor: {
     role: 'vendedor',
@@ -54,6 +58,7 @@ const defaultRolePermissions: Record<string, UserPermissions> = {
     canManageCash: false,
     canManageExpenses: false,
     canManageSuppliers: false,
+    canManageAudit: false,
   },
 }
 
