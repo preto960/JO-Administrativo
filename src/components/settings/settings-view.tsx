@@ -62,12 +62,17 @@ import {
   X,
   Tag,
   ClipboardList,
+  BookOpen,
+  Globe,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { useAuth } from '@/hooks/use-auth'
 import { ALL_ROLES, getRoleLabel } from '@/lib/permissions'
 import { ColorPicker, applyBothColors } from './color-picker'
 import { RolePermissionsEditor } from './role-permissions-editor'
 import { AuditLogView } from '@/components/audit/audit-log-view'
+import { TutorialTextsEditor } from './tutorial-texts-editor'
+import { getPermissions, canAccessView } from '@/lib/permissions'
 
 interface Branch {
   id: string
@@ -110,6 +115,8 @@ interface Settings {
   primaryColor: string
   secondaryColor: string
   theme: string
+  country: string
+  tutorialTexts: Record<string, unknown>
 }
 
 interface UserItem {
@@ -143,6 +150,7 @@ export function SettingsView() {
   const [saving, setSaving] = useState(false)
   const [fetchingRate, setFetchingRate] = useState(false)
   const [activeTab, setActiveTab] = useState('empresa')
+  const { user } = useAuth()
 
   // Listen for tutorial tab switching via custom event
   useEffect(() => {
@@ -343,6 +351,9 @@ export function SettingsView() {
     )
   }
 
+  const userPerms = user ? getPermissions(user.role) : null
+  const canViewAudit = user?.role === 'admin' || (userPerms?.canViewAudit === true)
+
   if (!settings) return null
 
   return (
@@ -396,6 +407,10 @@ export function SettingsView() {
             <ClipboardList className="h-3.5 w-3.5 hidden sm:block" />
             <span>Auditoría</span>
           </TabsTrigger>
+          <TabsTrigger data-tutorial="settings-tab-tutorial" value="tutorial" className="gap-1.5">
+            <BookOpen className="h-3.5 w-3.5 hidden sm:block" />
+            <span>Tutorial</span>
+          </TabsTrigger>
         </TabsList>
 
         {/* ── Empresa Tab ────────────────────────────────── */}
@@ -438,6 +453,34 @@ export function SettingsView() {
                     placeholder="+58 212-0000000"
                   />
                 </div>
+              </div>
+              <div className="space-y-2">
+                <Label>País / Región</Label>
+                <Select
+                  value={settings.country || 'VE'}
+                  onValueChange={(v) => setSettings({ ...settings, country: v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="VE">Venezuela</SelectItem>
+                    <SelectItem value="CO">Colombia</SelectItem>
+                    <SelectItem value="MX">México</SelectItem>
+                    <SelectItem value="AR">Argentina</SelectItem>
+                    <SelectItem value="PE">Perú</SelectItem>
+                    <SelectItem value="CL">Chile</SelectItem>
+                    <SelectItem value="EC">Ecuador</SelectItem>
+                    <SelectItem value="PA">Panamá</SelectItem>
+                    <SelectItem value="DO">República Dominicana</SelectItem>
+                    <SelectItem value="ES">España</SelectItem>
+                    <SelectItem value="US">Estados Unidos</SelectItem>
+                    <SelectItem value="OTHER">Otro</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Define el país donde está desplegado el sistema. Ajusta los textos, moneda y terminología según la región.
+                </p>
               </div>
               <div className="space-y-2">
                 <Label>Dirección</Label>
@@ -521,6 +564,7 @@ export function SettingsView() {
                   phone: settings.phone,
                   address: settings.address,
                   logoUrl: settings.logoUrl,
+                  country: settings.country || 'VE',
                 })}
                 disabled={saving}
               >
@@ -1022,7 +1066,20 @@ export function SettingsView() {
 
         {/* ── Auditoría Tab ─────────────────────────────── */}
         <TabsContent value="audit">
-          <AuditLogView />
+          {canViewAudit ? (
+            <AuditLogView />
+          ) : (
+            <Card>
+              <CardContent className="flex items-center justify-center p-12">
+                <p className="text-muted-foreground">No tienes permiso para ver la auditoría</p>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        {/* ── Tutorial Tab ───────────────────────────────── */}
+        <TabsContent value="tutorial">
+          <TutorialTextsEditor />
         </TabsContent>
 
         {/* ── Roles & Permisos Tab ────────────────────────── */}

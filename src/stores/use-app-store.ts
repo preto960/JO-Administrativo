@@ -31,6 +31,8 @@ export interface AppSettings {
   primaryColor: string
   secondaryColor: string
   theme: string
+  country: string
+  [key: string]: unknown
 }
 
 export interface BranchItem {
@@ -78,6 +80,7 @@ const defaultSettings: AppSettings = {
   primaryColor: 'blue',
   secondaryColor: 'slate',
   theme: 'light',
+  country: 'VE',
 }
 
 export const useAppStore = create<AppState>()(

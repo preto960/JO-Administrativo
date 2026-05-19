@@ -2,6 +2,7 @@ import NextAuth from 'next-auth'
 import CredentialsProvider from 'next-auth/providers/credentials'
 import { db } from '@/lib/db'
 import { comparePassword, isHashed, hashPassword } from '@/lib/password'
+import { logAction } from '@/lib/audit-log'
 
 export const authOptions = {
   providers: [
@@ -70,6 +71,39 @@ export const authOptions = {
         ;(session.user as Record<string, unknown>).branchId = token.branchId
       }
       return session
+    },
+  },
+  events: {
+    async signIn({ user }) {
+      // Log successful login to audit trail
+      await logAction({
+        action: 'login',
+        entity: 'user',
+        entityId: user.id,
+        details: { summary: `Inicio de sesión: ${user.name || user.email}` },
+        userId: user.id,
+        userName: user.name || user.email || '',
+        userRole: (user as Record<string, unknown>).role as string || 'unknown',
+      }).catch(() => {
+        // Never break login flow due to audit logging failure
+      })
+    },
+    async signOut({ session, token }) {
+      // Log logout to audit trail
+      const userId = (token as Record<string, unknown>)?.userId as string || ''
+      const userName = (token as Record<string, unknown>)?.name as string || ''
+      const userRole = (token as Record<string, unknown>)?.role as string || ''
+      await logAction({
+        action: 'logout',
+        entity: 'user',
+        entityId: userId,
+        details: { summary: `Cierre de sesión: ${userName}` },
+        userId,
+        userName,
+        userRole,
+      }).catch(() => {
+        // Never break logout flow due to audit logging failure
+      })
     },
   },
   pages: {

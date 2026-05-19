@@ -22,6 +22,7 @@ const DEFAULT_PERMISSIONS: Record<string, UserPermissions> = {
     canManageCash: true,
     canManageExpenses: true,
     canManageSuppliers: true,
+    canViewAudit: true,
   },
   gerente: {
     role: 'gerente',
@@ -33,6 +34,7 @@ const DEFAULT_PERMISSIONS: Record<string, UserPermissions> = {
     canManageCash: true,
     canManageExpenses: true,
     canManageSuppliers: true,
+    canViewAudit: false,
   },
   cajero: {
     role: 'cajero',
@@ -44,6 +46,7 @@ const DEFAULT_PERMISSIONS: Record<string, UserPermissions> = {
     canManageCash: true,
     canManageExpenses: false,
     canManageSuppliers: false,
+    canViewAudit: false,
   },
   vendedor: {
     role: 'vendedor',
@@ -55,6 +58,7 @@ const DEFAULT_PERMISSIONS: Record<string, UserPermissions> = {
     canManageCash: false,
     canManageExpenses: false,
     canManageSuppliers: false,
+    canViewAudit: false,
   },
 }
 
@@ -77,6 +81,7 @@ const ALL_ABILITIES = [
   { key: 'canManageCash', label: 'Gestionar Caja' },
   { key: 'canManageExpenses', label: 'Gestionar Gastos' },
   { key: 'canManageSuppliers', label: 'Gestionar Proveedores' },
+  { key: 'canViewAudit', label: 'Ver Auditoría' },
 ]
 
 export function RolePermissionsEditor() {

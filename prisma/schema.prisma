@@ -420,6 +420,8 @@ model Settings {
   secondaryColor        String   @default("slate")
   theme                 String   @default("light")
   rolePermissions       Json     @default("{}")
+  country               String   @default("VE")
+  tutorialTexts         Json     @default("{}")
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 }
@@ -438,9 +440,9 @@ model Notification {
 
 model AuditLog {
   id        String   @id @default(cuid())
-  userId    String
-  userName  String
-  userRole  String
+  userId    String   @default("system")
+  userName  String   @default("Sistema")
+  userRole  String   @default("system")
   action    String
   entity    String
   entityId  String?
@@ -449,7 +451,7 @@ model AuditLog {
   userAgent String?
   createdAt DateTime @default(now())
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([entity])
