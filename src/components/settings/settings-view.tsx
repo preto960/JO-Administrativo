@@ -32,6 +32,16 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog'
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogAction,
+  AlertDialogCancel,
+} from '@/components/ui/alert-dialog'
 import { Separator } from '@/components/ui/separator'
 import {
   Building2,
@@ -160,6 +170,46 @@ export function SettingsView() {
   const [editingCat, setEditingCat] = useState<{ id: string; name: string } | null>(null)
   const [catName, setCatName] = useState('')
   const [catSaving, setCatSaving] = useState(false)
+
+  // Delete confirmation dialogs
+  const [deleteUserTarget, setDeleteUserTarget] = useState<UserItem | null>(null)
+  const [deleteCatTarget, setDeleteCatTarget] = useState<{ id: string; name: string; _count: { products: number } } | null>(null)
+  const [deletingItem, setDeletingItem] = useState(false)
+
+  const handleConfirmDeleteUser = async () => {
+    if (!deleteUserTarget) return
+    setDeletingItem(true)
+    try {
+      await api.del(`/api/users?id=${deleteUserTarget.id}`)
+      toast.success('Usuario eliminado')
+      fetchSettings()
+    } catch {
+      toast.error('Error al eliminar usuario')
+    } finally {
+      setDeletingItem(false)
+      setDeleteUserTarget(null)
+    }
+  }
+
+  const handleConfirmDeleteCat = async () => {
+    if (!deleteCatTarget) return
+    if (deleteCatTarget._count.products > 0) {
+      toast.error(`No se puede eliminar. Tiene ${deleteCatTarget._count.products} producto(s) asociado(s)`)
+      setDeleteCatTarget(null)
+      return
+    }
+    setDeletingItem(true)
+    try {
+      await api.del(`/api/categories?id=${deleteCatTarget.id}`)
+      toast.success('Categoría eliminada')
+      setCategories(prev => prev.filter(c => c.id !== deleteCatTarget.id))
+    } catch {
+      toast.error('Error al eliminar categoría')
+    } finally {
+      setDeletingItem(false)
+      setDeleteCatTarget(null)
+    }
+  }
 
   // Branches state
   const [branches, setBranches] = useState<Branch[]>([])
@@ -950,16 +1000,7 @@ export function SettingsView() {
                             variant="ghost"
                             size="icon"
                             className="h-8 w-8 text-red-400 hover:text-red-600"
-                            onClick={async () => {
-                              if (!confirm(`¿Estás seguro de eliminar el usuario "${user.name}"?`)) return
-                              try {
-                                await api.del(`/api/users?id=${user.id}`)
-                                toast.success('Usuario eliminado')
-                                fetchSettings()
-                              } catch {
-                                toast.error('Error al eliminar usuario')
-                              }
-                            }}
+                            onClick={() => setDeleteUserTarget(user)}
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                           </Button>
@@ -1089,20 +1130,7 @@ export function SettingsView() {
                               variant="ghost"
                               size="icon"
                               className="h-8 w-8 text-red-400 hover:text-red-600"
-                              onClick={async () => {
-                                if (cat._count.products > 0) {
-                                  toast.error(`No se puede eliminar. Tiene ${cat._count.products} producto(s) asociado(s)`)
-                                  return
-                                }
-                                if (!confirm(`¿Estás seguro de eliminar la categoría "${cat.name}"?`)) return
-                                try {
-                                  await api.del(`/api/categories?id=${cat.id}`)
-                                  toast.success('Categoría eliminada')
-                                  setCategories(prev => prev.filter(c => c.id !== cat.id))
-                                } catch {
-                                  toast.error('Error al eliminar categoría')
-                                }
-                              }}
+                              onClick={() => setDeleteCatTarget(cat)}
                               title="Eliminar"
                             >
                               <Trash2 className="h-3.5 w-3.5" />
@@ -1372,6 +1400,42 @@ export function SettingsView() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Delete User Confirmation Dialog */}
+      <AlertDialog open={!!deleteUserTarget} onOpenChange={(open) => { if (!open) setDeleteUserTarget(null) }}>
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Eliminar Usuario</AlertDialogTitle>
+            <AlertDialogDescription>
+              ¿Estás seguro de eliminar el usuario "{deleteUserTarget?.name}"? Esta acción no se puede deshacer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingItem}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" onClick={handleConfirmDeleteUser} disabled={deletingItem}>
+              {deletingItem ? 'Eliminando...' : 'Eliminar'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete Category Confirmation Dialog */}
+      <AlertDialog open={!!deleteCatTarget} onOpenChange={(open) => { if (!open) setDeleteCatTarget(null) }}>
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Eliminar Categoría</AlertDialogTitle>
+            <AlertDialogDescription>
+              ¿Estás seguro de eliminar la categoría "{deleteCatTarget?.name}"? Esta acción no se puede deshacer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingItem}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" onClick={handleConfirmDeleteCat} disabled={deletingItem}>
+              {deletingItem ? 'Eliminando...' : 'Eliminar'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

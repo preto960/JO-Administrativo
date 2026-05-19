@@ -25,6 +25,16 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog'
 import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogAction,
+  AlertDialogCancel,
+} from '@/components/ui/alert-dialog'
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -117,6 +127,25 @@ export function ClientsTable() {
   const referenceCurrency = useSetting('referenceCurrency')
   const currencySymbol = referenceCurrency === 'EUR' ? '\u20ac' : '$'
   const isLocalMethod = localCurrencyMethods.includes(paymentMethod)
+
+  // Delete confirmation dialog
+  const [deleteTarget, setDeleteTarget] = useState<Client | null>(null)
+  const [deleting, setDeleting] = useState(false)
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return
+    setDeleting(true)
+    try {
+      await api.del(`/api/clients?id=${deleteTarget.id}`)
+      toast.success('Cliente eliminado')
+      fetchClients()
+    } catch {
+      toast.error('Error al eliminar cliente')
+    } finally {
+      setDeleting(false)
+      setDeleteTarget(null)
+    }
+  }
 
   // Edit client
   const [editingClient, setEditingClient] = useState<Client | null>(null)
@@ -602,16 +631,7 @@ export function ClientsTable() {
                       <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Editar" onClick={() => openEdit(client)}>
                         <Pencil className="h-3.5 w-3.5" />
                       </Button>
-                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-400 hover:text-red-600" title="Eliminar" onClick={async () => {
-                        if (!confirm(`¿Estás seguro de eliminar el cliente "${client.name}"?`)) return
-                        try {
-                          await api.del(`/api/clients?id=${client.id}`)
-                          toast.success('Cliente eliminado')
-                          fetchClients()
-                        } catch {
-                          toast.error('Error al eliminar cliente')
-                        }
-                      }}>
+                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-400 hover:text-red-600" title="Eliminar" onClick={() => setDeleteTarget(client)}>
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
                     </>
@@ -984,6 +1004,24 @@ export function ClientsTable() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}>
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Eliminar Cliente</AlertDialogTitle>
+            <AlertDialogDescription>
+              ¿Estás seguro de eliminar el cliente "{deleteTarget?.name}"? Esta acción no se puede deshacer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" onClick={handleConfirmDelete} disabled={deleting}>
+              {deleting ? 'Eliminando...' : 'Eliminar'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

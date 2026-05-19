@@ -25,6 +25,16 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog'
 import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogAction,
+  AlertDialogCancel,
+} from '@/components/ui/alert-dialog'
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -86,6 +96,25 @@ export function ExpensesTable() {
   const [searchTerm, setSearchTerm] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('')
   const [currencies, setCurrencies] = useState<CurrencyItem[]>([])
+
+  // Delete confirmation dialog
+  const [deleteTarget, setDeleteTarget] = useState<Expense | null>(null)
+  const [deleting, setDeleting] = useState(false)
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return
+    setDeleting(true)
+    try {
+      await api.del(`/api/expenses?id=${deleteTarget.id}`)
+      toast.success('Gasto eliminado')
+      fetchExpenses()
+    } catch {
+      toast.error('Error al eliminar gasto')
+    } finally {
+      setDeleting(false)
+      setDeleteTarget(null)
+    }
+  }
 
   // Load currencies on mount
   useEffect(() => {
@@ -296,16 +325,7 @@ export function ExpensesTable() {
                         variant="ghost"
                         className="text-red-400 hover:text-red-600"
                         title="Eliminar"
-                        onClick={async () => {
-                          if (!confirm('¿Estás seguro de eliminar este gasto?')) return
-                          try {
-                            await api.del(`/api/expenses?id=${expense.id}`)
-                            toast.success('Gasto eliminado')
-                            fetchExpenses()
-                          } catch {
-                            toast.error('Error al eliminar gasto')
-                          }
-                        }}
+                        onClick={() => setDeleteTarget(expense)}
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
@@ -403,6 +423,24 @@ export function ExpensesTable() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}>
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Eliminar Gasto</AlertDialogTitle>
+            <AlertDialogDescription>
+              ¿Estás seguro de eliminar este gasto por {deleteTarget?.currency.symbol}{deleteTarget?.amount.toFixed(2)}? Esta acción no se puede deshacer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" onClick={handleConfirmDelete} disabled={deleting}>
+              {deleting ? 'Eliminando...' : 'Eliminar'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

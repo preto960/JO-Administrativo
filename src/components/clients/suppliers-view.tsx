@@ -25,6 +25,16 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog'
 import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogAction,
+  AlertDialogCancel,
+} from '@/components/ui/alert-dialog'
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -106,6 +116,25 @@ export function SuppliersView() {
   const [uploadingInvoice, setUploadingInvoice] = useState(false)
   const [savingPayable, setSavingPayable] = useState(false)
   const invoiceFileRef = useRef<HTMLInputElement>(null)
+
+  // Delete confirmation dialog
+  const [deleteTarget, setDeleteTarget] = useState<Supplier | null>(null)
+  const [deleting, setDeleting] = useState(false)
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return
+    setDeleting(true)
+    try {
+      await api.del(`/api/suppliers?id=${deleteTarget.id}`)
+      toast.success('Proveedor eliminado')
+      fetchSuppliers()
+    } catch {
+      toast.error('Error al eliminar proveedor')
+    } finally {
+      setDeleting(false)
+      setDeleteTarget(null)
+    }
+  }
 
   // Debt/Payables dialog state
   const [debtSupplier, setDebtSupplier] = useState<Supplier | null>(null)
@@ -567,16 +596,7 @@ export function SuppliersView() {
                     <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Editar" onClick={() => openEditDialog(supplier)}>
                       <Pencil className="h-3.5 w-3.5" />
                     </Button>
-                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-400 hover:text-red-600" title="Eliminar" onClick={async () => {
-                      if (!confirm(`¿Estás seguro de eliminar el proveedor "${supplier.name}"?`)) return
-                      try {
-                        await api.del(`/api/suppliers?id=${supplier.id}`)
-                        toast.success('Proveedor eliminado')
-                        fetchSuppliers()
-                      } catch {
-                        toast.error('Error al eliminar proveedor')
-                      }
-                    }}>
+                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-400 hover:text-red-600" title="Eliminar" onClick={() => setDeleteTarget(supplier)}>
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
                   </div>
@@ -994,6 +1014,24 @@ export function SuppliersView() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}>
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Eliminar Proveedor</AlertDialogTitle>
+            <AlertDialogDescription>
+              ¿Estás seguro de eliminar el proveedor "{deleteTarget?.name}"? Esta acción no se puede deshacer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" onClick={handleConfirmDelete} disabled={deleting}>
+              {deleting ? 'Eliminando...' : 'Eliminar'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
