@@ -14,6 +14,9 @@ export interface UserPermissions {
   canAccessTabMoneda: boolean
   canAccessTabIva: boolean
   canAccessTabSucursales: boolean
+  canAccessTabUsuarios: boolean
+  canAccessTabRoles: boolean
+  canAccessTabCategorias: boolean
   canAccessTabSistema: boolean
   canAccessTabApariencia: boolean
   canAccessTabTutorial: boolean
@@ -35,6 +38,9 @@ const defaultRolePermissions: Record<string, UserPermissions> = {
     canAccessTabMoneda: true,
     canAccessTabIva: true,
     canAccessTabSucursales: true,
+    canAccessTabUsuarios: true,
+    canAccessTabRoles: true,
+    canAccessTabCategorias: true,
     canAccessTabSistema: true,
     canAccessTabApariencia: true,
     canAccessTabTutorial: true,
@@ -54,6 +60,9 @@ const defaultRolePermissions: Record<string, UserPermissions> = {
     canAccessTabMoneda: true,
     canAccessTabIva: true,
     canAccessTabSucursales: true,
+    canAccessTabUsuarios: false,
+    canAccessTabRoles: false,
+    canAccessTabCategorias: false,
     canAccessTabSistema: false,
     canAccessTabApariencia: true,
     canAccessTabTutorial: false,
@@ -73,6 +82,9 @@ const defaultRolePermissions: Record<string, UserPermissions> = {
     canAccessTabMoneda: false,
     canAccessTabIva: false,
     canAccessTabSucursales: false,
+    canAccessTabUsuarios: false,
+    canAccessTabRoles: false,
+    canAccessTabCategorias: false,
     canAccessTabSistema: false,
     canAccessTabApariencia: false,
     canAccessTabTutorial: false,
@@ -92,6 +104,9 @@ const defaultRolePermissions: Record<string, UserPermissions> = {
     canAccessTabMoneda: false,
     canAccessTabIva: false,
     canAccessTabSucursales: false,
+    canAccessTabUsuarios: false,
+    canAccessTabRoles: false,
+    canAccessTabCategorias: false,
     canAccessTabSistema: false,
     canAccessTabApariencia: false,
     canAccessTabTutorial: false,
@@ -109,7 +124,18 @@ let customPermissions: Record<string, UserPermissions> = {}
  * Also triggers a Zustand state bump so components re-render with updated perms.
  */
 export function setCustomPermissions(perms: Record<string, UserPermissions>) {
-  customPermissions = perms
+  // IMPORTANT: merge with defaults so that new permission fields added in code
+  // are properly filled even if the DB doesn't have them yet.
+  customPermissions = {}
+  for (const [role, dbPerms] of Object.entries(perms)) {
+    const defaults = defaultRolePermissions[role]
+    if (defaults) {
+      // Spread defaults first, then overlay DB values on top
+      customPermissions[role] = { ...defaults, ...dbPerms, views: dbPerms.views || defaults.views }
+    } else {
+      customPermissions[role] = dbPerms
+    }
+  }
   // Import dynamically to avoid circular dependency — bumpPermissions triggers re-renders
   import('@/stores/use-app-store').then(({ useAppStore }) => {
     useAppStore.getState().bumpPermissions()

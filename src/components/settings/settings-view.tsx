@@ -369,37 +369,37 @@ export function SettingsView() {
 
       <Tabs data-tutorial="settings-tabs" value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <TabsList className="flex flex-wrap h-auto gap-1">
-          {userPerms?.canAccessTabEmpresa !== false && (
+          {userPerms?.canAccessTabEmpresa && (
             <TabsTrigger data-tutorial="settings-tab-empresa" value="empresa" className="gap-1.5">
               <Building2 className="h-3.5 w-3.5 hidden sm:block" />
               <span>Empresa</span>
             </TabsTrigger>
           )}
-          {userPerms?.canAccessTabMoneda !== false && (
+          {userPerms?.canAccessTabMoneda && (
             <TabsTrigger data-tutorial="settings-tab-moneda" value="moneda" className="gap-1.5">
               <DollarSign className="h-3.5 w-3.5 hidden sm:block" />
               <span>Moneda</span>
             </TabsTrigger>
           )}
-          {userPerms?.canAccessTabIva !== false && (
+          {userPerms?.canAccessTabIva && (
             <TabsTrigger data-tutorial="settings-tab-iva" value="iva" className="gap-1.5">
               <Percent className="h-3.5 w-3.5 hidden sm:block" />
               <span>I.V.A.</span>
             </TabsTrigger>
           )}
-          {userPerms?.canAccessTabSucursales !== false && (
+          {userPerms?.canAccessTabSucursales && (
             <TabsTrigger data-tutorial="settings-tab-sucursales" value="sucursales" className="gap-1.5">
               <GitBranch className="h-3.5 w-3.5 hidden sm:block" />
               <span>Sucursales</span>
             </TabsTrigger>
           )}
-          {canManageUsers && (
+          {userPerms?.canAccessTabUsuarios && (
             <TabsTrigger data-tutorial="settings-tab-usuarios" value="usuarios" className="gap-1.5">
               <Users className="h-3.5 w-3.5 hidden sm:block" />
               <span>Usuarios</span>
             </TabsTrigger>
           )}
-          {canManageUsers && (
+          {userPerms?.canAccessTabRoles && (
             <TabsTrigger data-tutorial="settings-tab-roles" value="roles" className="gap-1.5">
               <Shield className="h-3.5 w-3.5 hidden sm:block" />
               <span>Roles</span>
@@ -411,7 +411,7 @@ export function SettingsView() {
               <span>Sistema</span>
             </TabsTrigger>
           )}
-          {canManageUsers && (
+          {userPerms?.canAccessTabCategorias && (
             <TabsTrigger data-tutorial="settings-tab-categorias" value="categorias" className="gap-1.5">
               <Tag className="h-3.5 w-3.5 hidden sm:block" />
               <span>Categorías</span>
