@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { logAction } from '@/lib/audit-log'
+import { requireAdmin } from '@/lib/require-auth'
 
 export async function GET() {
   try {
@@ -25,6 +26,9 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const auth = await requireAdmin()
+  if ('status' in auth) return auth
+
   try {
     const body = await request.json()
     const { name, address, phone } = body

@@ -79,9 +79,9 @@ const DENOMINATIONS = [
 ]
 
 export function CashRegisterView() {
-  const { user } = useAuth()
+  const { user, permissions } = useAuth()
   const { branches, selectedBranchId, setSelectedBranchId } = useAppStore()
-  const isCashier = user?.role === 'cajero'
+  const canManageCash = permissions.canManageCash
 
   const [registers, setRegisters] = useState<CashRegister[]>([])
   const [loading, setLoading] = useState(true)
@@ -129,7 +129,7 @@ export function CashRegisterView() {
       const regs = await api.get<CashRegister[]>(url)
       setRegisters(regs)
 
-      if (!isCashier) {
+      if (canManageCash) {
         const users = await api.get<{ id: string; name: string; role: string; active: boolean }[]>('/api/users?role=cajero')
         setAvailableUsers(users.filter(u => u.active))
       }
@@ -161,7 +161,7 @@ export function CashRegisterView() {
   }, [filterBranchId])
 
   useEffect(() => {
-    if (!isCashier || !user?.id) return
+    if (canManageCash || !user?.id) return
     api.get<{ wasClosed: boolean; register?: { name: string | null; branchName: string; closingDate: string; actual: number; cutDate: string } }>(`/api/cash-register/check?userId=${user.id}`)
       .then((result) => {
         if (result.wasClosed && result.register) {
@@ -170,7 +170,7 @@ export function CashRegisterView() {
         }
       })
       .catch(() => {})
-  }, [isCashier, user?.id])
+  }, [canManageCash, user?.id])
 
   const openRegisters = registers.filter(r => r.status === 'abierta')
   const closedRegisters = registers.filter(r => r.status === 'cerrada')
@@ -452,7 +452,7 @@ export function CashRegisterView() {
 
           {/* Right: Actions */}
           <div className="border-t lg:border-t-0 lg:border-l p-4 lg:p-6 bg-muted/30 flex flex-col gap-2 justify-center min-w-[200px]">
-            {!isCashier && (
+            {canManageCash && (
               <>
                 <Button data-tutorial="cash-open-btn" className="w-full justify-start gap-2 bg-primary hover:bg-primary/90 text-white" onClick={() => setShowOpen(true)}>
                   <Plus className="h-4 w-4" /> Abrir Caja
@@ -473,7 +473,7 @@ export function CashRegisterView() {
                 )}
               </>
             )}
-            {isCashier && (
+            {!canManageCash && (
               <div className="flex items-center gap-2 text-sm text-muted-foreground py-1">
                 <UserCircle className="h-4 w-4" />
                 Modo cajero - solo lectura
@@ -553,7 +553,7 @@ export function CashRegisterView() {
                     {/* Action buttons */}
                     <Separator />
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      {!isCashier && (
+                      {canManageCash && (
                         <>
                           <Tooltip>
                             <TooltipTrigger asChild>
@@ -612,7 +612,7 @@ export function CashRegisterView() {
       )}
 
       {/* No registers open - Empty state */}
-      {openRegisters.length === 0 && !isCashier && (
+      {openRegisters.length === 0 && canManageCash && (
         <Card className="border-dashed">
           <CardContent className="p-10 flex flex-col items-center justify-center text-center gap-3">
             <div className="rounded-full bg-muted p-4">
@@ -631,7 +631,7 @@ export function CashRegisterView() {
         </Card>
       )}
 
-      {openRegisters.length === 0 && isCashier && (
+      {openRegisters.length === 0 && !canManageCash && (
         <Card className="border-dashed">
           <CardContent className="p-10 flex flex-col items-center justify-center text-center gap-3">
             <div className="rounded-full bg-muted p-4">

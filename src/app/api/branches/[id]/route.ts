@@ -1,11 +1,15 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { logAction } from '@/lib/audit-log'
+import { requireAdmin } from '@/lib/require-auth'
 
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requireAdmin()
+  if ('status' in auth) return auth
+
   try {
     const { id } = await params
     const body = await request.json()
@@ -42,6 +46,9 @@ export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requireAdmin()
+  if ('status' in auth) return auth
+
   try {
     const { id } = await params
     const branch = await db.branch.findUnique({ where: { id } })

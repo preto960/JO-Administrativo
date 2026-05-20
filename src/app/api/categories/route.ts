@@ -1,6 +1,8 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { logAction } from '@/lib/audit-log'
+import { requireAuth } from '@/lib/require-auth'
+import { getPermissions } from '@/lib/permissions'
 
 export async function GET() {
   try {
@@ -16,6 +18,13 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const auth = await requireAuth()
+  if ('status' in auth) return auth
+  const perms = getPermissions(auth.role)
+  if (!perms.canManageProducts) {
+    return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
+  }
+
   try {
     const body = await request.json()
     const { name } = body
@@ -97,6 +106,13 @@ export async function PUT(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
+  const auth = await requireAuth()
+  if ('status' in auth) return auth
+  const perms = getPermissions(auth.role)
+  if (!perms.canManageProducts) {
+    return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
+  }
+
   try {
     const { searchParams } = new URL(request.url)
     const id = searchParams.get('id')

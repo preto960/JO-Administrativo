@@ -353,6 +353,8 @@ export function SettingsView() {
 
   const userPerms = user ? getPermissions(user.role) : null
   const canViewAudit = user?.role === 'admin' || (userPerms?.canViewAudit === true)
+  const canManageUsers = user?.role === 'admin' || (userPerms?.canManageUsers === true)
+  const isAdmin = user?.role === 'admin'
 
   if (!settings) return null
 
@@ -383,34 +385,46 @@ export function SettingsView() {
             <GitBranch className="h-3.5 w-3.5 hidden sm:block" />
             <span>Sucursales</span>
           </TabsTrigger>
-          <TabsTrigger data-tutorial="settings-tab-usuarios" value="usuarios" className="gap-1.5">
-            <Users className="h-3.5 w-3.5 hidden sm:block" />
-            <span>Usuarios</span>
-          </TabsTrigger>
-          <TabsTrigger data-tutorial="settings-tab-roles" value="roles" className="gap-1.5">
-            <Shield className="h-3.5 w-3.5 hidden sm:block" />
-            <span>Roles</span>
-          </TabsTrigger>
-          <TabsTrigger data-tutorial="settings-tab-sistema" value="sistema" className="gap-1.5">
-            <Monitor className="h-3.5 w-3.5 hidden sm:block" />
-            <span>Sistema</span>
-          </TabsTrigger>
-          <TabsTrigger data-tutorial="settings-tab-categorias" value="categorias" className="gap-1.5">
-            <Tag className="h-3.5 w-3.5 hidden sm:block" />
-            <span>Categorías</span>
-          </TabsTrigger>
+          {canManageUsers && (
+            <TabsTrigger data-tutorial="settings-tab-usuarios" value="usuarios" className="gap-1.5">
+              <Users className="h-3.5 w-3.5 hidden sm:block" />
+              <span>Usuarios</span>
+            </TabsTrigger>
+          )}
+          {canManageUsers && (
+            <TabsTrigger data-tutorial="settings-tab-roles" value="roles" className="gap-1.5">
+              <Shield className="h-3.5 w-3.5 hidden sm:block" />
+              <span>Roles</span>
+            </TabsTrigger>
+          )}
+          {isAdmin && (
+            <TabsTrigger data-tutorial="settings-tab-sistema" value="sistema" className="gap-1.5">
+              <Monitor className="h-3.5 w-3.5 hidden sm:block" />
+              <span>Sistema</span>
+            </TabsTrigger>
+          )}
+          {canManageUsers && (
+            <TabsTrigger data-tutorial="settings-tab-categorias" value="categorias" className="gap-1.5">
+              <Tag className="h-3.5 w-3.5 hidden sm:block" />
+              <span>Categorías</span>
+            </TabsTrigger>
+          )}
           <TabsTrigger data-tutorial="settings-tab-apariencia" value="apariencia" className="gap-1.5">
             <Palette className="h-3.5 w-3.5 hidden sm:block" />
             <span>Apariencia</span>
           </TabsTrigger>
-          <TabsTrigger data-tutorial="settings-tab-audit" value="audit" className="gap-1.5">
-            <ClipboardList className="h-3.5 w-3.5 hidden sm:block" />
-            <span>Auditoría</span>
-          </TabsTrigger>
-          <TabsTrigger data-tutorial="settings-tab-tutorial" value="tutorial" className="gap-1.5">
-            <BookOpen className="h-3.5 w-3.5 hidden sm:block" />
-            <span>Tutorial</span>
-          </TabsTrigger>
+          {canViewAudit && (
+            <TabsTrigger data-tutorial="settings-tab-audit" value="audit" className="gap-1.5">
+              <ClipboardList className="h-3.5 w-3.5 hidden sm:block" />
+              <span>Auditoría</span>
+            </TabsTrigger>
+          )}
+          {isAdmin && (
+            <TabsTrigger data-tutorial="settings-tab-tutorial" value="tutorial" className="gap-1.5">
+              <BookOpen className="h-3.5 w-3.5 hidden sm:block" />
+              <span>Tutorial</span>
+            </TabsTrigger>
+          )}
         </TabsList>
 
         {/* ── Empresa Tab ────────────────────────────────── */}
@@ -999,6 +1013,7 @@ export function SettingsView() {
         </TabsContent>
 
         {/* ── Usuarios Tab ──────────────────────────────── */}
+        {canManageUsers && (
         <TabsContent value="usuarios">
           <Card>
             <CardHeader>
@@ -1063,31 +1078,31 @@ export function SettingsView() {
             </CardContent>
           </Card>
         </TabsContent>
+        )}
 
         {/* ── Auditoría Tab ─────────────────────────────── */}
+        {canViewAudit && (
         <TabsContent value="audit">
-          {canViewAudit ? (
-            <AuditLogView />
-          ) : (
-            <Card>
-              <CardContent className="flex items-center justify-center p-12">
-                <p className="text-muted-foreground">No tienes permiso para ver la auditoría</p>
-              </CardContent>
-            </Card>
-          )}
+          <AuditLogView />
         </TabsContent>
+        )}
 
         {/* ── Tutorial Tab ───────────────────────────────── */}
+        {isAdmin && (
         <TabsContent value="tutorial">
           <TutorialTextsEditor />
         </TabsContent>
+        )}
 
         {/* ── Roles & Permisos Tab ────────────────────────── */}
+        {canManageUsers && (
         <TabsContent value="roles">
           <RolePermissionsEditor />
         </TabsContent>
+        )}
 
         {/* ── Sistema Tab ───────────────────────────────── */}
+        {isAdmin && (
         <TabsContent value="sistema">
           <Card>
             <CardHeader>
@@ -1136,8 +1151,10 @@ export function SettingsView() {
             </CardContent>
           </Card>
         </TabsContent>
+        )}
 
         {/* ── Categorías Tab ────────────────────────────── */}
+        {canManageUsers && (
         <TabsContent value="categorias">
           <Card>
             <CardHeader>
@@ -1226,6 +1243,7 @@ export function SettingsView() {
             </CardContent>
           </Card>
         </TabsContent>
+        )}
 
         {/* ── Apariencia Tab ────────────────────────────── */}
         <TabsContent value="apariencia">

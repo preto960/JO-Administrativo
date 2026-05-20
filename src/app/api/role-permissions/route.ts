@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
 import { logAction } from '@/lib/audit-log'
+import { requireAdmin } from '@/lib/require-auth'
 
 // GET /api/role-permissions - Get current role permissions
 export async function GET() {
@@ -21,6 +22,9 @@ export async function GET() {
 
 // PUT /api/role-permissions - Save custom role permissions
 export async function PUT(request: Request) {
+  const auth = await requireAdmin()
+  if ('status' in auth) return auth
+
   try {
     const body = await request.json()
     const { permissions } = body

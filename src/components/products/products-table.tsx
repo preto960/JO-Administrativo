@@ -45,6 +45,7 @@ import { Plus, Search, Edit, Trash2, Package, Eye, EyeOff, Upload, ImageIcon, X,
 import { toast } from 'sonner'
 import { ProductImportDialog } from './product-import-dialog'
 import { BarcodeLabelSelector } from './barcode-label-selector'
+import { useAuth } from '@/hooks/use-auth'
 
 // ── Interfaces ──────────────────────────────────────────────────────────────
 
@@ -97,6 +98,8 @@ function fmtStock(n: number): string {
 // ── Component ───────────────────────────────────────────────────────────────
 
 export function ProductsTable() {
+  const { permissions } = useAuth()
+  const canManage = permissions.canManageProducts
   const selectedBranchId = useAppStore((s) => s.selectedBranchId)
   const branches = useAppStore((s) => s.branches)
   const [products, setProducts] = useState<Product[]>([])
@@ -497,19 +500,23 @@ export function ProductsTable() {
               Inactivos ({inactiveCount})
             </Label>
           </div>
-          <Button
-            data-tutorial="products-new-btn"
-            onClick={openCreate}
-            className="bg-primary hover:bg-primary/90 text-white"
-          >
-            <Plus className="mr-2 h-4 w-4" /> Nuevo
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => setImportOpen(true)}
-          >
-            <Upload className="mr-2 h-4 w-4" /> Importar
-          </Button>
+          {canManage && (
+            <>
+              <Button
+                data-tutorial="products-new-btn"
+                onClick={openCreate}
+                className="bg-primary hover:bg-primary/90 text-white"
+              >
+                <Plus className="mr-2 h-4 w-4" /> Nuevo
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => setImportOpen(true)}
+              >
+                <Upload className="mr-2 h-4 w-4" /> Importar
+              </Button>
+            </>
+          )}
           <Button
             variant="outline"
             onClick={() => setLabelsOpen(true)}
@@ -609,35 +616,41 @@ export function ProductsTable() {
                           >
                             <Barcode className="h-3.5 w-3.5" />
                           </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            onClick={() => openEdit(product)}
-                            title="Editar"
-                          >
-                            <Edit className="h-3.5 w-3.5" />
-                          </Button>
+                          {canManage && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => openEdit(product)}
+                              title="Editar"
+                            >
+                              <Edit className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
                           {product.active ? (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 text-destructive"
-                              onClick={() => openDeleteConfirm(product)}
-                              title="Desactivar"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
+                            canManage ? (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-destructive"
+                                onClick={() => openDeleteConfirm(product)}
+                                title="Desactivar"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            ) : null
                           ) : (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 text-primary"
-                              onClick={() => handleToggleActive(product)}
-                              title="Reactivar"
-                            >
-                              <Eye className="h-3.5 w-3.5" />
-                            </Button>
+                            canManage ? (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-primary"
+                                onClick={() => handleToggleActive(product)}
+                                title="Reactivar"
+                              >
+                                <Eye className="h-3.5 w-3.5" />
+                              </Button>
+                            ) : null
                           )}
                         </div>
                       </TableCell>

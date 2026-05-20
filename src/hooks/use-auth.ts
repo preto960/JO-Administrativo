@@ -3,6 +3,7 @@
 import { useSession } from 'next-auth/react'
 import { useMemo } from 'react'
 import { getPermissions, canAccessView, type UserPermissions } from '@/lib/permissions'
+import { useAppStore } from '@/stores/use-app-store'
 
 interface AuthUser {
   id: string
@@ -13,6 +14,11 @@ interface AuthUser {
 
 export function useAuth() {
   const { data: session, status } = useSession()
+
+  // Subscribe to permissionsVersion so components re-render when custom perms load from DB
+  const permissionsVersion = useAppStore((s) => s.permissionsVersion)
+  // Used in useMemo dependency — ensures permissions update when custom perms load
+  void permissionsVersion
 
   const user: AuthUser | null = useMemo(() => {
     if (!session?.user) return null
@@ -27,7 +33,8 @@ export function useAuth() {
   const permissions: UserPermissions = useMemo(() => {
     if (!user) return getPermissions('cajero')
     return getPermissions(user.role)
-  }, [user])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, permissionsVersion])
 
   const canView = (view: string): boolean => {
     return canAccessView(user?.role || 'cajero', view)

@@ -2,6 +2,7 @@ import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { hashPassword } from '@/lib/password'
 import { logAction } from '@/lib/audit-log'
+import { requireManageUsers } from '@/lib/require-auth'
 
 export async function GET(request: NextRequest) {
   try {
@@ -34,6 +35,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const auth = await requireManageUsers()
+  if ('status' in auth) return auth
+
   try {
     const body = await request.json()
     const { name, email, password, role, branchId } = body
@@ -78,6 +82,9 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
+  const auth = await requireManageUsers()
+  if ('status' in auth) return auth
+
   try {
     const body = await request.json()
     const { id, name, email, role, active, password, branchId } = body
@@ -116,6 +123,9 @@ export async function PUT(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
+  const auth = await requireManageUsers()
+  if ('status' in auth) return auth
+
   try {
     const { searchParams } = new URL(request.url)
     const id = searchParams.get('id')

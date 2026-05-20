@@ -2,6 +2,8 @@ import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { resolveBranchId } from '@/lib/resolve-branch'
 import { Prisma } from '@prisma/client'
+import { requireAuth } from '@/lib/require-auth'
+import { getPermissions } from '@/lib/permissions'
 
 export async function GET(
   _request: NextRequest,
@@ -40,6 +42,13 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requireAuth()
+  if ('status' in auth) return auth
+  const perms = getPermissions(auth.role)
+  if (!perms.canManageProducts) {
+    return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
+  }
+
   try {
     const { id } = await params
     const body = await request.json()
@@ -161,6 +170,13 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requireAuth()
+  if ('status' in auth) return auth
+  const perms = getPermissions(auth.role)
+  if (!perms.canManageProducts) {
+    return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
+  }
+
   try {
     const { id } = await params
     const url = new URL(request.url)

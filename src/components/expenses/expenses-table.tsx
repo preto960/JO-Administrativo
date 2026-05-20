@@ -80,7 +80,8 @@ function formatDate(dateStr: string): string {
 }
 
 export function ExpensesTable() {
-  const { user } = useAuth()
+  const { user, permissions } = useAuth()
+  const canManage = permissions.canManageExpenses
   const baseCurrencyId = useSetting('baseCurrencyId')
   const branches = useAppStore((s) => s.branches)
   const selectedBranchId = useAppStore((s) => s.selectedBranchId)
@@ -255,12 +256,14 @@ export function ExpensesTable() {
             </span>
           </p>
         </div>
-        <Button
-          onClick={() => setShowCreate(true)}
-          className="bg-primary hover:bg-primary/90 text-white"
-        >
-          <Plus className="mr-2 h-4 w-4" /> Nuevo Gasto
-        </Button>
+        {canManage && (
+          <Button
+            onClick={() => setShowCreate(true)}
+            className="bg-primary hover:bg-primary/90 text-white"
+          >
+            <Plus className="mr-2 h-4 w-4" /> Nuevo Gasto
+          </Button>
+        )}
       </div>
 
       {/* Search + category filter */}
@@ -319,17 +322,19 @@ export function ExpensesTable() {
                     <TableCell className="text-right font-semibold text-red-600 whitespace-nowrap">
                       {expense.currency.symbol}{expense.amount.toFixed(2)}
                     </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="text-red-400 hover:text-red-600"
-                        title="Eliminar"
-                        onClick={() => setDeleteTarget(expense)}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </TableCell>
+                    {canManage && (
+                      <TableCell className="text-right">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-red-400 hover:text-red-600"
+                          title="Eliminar"
+                          onClick={() => setDeleteTarget(expense)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
                 {filteredExpenses.length === 0 && (

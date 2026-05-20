@@ -90,7 +90,8 @@ interface DispatchLine {
 }
 
 export function ClientsTable() {
-  const { user } = useAuth()
+  const { user, permissions } = useAuth()
+  const canManage = permissions.canManageClients
   const selectedBranchId = useAppStore((s) => s.selectedBranchId)
   const [clients, setClients] = useState<Client[]>([])
   const [search, setSearch] = useState('')
@@ -525,9 +526,11 @@ export function ClientsTable() {
             Inactivos ({inactiveCount})
           </Label>
         </div>
-        <Button onClick={openCreate} className="bg-primary hover:bg-primary/90 text-white">
-          <Plus className="mr-2 h-4 w-4" /> Nuevo Cliente
-        </Button>
+        {canManage && (
+          <Button onClick={openCreate} className="bg-primary hover:bg-primary/90 text-white">
+            <Plus className="mr-2 h-4 w-4" /> Nuevo Cliente
+          </Button>
+        )}
       </div>
 
       {loading ? (
@@ -619,24 +622,30 @@ export function ClientsTable() {
                           }
                         </Button>
                       )}
-                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Despachar" onClick={() => openDispatch(client)}>
-                        <Truck className="h-3.5 w-3.5" />
-                      </Button>
+                      {canManage && (
+                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Despachar" onClick={() => openDispatch(client)}>
+                          <Truck className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
                       {client.pendingBalance > 0 && (
                         <Button size="sm" variant="outline" className="h-7 text-xs text-primary hover:text-primary" onClick={() => openPayment(client)}>
                           <DollarSign className="mr-1 h-3 w-3" /> Cobrar
                         </Button>
                       )}
                       <div className="flex-1" />
-                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Editar" onClick={() => openEdit(client)}>
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-400 hover:text-red-600" title="Eliminar" onClick={() => setDeleteTarget(client)}>
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
+                      {canManage && (
+                        <>
+                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Editar" onClick={() => openEdit(client)}>
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-400 hover:text-red-600" title="Eliminar" onClick={() => setDeleteTarget(client)}>
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </>
+                      )}
                     </>
                   )}
-                  {client.deletedAt && (
+                  {client.deletedAt && canManage && (
                     <>
                       <div className="flex-1" />
                       <Button size="sm" variant="outline" className="h-7 text-xs" title="Reactivar cliente" onClick={() => handleReactivate(client)}>

@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
 import { logAction } from '@/lib/audit-log'
+import { requireAuth } from '@/lib/require-auth'
 
 export async function GET() {
   try {
@@ -37,6 +38,9 @@ export async function GET() {
 }
 
 export async function PUT(request: Request) {
+  const auth = await requireAuth()
+  if ('status' in auth) return auth
+
   try {
     const body = await request.json()
 

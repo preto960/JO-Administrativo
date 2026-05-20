@@ -77,7 +77,8 @@ interface PayableRecord {
 }
 
 export function SuppliersView() {
-  const { user } = useAuth()
+  const { user, permissions } = useAuth()
+  const canManage = permissions.canManageSuppliers
   const baseCurrencyId = useAppStore((s) => s.settings?.baseCurrencyId || '')
   const exchangeRate = useSetting('exchangeRate')
   const referenceCurrency = useSetting('referenceCurrency')
@@ -504,9 +505,11 @@ export function SuppliersView() {
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input placeholder="Buscar proveedor..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" />
         </div>
-        <Button onClick={openCreateDialog} className="bg-primary hover:bg-primary/90 text-white">
-          <Plus className="mr-2 h-4 w-4" /> Nuevo Proveedor
-        </Button>
+        {canManage && (
+          <Button onClick={openCreateDialog} className="bg-primary hover:bg-primary/90 text-white">
+            <Plus className="mr-2 h-4 w-4" /> Nuevo Proveedor
+          </Button>
+        )}
       </div>
 
       {/* Cards Grid */}
@@ -589,16 +592,22 @@ export function SuppliersView() {
                     <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Ver Deudas" onClick={() => openDebtDialog(supplier)}>
                       <DollarSign className="h-3.5 w-3.5" />
                     </Button>
-                    <Button size="sm" variant="outline" className="h-7 text-xs text-primary hover:text-primary" title="Agregar Pedido" onClick={() => openPayableDialog(supplier)}>
-                      <Plus className="mr-1 h-3 w-3" /> Pedido
-                    </Button>
+                    {canManage && (
+                      <Button size="sm" variant="outline" className="h-7 text-xs text-primary hover:text-primary" title="Agregar Pedido" onClick={() => openPayableDialog(supplier)}>
+                        <Plus className="mr-1 h-3 w-3" /> Pedido
+                      </Button>
+                    )}
                     <div className="flex-1" />
-                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Editar" onClick={() => openEditDialog(supplier)}>
-                      <Pencil className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-400 hover:text-red-600" title="Eliminar" onClick={() => setDeleteTarget(supplier)}>
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
+                    {canManage && (
+                      <>
+                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Editar" onClick={() => openEditDialog(supplier)}>
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-400 hover:text-red-600" title="Eliminar" onClick={() => setDeleteTarget(supplier)}>
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </>
+                    )}
                   </div>
                 </CardContent>
               </Card>
