@@ -9,6 +9,14 @@ export interface UserPermissions {
   canManageExpenses: boolean
   canManageSuppliers: boolean
   canViewAudit: boolean
+  // Pestañas de Configuración
+  canAccessTabEmpresa: boolean
+  canAccessTabMoneda: boolean
+  canAccessTabIva: boolean
+  canAccessTabSucursales: boolean
+  canAccessTabSistema: boolean
+  canAccessTabApariencia: boolean
+  canAccessTabTutorial: boolean
 }
 
 const defaultRolePermissions: Record<string, UserPermissions> = {
@@ -23,18 +31,32 @@ const defaultRolePermissions: Record<string, UserPermissions> = {
     canManageExpenses: true,
     canManageSuppliers: true,
     canViewAudit: true,
+    canAccessTabEmpresa: true,
+    canAccessTabMoneda: true,
+    canAccessTabIva: true,
+    canAccessTabSucursales: true,
+    canAccessTabSistema: true,
+    canAccessTabApariencia: true,
+    canAccessTabTutorial: true,
   },
   gerente: {
     role: 'gerente',
     views: ['pos', 'dashboard', 'products', 'clients', 'suppliers', 'cash', 'expenses'],
     canManageUsers: false,
-    canAccessSettings: false,
+    canAccessSettings: true,
     canManageProducts: true,
     canManageClients: true,
     canManageCash: true,
     canManageExpenses: true,
     canManageSuppliers: true,
-    canViewAudit: false,
+    canViewAudit: true,
+    canAccessTabEmpresa: true,
+    canAccessTabMoneda: true,
+    canAccessTabIva: true,
+    canAccessTabSucursales: true,
+    canAccessTabSistema: false,
+    canAccessTabApariencia: true,
+    canAccessTabTutorial: false,
   },
   cajero: {
     role: 'cajero',
@@ -47,6 +69,13 @@ const defaultRolePermissions: Record<string, UserPermissions> = {
     canManageExpenses: false,
     canManageSuppliers: false,
     canViewAudit: false,
+    canAccessTabEmpresa: false,
+    canAccessTabMoneda: false,
+    canAccessTabIva: false,
+    canAccessTabSucursales: false,
+    canAccessTabSistema: false,
+    canAccessTabApariencia: false,
+    canAccessTabTutorial: false,
   },
   vendedor: {
     role: 'vendedor',
@@ -59,6 +88,13 @@ const defaultRolePermissions: Record<string, UserPermissions> = {
     canManageExpenses: false,
     canManageSuppliers: false,
     canViewAudit: false,
+    canAccessTabEmpresa: false,
+    canAccessTabMoneda: false,
+    canAccessTabIva: false,
+    canAccessTabSucursales: false,
+    canAccessTabSistema: false,
+    canAccessTabApariencia: false,
+    canAccessTabTutorial: false,
   },
 }
 

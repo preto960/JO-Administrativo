@@ -5,7 +5,6 @@ import { api } from '@/lib/api'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
-import { Separator } from '@/components/ui/separator'
 import { Loader2, Shield, Save, RotateCcw, Eye, Pencil, Check, X as XIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { ALL_ROLES, getRoleLabel, type UserPermissions } from '@/lib/permissions'
@@ -23,18 +22,32 @@ const DEFAULT_PERMISSIONS: Record<string, UserPermissions> = {
     canManageExpenses: true,
     canManageSuppliers: true,
     canViewAudit: true,
+    canAccessTabEmpresa: true,
+    canAccessTabMoneda: true,
+    canAccessTabIva: true,
+    canAccessTabSucursales: true,
+    canAccessTabSistema: true,
+    canAccessTabApariencia: true,
+    canAccessTabTutorial: true,
   },
   gerente: {
     role: 'gerente',
     views: ['pos', 'dashboard', 'products', 'clients', 'suppliers', 'cash', 'expenses'],
     canManageUsers: false,
-    canAccessSettings: false,
+    canAccessSettings: true,
     canManageProducts: true,
     canManageClients: true,
     canManageCash: true,
     canManageExpenses: true,
     canManageSuppliers: true,
-    canViewAudit: false,
+    canViewAudit: true,
+    canAccessTabEmpresa: true,
+    canAccessTabMoneda: true,
+    canAccessTabIva: true,
+    canAccessTabSucursales: true,
+    canAccessTabSistema: false,
+    canAccessTabApariencia: true,
+    canAccessTabTutorial: false,
   },
   cajero: {
     role: 'cajero',
@@ -47,6 +60,13 @@ const DEFAULT_PERMISSIONS: Record<string, UserPermissions> = {
     canManageExpenses: false,
     canManageSuppliers: false,
     canViewAudit: false,
+    canAccessTabEmpresa: false,
+    canAccessTabMoneda: false,
+    canAccessTabIva: false,
+    canAccessTabSucursales: false,
+    canAccessTabSistema: false,
+    canAccessTabApariencia: false,
+    canAccessTabTutorial: false,
   },
   vendedor: {
     role: 'vendedor',
@@ -59,6 +79,13 @@ const DEFAULT_PERMISSIONS: Record<string, UserPermissions> = {
     canManageExpenses: false,
     canManageSuppliers: false,
     canViewAudit: false,
+    canAccessTabEmpresa: false,
+    canAccessTabMoneda: false,
+    canAccessTabIva: false,
+    canAccessTabSucursales: false,
+    canAccessTabSistema: false,
+    canAccessTabApariencia: false,
+    canAccessTabTutorial: false,
   },
 }
 
@@ -68,9 +95,7 @@ interface PermRow {
   label: string
   description: string
   icon: React.ElementType
-  type: 'view' | 'ability'
-  // For 'view' type: checks if the view key is in the role's views array
-  // For 'ability' type: checks the boolean key on the permissions object
+  type: 'view' | 'ability' | 'tab'
   key: string
 }
 
@@ -86,13 +111,21 @@ const PERMISSION_ROWS: PermRow[] = [
   { id: 'view-settings', label: 'Configuración', description: 'Acceder a la configuración del sistema', icon: () => <span className="font-mono text-xs">⚙</span>, type: 'view', key: 'settings' },
   // ── ACCIONES / HABILIDADES ──
   { id: 'can-manage-users', label: 'Gestionar Usuarios', description: 'Crear, editar y eliminar usuarios', icon: () => <span className="font-mono text-xs">👤</span>, type: 'ability', key: 'canManageUsers' },
-  { id: 'can-access-settings', label: 'Acceder a Configuración', description: 'Permitir entrada a la pestaña de configuración', icon: () => <span className="font-mono text-xs">🔧</span>, type: 'ability', key: 'canAccessSettings' },
+  { id: 'can-access-settings', label: 'Acceder a Configuración', description: 'Permitir entrada a la configuración', icon: () => <span className="font-mono text-xs">🔧</span>, type: 'ability', key: 'canAccessSettings' },
   { id: 'can-manage-products', label: 'Gestionar Productos', description: 'Crear, editar y eliminar productos', icon: () => <span className="font-mono text-xs">✏</span>, type: 'ability', key: 'canManageProducts' },
   { id: 'can-manage-clients', label: 'Gestionar Clientes', description: 'Crear, editar y eliminar clientes', icon: () => <span className="font-mono text-xs">✏</span>, type: 'ability', key: 'canManageClients' },
   { id: 'can-manage-cash', label: 'Gestionar Caja', description: 'Abrir, cerrar y manejar caja', icon: () => <span className="font-mono text-xs">✏</span>, type: 'ability', key: 'canManageCash' },
   { id: 'can-manage-expenses', label: 'Gestionar Gastos', description: 'Crear, editar y eliminar gastos', icon: () => <span className="font-mono text-xs">✏</span>, type: 'ability', key: 'canManageExpenses' },
   { id: 'can-manage-suppliers', label: 'Gestionar Proveedores', description: 'Crear, editar y eliminar proveedores', icon: () => <span className="font-mono text-xs">✏</span>, type: 'ability', key: 'canManageSuppliers' },
   { id: 'can-view-audit', label: 'Ver Auditoría', description: 'Acceder al registro de auditoría', icon: () => <span className="font-mono text-xs">📋</span>, type: 'ability', key: 'canViewAudit' },
+  // ── PESTAÑAS DE CONFIGURACIÓN ──
+  { id: 'tab-empresa', label: 'Empresa', description: 'Ver y editar datos de la empresa', icon: () => <span className="font-mono text-xs">🏢</span>, type: 'tab', key: 'canAccessTabEmpresa' },
+  { id: 'tab-moneda', label: 'Moneda', description: 'Configurar monedas y tasas de cambio', icon: () => <span className="font-mono text-xs">💲</span>, type: 'tab', key: 'canAccessTabMoneda' },
+  { id: 'tab-iva', label: 'I.V.A.', description: 'Configurar impuesto al valor agregado', icon: () => <span className="font-mono text-xs">%</span>, type: 'tab', key: 'canAccessTabIva' },
+  { id: 'tab-sucursales', label: 'Sucursales', description: 'Gestionar sucursales del negocio', icon: () => <span className="font-mono text-xs">🏪</span>, type: 'tab', key: 'canAccessTabSucursales' },
+  { id: 'tab-sistema', label: 'Sistema', description: 'Configuración técnica del sistema', icon: () => <span className="font-mono text-xs">🖥</span>, type: 'tab', key: 'canAccessTabSistema' },
+  { id: 'tab-apariencia', label: 'Apariencia', description: 'Personalizar colores y tema visual', icon: () => <span className="font-mono text-xs">🎨</span>, type: 'tab', key: 'canAccessTabApariencia' },
+  { id: 'tab-tutorial', label: 'Tutorial', description: 'Editar textos del tutorial guiado', icon: () => <span className="font-mono text-xs">📖</span>, type: 'tab', key: 'canAccessTabTutorial' },
 ]
 
 const ROLE_COLORS: Record<string, string> = {
@@ -132,11 +165,46 @@ function togglePerm(perms: UserPermissions, row: PermRow): UserPermissions {
   }
 }
 
+// ── Helper: render a row ───────────────────────────────────────
+function PermRowComponent({ row, permissions, onToggle }: { row: PermRow; permissions: Record<string, UserPermissions>; onToggle: (role: string, row: PermRow) => void }) {
+  return (
+    <tr className={row.type === 'view' ? '' : ''}>
+      <td className="p-3 sticky left-0 z-10 bg-inherit">
+        <div className="flex items-center gap-2">
+          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-muted text-xs shrink-0">
+            <row.icon />
+          </div>
+          <div className="min-w-0">
+            <p className="font-medium text-sm leading-tight">{row.label}</p>
+            <p className="text-[11px] text-muted-foreground leading-tight">{row.description}</p>
+          </div>
+        </div>
+      </td>
+      {ALL_ROLES.map((role) => {
+        const val = getPermValue(permissions[role], row)
+        return (
+          <td key={role} className="p-3 text-center">
+            <div className="flex justify-center">
+              <Switch
+                checked={val}
+                onCheckedChange={() => onToggle(role, row)}
+                className="data-[state=checked]:bg-primary"
+              />
+            </div>
+          </td>
+        )
+      })}
+    </tr>
+  )
+}
+
+type FilterSection = 'all' | 'view' | 'ability' | 'tab'
+
 export function RolePermissionsEditor() {
   const [permissions, setPermissions] = useState<Record<string, UserPermissions>>(DEFAULT_PERMISSIONS)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [filterSection, setFilterSection] = useState<'all' | 'view' | 'ability'>('all')
+  const [filterSection, setFilterSection] = useState<FilterSection>('all')
 
   const loadPermissions = useCallback(async () => {
     try {
@@ -203,12 +271,9 @@ export function RolePermissionsEditor() {
     })
   }
 
-  const filteredRows = PERMISSION_ROWS.filter(
-    r => filterSection === 'all' || r.type === filterSection
-  )
-
-  const viewRows = filteredRows.filter(r => r.type === 'view')
-  const abilityRows = filteredRows.filter(r => r.type === 'ability')
+  const viewRows = PERMISSION_ROWS.filter(r => r.type === 'view')
+  const abilityRows = PERMISSION_ROWS.filter(r => r.type === 'ability')
+  const tabRows = PERMISSION_ROWS.filter(r => r.type === 'tab')
 
   if (loading) {
     return (
@@ -254,10 +319,11 @@ export function RolePermissionsEditor() {
           {/* ── Filter buttons ── */}
           <div className="flex gap-2">
             {([
-              { key: 'all', label: 'Todos' },
-              { key: 'view', label: 'Vistas' },
-              { key: 'ability', label: 'Acciones' },
-            ] as const).map(({ key, label }) => (
+              { key: 'all' as FilterSection, label: 'Todos' },
+              { key: 'view' as FilterSection, label: 'Vistas' },
+              { key: 'ability' as FilterSection, label: 'Acciones' },
+              { key: 'tab' as FilterSection, label: 'Pestañas' },
+            ]).map(({ key, label }) => (
               <button
                 key={key}
                 onClick={() => setFilterSection(key)}
@@ -322,35 +388,8 @@ export function RolePermissionsEditor() {
                       </td>
                     </tr>
                     {viewRows.map((row, idx) => (
-                      <tr
-                        key={row.id}
-                        className={idx % 2 === 0 ? 'bg-background' : 'bg-muted/20'}
-                      >
-                        <td className="p-3 sticky left-0 z-10 bg-inherit">
-                          <div className="flex items-center gap-2">
-                            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-muted text-xs">
-                              <row.icon />
-                            </div>
-                            <div>
-                              <p className="font-medium text-sm leading-tight">{row.label}</p>
-                              <p className="text-[11px] text-muted-foreground leading-tight">{row.description}</p>
-                            </div>
-                          </div>
-                        </td>
-                        {ALL_ROLES.map((role) => {
-                          const val = getPermValue(permissions[role], row)
-                          return (
-                            <td key={role} className="p-3 text-center">
-                              <div className="flex justify-center">
-                                <Switch
-                                  checked={val}
-                                  onCheckedChange={() => handleToggle(role, row)}
-                                  className="data-[state=checked]:bg-primary"
-                                />
-                              </div>
-                            </td>
-                          )
-                        })}
+                      <tr key={row.id} className={idx % 2 === 0 ? 'bg-background' : 'bg-muted/20'}>
+                        <PermRowComponent row={row} permissions={permissions} onToggle={handleToggle} />
                       </tr>
                     ))}
                   </>
@@ -368,35 +407,27 @@ export function RolePermissionsEditor() {
                       </td>
                     </tr>
                     {abilityRows.map((row, idx) => (
-                      <tr
-                        key={row.id}
-                        className={(filterSection === 'all' ? (viewRows.length + idx) : idx) % 2 === 0 ? 'bg-background' : 'bg-muted/20'}
-                      >
-                        <td className="p-3 sticky left-0 z-10 bg-inherit">
-                          <div className="flex items-center gap-2">
-                            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-muted text-xs">
-                              <row.icon />
-                            </div>
-                            <div>
-                              <p className="font-medium text-sm leading-tight">{row.label}</p>
-                              <p className="text-[11px] text-muted-foreground leading-tight">{row.description}</p>
-                            </div>
-                          </div>
-                        </td>
-                        {ALL_ROLES.map((role) => {
-                          const val = getPermValue(permissions[role], row)
-                          return (
-                            <td key={role} className="p-3 text-center">
-                              <div className="flex justify-center">
-                                <Switch
-                                  checked={val}
-                                  onCheckedChange={() => handleToggle(role, row)}
-                                  className="data-[state=checked]:bg-primary"
-                                />
-                              </div>
-                            </td>
-                          )
-                        })}
+                      <tr key={row.id} className={idx % 2 === 0 ? 'bg-background' : 'bg-muted/20'}>
+                        <PermRowComponent row={row} permissions={permissions} onToggle={handleToggle} />
+                      </tr>
+                    ))}
+                  </>
+                )}
+
+                {/* ── Settings Tabs Section ── */}
+                {(filterSection === 'all' || filterSection === 'tab') && (
+                  <>
+                    <tr>
+                      <td colSpan={ALL_ROLES.length + 1} className="px-3 py-2 bg-muted/30">
+                        <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                          <Shield className="h-3.5 w-3.5" />
+                          Pestañas de Configuración
+                        </div>
+                      </td>
+                    </tr>
+                    {tabRows.map((row, idx) => (
+                      <tr key={row.id} className={idx % 2 === 0 ? 'bg-background' : 'bg-muted/20'}>
+                        <PermRowComponent row={row} permissions={permissions} onToggle={handleToggle} />
                       </tr>
                     ))}
                   </>
@@ -409,20 +440,16 @@ export function RolePermissionsEditor() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {ALL_ROLES.map((role) => {
               const rolePerms = permissions[role]
-              const totalViews = PERMISSION_ROWS.filter(r => r.type === 'view').length
-              const totalAbilities = PERMISSION_ROWS.filter(r => r.type === 'ability').length
-              const activeViews = PERMISSION_ROWS.filter(r => r.type === 'view' && getPermValue(rolePerms, r)).length
-              const activeAbilities = PERMISSION_ROWS.filter(r => r.type === 'ability' && getPermValue(rolePerms, r)).length
+              const activeViews = viewRows.filter(r => getPermValue(rolePerms, r)).length
+              const activeAbilities = abilityRows.filter(r => getPermValue(rolePerms, r)).length
+              const activeTabs = tabRows.filter(r => getPermValue(rolePerms, r)).length
               return (
                 <div key={role} className={`rounded-lg border p-3 ${ROLE_COLORS[role]}`}>
                   <p className="text-xs font-semibold mb-1">{getRoleLabel(role)}</p>
                   <div className="flex gap-3 text-[11px]">
-                    <span>
-                      <strong>{activeViews}</strong>/{totalViews} vistas
-                    </span>
-                    <span>
-                      <strong>{activeAbilities}</strong>/{totalAbilities} acciones
-                    </span>
+                    <span><strong>{activeViews}</strong>/{viewRows.length} vistas</span>
+                    <span><strong>{activeAbilities}</strong>/{abilityRows.length} acciones</span>
+                    <span><strong>{activeTabs}</strong>/{tabRows.length} pestañas</span>
                   </div>
                 </div>
               )

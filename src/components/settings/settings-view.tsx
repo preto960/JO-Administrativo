@@ -352,8 +352,8 @@ export function SettingsView() {
   }
 
   const userPerms = user ? getPermissions(user.role) : null
-  const canViewAudit = user?.role === 'admin' || (userPerms?.canViewAudit === true)
-  const canManageUsers = user?.role === 'admin' || (userPerms?.canManageUsers === true)
+  const canViewAudit = userPerms?.canViewAudit === true
+  const canManageUsers = userPerms?.canManageUsers === true
   const isAdmin = user?.role === 'admin'
 
   if (!settings) return null
@@ -369,22 +369,30 @@ export function SettingsView() {
 
       <Tabs data-tutorial="settings-tabs" value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <TabsList className="flex flex-wrap h-auto gap-1">
-          <TabsTrigger data-tutorial="settings-tab-empresa" value="empresa" className="gap-1.5">
-            <Building2 className="h-3.5 w-3.5 hidden sm:block" />
-            <span>Empresa</span>
-          </TabsTrigger>
-          <TabsTrigger data-tutorial="settings-tab-moneda" value="moneda" className="gap-1.5">
-            <DollarSign className="h-3.5 w-3.5 hidden sm:block" />
-            <span>Moneda</span>
-          </TabsTrigger>
-          <TabsTrigger data-tutorial="settings-tab-iva" value="iva" className="gap-1.5">
-            <Percent className="h-3.5 w-3.5 hidden sm:block" />
-            <span>I.V.A.</span>
-          </TabsTrigger>
-          <TabsTrigger data-tutorial="settings-tab-sucursales" value="sucursales" className="gap-1.5">
-            <GitBranch className="h-3.5 w-3.5 hidden sm:block" />
-            <span>Sucursales</span>
-          </TabsTrigger>
+          {userPerms?.canAccessTabEmpresa !== false && (
+            <TabsTrigger data-tutorial="settings-tab-empresa" value="empresa" className="gap-1.5">
+              <Building2 className="h-3.5 w-3.5 hidden sm:block" />
+              <span>Empresa</span>
+            </TabsTrigger>
+          )}
+          {userPerms?.canAccessTabMoneda !== false && (
+            <TabsTrigger data-tutorial="settings-tab-moneda" value="moneda" className="gap-1.5">
+              <DollarSign className="h-3.5 w-3.5 hidden sm:block" />
+              <span>Moneda</span>
+            </TabsTrigger>
+          )}
+          {userPerms?.canAccessTabIva !== false && (
+            <TabsTrigger data-tutorial="settings-tab-iva" value="iva" className="gap-1.5">
+              <Percent className="h-3.5 w-3.5 hidden sm:block" />
+              <span>I.V.A.</span>
+            </TabsTrigger>
+          )}
+          {userPerms?.canAccessTabSucursales !== false && (
+            <TabsTrigger data-tutorial="settings-tab-sucursales" value="sucursales" className="gap-1.5">
+              <GitBranch className="h-3.5 w-3.5 hidden sm:block" />
+              <span>Sucursales</span>
+            </TabsTrigger>
+          )}
           {canManageUsers && (
             <TabsTrigger data-tutorial="settings-tab-usuarios" value="usuarios" className="gap-1.5">
               <Users className="h-3.5 w-3.5 hidden sm:block" />
@@ -397,7 +405,7 @@ export function SettingsView() {
               <span>Roles</span>
             </TabsTrigger>
           )}
-          {isAdmin && (
+          {userPerms?.canAccessTabSistema && (
             <TabsTrigger data-tutorial="settings-tab-sistema" value="sistema" className="gap-1.5">
               <Monitor className="h-3.5 w-3.5 hidden sm:block" />
               <span>Sistema</span>
@@ -409,17 +417,19 @@ export function SettingsView() {
               <span>Categorías</span>
             </TabsTrigger>
           )}
-          <TabsTrigger data-tutorial="settings-tab-apariencia" value="apariencia" className="gap-1.5">
-            <Palette className="h-3.5 w-3.5 hidden sm:block" />
-            <span>Apariencia</span>
-          </TabsTrigger>
+          {userPerms?.canAccessTabApariencia && (
+            <TabsTrigger data-tutorial="settings-tab-apariencia" value="apariencia" className="gap-1.5">
+              <Palette className="h-3.5 w-3.5 hidden sm:block" />
+              <span>Apariencia</span>
+            </TabsTrigger>
+          )}
           {canViewAudit && (
             <TabsTrigger data-tutorial="settings-tab-audit" value="audit" className="gap-1.5">
               <ClipboardList className="h-3.5 w-3.5 hidden sm:block" />
               <span>Auditoría</span>
             </TabsTrigger>
           )}
-          {isAdmin && (
+          {userPerms?.canAccessTabTutorial && (
             <TabsTrigger data-tutorial="settings-tab-tutorial" value="tutorial" className="gap-1.5">
               <BookOpen className="h-3.5 w-3.5 hidden sm:block" />
               <span>Tutorial</span>
