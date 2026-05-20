@@ -89,43 +89,46 @@ const DEFAULT_PERMISSIONS: Record<string, UserPermissions> = {
   },
 }
 
-// ── Permission definitions (what each row represents) ──────────
+// ── Permission definitions ─────────────────────────────────────
 interface PermRow {
   id: string
   label: string
   description: string
-  icon: React.ElementType
+  icon: string
   type: 'view' | 'ability' | 'tab'
   key: string
 }
 
-const PERMISSION_ROWS: PermRow[] = [
-  // ── VISTAS (acceso al menú lateral) ──
-  { id: 'view-pos', label: 'Punto de Venta', description: 'Acceder a la pantalla de ventas', icon: () => <span className="font-mono text-xs">POS</span>, type: 'view', key: 'pos' },
-  { id: 'view-dashboard', label: 'Dashboard', description: 'Ver panel de estadísticas', icon: () => <span className="font-mono text-xs">📊</span>, type: 'view', key: 'dashboard' },
-  { id: 'view-products', label: 'Productos', description: 'Ver la lista de productos', icon: () => <span className="font-mono text-xs">📦</span>, type: 'view', key: 'products' },
-  { id: 'view-clients', label: 'Clientes', description: 'Ver la lista de clientes', icon: () => <span className="font-mono text-xs">👥</span>, type: 'view', key: 'clients' },
-  { id: 'view-suppliers', label: 'Proveedores', description: 'Ver la lista de proveedores', icon: () => <span className="font-mono text-xs">🏭</span>, type: 'view', key: 'suppliers' },
-  { id: 'view-cash', label: 'Caja', description: 'Acceder al registro de caja', icon: () => <span className="font-mono text-xs">💰</span>, type: 'view', key: 'cash' },
-  { id: 'view-expenses', label: 'Gastos', description: 'Ver y registrar gastos', icon: () => <span className="font-mono text-xs">💸</span>, type: 'view', key: 'expenses' },
-  { id: 'view-settings', label: 'Configuración', description: 'Acceder a la configuración del sistema', icon: () => <span className="font-mono text-xs">⚙</span>, type: 'view', key: 'settings' },
-  // ── ACCIONES / HABILIDADES ──
-  { id: 'can-manage-users', label: 'Gestionar Usuarios', description: 'Crear, editar y eliminar usuarios', icon: () => <span className="font-mono text-xs">👤</span>, type: 'ability', key: 'canManageUsers' },
-  { id: 'can-access-settings', label: 'Acceder a Configuración', description: 'Permitir entrada a la configuración', icon: () => <span className="font-mono text-xs">🔧</span>, type: 'ability', key: 'canAccessSettings' },
-  { id: 'can-manage-products', label: 'Gestionar Productos', description: 'Crear, editar y eliminar productos', icon: () => <span className="font-mono text-xs">✏</span>, type: 'ability', key: 'canManageProducts' },
-  { id: 'can-manage-clients', label: 'Gestionar Clientes', description: 'Crear, editar y eliminar clientes', icon: () => <span className="font-mono text-xs">✏</span>, type: 'ability', key: 'canManageClients' },
-  { id: 'can-manage-cash', label: 'Gestionar Caja', description: 'Abrir, cerrar y manejar caja', icon: () => <span className="font-mono text-xs">✏</span>, type: 'ability', key: 'canManageCash' },
-  { id: 'can-manage-expenses', label: 'Gestionar Gastos', description: 'Crear, editar y eliminar gastos', icon: () => <span className="font-mono text-xs">✏</span>, type: 'ability', key: 'canManageExpenses' },
-  { id: 'can-manage-suppliers', label: 'Gestionar Proveedores', description: 'Crear, editar y eliminar proveedores', icon: () => <span className="font-mono text-xs">✏</span>, type: 'ability', key: 'canManageSuppliers' },
-  { id: 'can-view-audit', label: 'Ver Auditoría', description: 'Acceder al registro de auditoría', icon: () => <span className="font-mono text-xs">📋</span>, type: 'ability', key: 'canViewAudit' },
-  // ── PESTAÑAS DE CONFIGURACIÓN ──
-  { id: 'tab-empresa', label: 'Empresa', description: 'Ver y editar datos de la empresa', icon: () => <span className="font-mono text-xs">🏢</span>, type: 'tab', key: 'canAccessTabEmpresa' },
-  { id: 'tab-moneda', label: 'Moneda', description: 'Configurar monedas y tasas de cambio', icon: () => <span className="font-mono text-xs">💲</span>, type: 'tab', key: 'canAccessTabMoneda' },
-  { id: 'tab-iva', label: 'I.V.A.', description: 'Configurar impuesto al valor agregado', icon: () => <span className="font-mono text-xs">%</span>, type: 'tab', key: 'canAccessTabIva' },
-  { id: 'tab-sucursales', label: 'Sucursales', description: 'Gestionar sucursales del negocio', icon: () => <span className="font-mono text-xs">🏪</span>, type: 'tab', key: 'canAccessTabSucursales' },
-  { id: 'tab-sistema', label: 'Sistema', description: 'Configuración técnica del sistema', icon: () => <span className="font-mono text-xs">🖥</span>, type: 'tab', key: 'canAccessTabSistema' },
-  { id: 'tab-apariencia', label: 'Apariencia', description: 'Personalizar colores y tema visual', icon: () => <span className="font-mono text-xs">🎨</span>, type: 'tab', key: 'canAccessTabApariencia' },
-  { id: 'tab-tutorial', label: 'Tutorial', description: 'Editar textos del tutorial guiado', icon: () => <span className="font-mono text-xs">📖</span>, type: 'tab', key: 'canAccessTabTutorial' },
+const VIEW_ROWS: PermRow[] = [
+  { id: 'view-pos', label: 'Punto de Venta', description: 'Acceder a la pantalla de ventas', icon: 'POS', type: 'view', key: 'pos' },
+  { id: 'view-dashboard', label: 'Dashboard', description: 'Ver panel de estadísticas', icon: '📊', type: 'view', key: 'dashboard' },
+  { id: 'view-products', label: 'Productos', description: 'Ver la lista de productos', icon: '📦', type: 'view', key: 'products' },
+  { id: 'view-clients', label: 'Clientes', description: 'Ver la lista de clientes', icon: '👥', type: 'view', key: 'clients' },
+  { id: 'view-suppliers', label: 'Proveedores', description: 'Ver la lista de proveedores', icon: '🏭', type: 'view', key: 'suppliers' },
+  { id: 'view-cash', label: 'Caja', description: 'Acceder al registro de caja', icon: '💰', type: 'view', key: 'cash' },
+  { id: 'view-expenses', label: 'Gastos', description: 'Ver y registrar gastos', icon: '💸', type: 'view', key: 'expenses' },
+  { id: 'view-settings', label: 'Configuración', description: 'Acceder a la configuración del sistema', icon: '⚙', type: 'view', key: 'settings' },
+]
+
+const ABILITY_ROWS: PermRow[] = [
+  { id: 'can-manage-users', label: 'Gestionar Usuarios', description: 'Crear, editar y eliminar usuarios', icon: '👤', type: 'ability', key: 'canManageUsers' },
+  { id: 'can-access-settings', label: 'Acceder a Configuración', description: 'Permitir entrada a la configuración', icon: '🔧', type: 'ability', key: 'canAccessSettings' },
+  { id: 'can-manage-products', label: 'Gestionar Productos', description: 'Crear, editar y eliminar productos', icon: '✏', type: 'ability', key: 'canManageProducts' },
+  { id: 'can-manage-clients', label: 'Gestionar Clientes', description: 'Crear, editar y eliminar clientes', icon: '✏', type: 'ability', key: 'canManageClients' },
+  { id: 'can-manage-cash', label: 'Gestionar Caja', description: 'Abrir, cerrar y manejar caja', icon: '✏', type: 'ability', key: 'canManageCash' },
+  { id: 'can-manage-expenses', label: 'Gestionar Gastos', description: 'Crear, editar y eliminar gastos', icon: '✏', type: 'ability', key: 'canManageExpenses' },
+  { id: 'can-manage-suppliers', label: 'Gestionar Proveedores', description: 'Crear, editar y eliminar proveedores', icon: '✏', type: 'ability', key: 'canManageSuppliers' },
+]
+
+const TAB_ROWS: PermRow[] = [
+  { id: 'tab-empresa', label: 'Empresa', description: 'Datos de la empresa', icon: '🏢', type: 'tab', key: 'canAccessTabEmpresa' },
+  { id: 'tab-moneda', label: 'Moneda', description: 'Monedas y tasas de cambio', icon: '💲', type: 'tab', key: 'canAccessTabMoneda' },
+  { id: 'tab-iva', label: 'I.V.A.', description: 'Impuesto al valor agregado', icon: '%', type: 'tab', key: 'canAccessTabIva' },
+  { id: 'tab-sucursales', label: 'Sucursales', description: 'Sucursales del negocio', icon: '🏪', type: 'tab', key: 'canAccessTabSucursales' },
+  { id: 'tab-sistema', label: 'Sistema', description: 'Configuración técnica', icon: '🖥', type: 'tab', key: 'canAccessTabSistema' },
+  { id: 'tab-apariencia', label: 'Apariencia', description: 'Colores y tema visual', icon: '🎨', type: 'tab', key: 'canAccessTabApariencia' },
+  { id: 'tab-audit', label: 'Auditoría', description: 'Registro de auditoría', icon: '📋', type: 'tab', key: 'canViewAudit' },
+  { id: 'tab-tutorial', label: 'Tutorial', description: 'Textos del tutorial guiado', icon: '📖', type: 'tab', key: 'canAccessTabTutorial' },
 ]
 
 const ROLE_COLORS: Record<string, string> = {
@@ -142,7 +145,7 @@ const ROLE_BADGE_COLORS: Record<string, string> = {
   vendedor: 'bg-violet-500 text-white',
 }
 
-// ── Helper: get value for a permission row ─────────────────────
+// ── Helpers ────────────────────────────────────────────────────
 function getPermValue(perms: UserPermissions, row: PermRow): boolean {
   if (row.type === 'view') {
     return perms.views.includes(row.key)
@@ -150,52 +153,12 @@ function getPermValue(perms: UserPermissions, row: PermRow): boolean {
   return perms[row.key as keyof UserPermissions] as boolean
 }
 
-// ── Helper: toggle a permission row ────────────────────────────
 function togglePerm(perms: UserPermissions, row: PermRow): UserPermissions {
   if (row.type === 'view') {
     const hasView = perms.views.includes(row.key)
-    return {
-      ...perms,
-      views: hasView ? perms.views.filter(v => v !== row.key) : [...perms.views, row.key],
-    }
+    return { ...perms, views: hasView ? perms.views.filter(v => v !== row.key) : [...perms.views, row.key] }
   }
-  return {
-    ...perms,
-    [row.key]: !perms[row.key as keyof UserPermissions],
-  }
-}
-
-// ── Helper: render a row ───────────────────────────────────────
-function PermRowComponent({ row, permissions, onToggle }: { row: PermRow; permissions: Record<string, UserPermissions>; onToggle: (role: string, row: PermRow) => void }) {
-  return (
-    <tr className={row.type === 'view' ? '' : ''}>
-      <td className="p-3 sticky left-0 z-10 bg-inherit">
-        <div className="flex items-center gap-2">
-          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-muted text-xs shrink-0">
-            <row.icon />
-          </div>
-          <div className="min-w-0">
-            <p className="font-medium text-sm leading-tight">{row.label}</p>
-            <p className="text-[11px] text-muted-foreground leading-tight">{row.description}</p>
-          </div>
-        </div>
-      </td>
-      {ALL_ROLES.map((role) => {
-        const val = getPermValue(permissions[role], row)
-        return (
-          <td key={role} className="p-3 text-center">
-            <div className="flex justify-center">
-              <Switch
-                checked={val}
-                onCheckedChange={() => onToggle(role, row)}
-                className="data-[state=checked]:bg-primary"
-              />
-            </div>
-          </td>
-        )
-      })}
-    </tr>
-  )
+  return { ...perms, [row.key]: !perms[row.key as keyof UserPermissions] }
 }
 
 type FilterSection = 'all' | 'view' | 'ability' | 'tab'
@@ -256,7 +219,8 @@ export function RolePermissionsEditor() {
   const toggleAllForRole = (role: string, enable: boolean) => {
     setPermissions(prev => {
       const rolePerms = { ...prev[role] }
-      for (const row of PERMISSION_ROWS) {
+      const allRows = [...VIEW_ROWS, ...ABILITY_ROWS, ...TAB_ROWS]
+      for (const row of allRows) {
         if (row.type === 'view') {
           if (enable && !rolePerms.views.includes(row.key)) {
             rolePerms.views = [...rolePerms.views, row.key]
@@ -271,10 +235,6 @@ export function RolePermissionsEditor() {
     })
   }
 
-  const viewRows = PERMISSION_ROWS.filter(r => r.type === 'view')
-  const abilityRows = PERMISSION_ROWS.filter(r => r.type === 'ability')
-  const tabRows = PERMISSION_ROWS.filter(r => r.type === 'tab')
-
   if (loading) {
     return (
       <div className="space-y-4">
@@ -282,6 +242,19 @@ export function RolePermissionsEditor() {
         <div className="h-96 rounded-lg bg-muted animate-pulse" />
       </div>
     )
+  }
+
+  // Build the visible rows based on filter
+  const sections: { title: string; icon: React.ElementType; rows: PermRow[] }[] = []
+
+  if (filterSection === 'all' || filterSection === 'view') {
+    sections.push({ title: 'Vistas del Menú', icon: Eye, rows: VIEW_ROWS })
+  }
+  if (filterSection === 'all' || filterSection === 'ability') {
+    sections.push({ title: 'Acciones y Habilidades', icon: Pencil, rows: ABILITY_ROWS })
+  }
+  if (filterSection === 'all' || filterSection === 'tab') {
+    sections.push({ title: 'Pestañas de Configuración', icon: Shield, rows: TAB_ROWS })
   }
 
   return (
@@ -341,7 +314,6 @@ export function RolePermissionsEditor() {
           {/* ── Matrix Table ── */}
           <div className="overflow-x-auto rounded-lg border">
             <table className="w-full text-sm">
-              {/* ── Header ── */}
               <thead>
                 <tr className="border-b bg-muted/50">
                   <th className="text-left p-3 font-medium text-muted-foreground min-w-[220px] sticky left-0 bg-muted/50 z-10">
@@ -376,62 +348,49 @@ export function RolePermissionsEditor() {
               </thead>
 
               <tbody>
-                {/* ── Views Section ── */}
-                {(filterSection === 'all' || filterSection === 'view') && (
+                {sections.map((section) => (
                   <>
-                    <tr>
+                    {/* Section header */}
+                    <tr key={`header-${section.title}`}>
                       <td colSpan={ALL_ROLES.length + 1} className="px-3 py-2 bg-muted/30">
                         <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                          <Eye className="h-3.5 w-3.5" />
-                          Vistas del Menú
+                          <section.icon className="h-3.5 w-3.5" />
+                          {section.title}
                         </div>
                       </td>
                     </tr>
-                    {viewRows.map((row, idx) => (
+                    {/* Section rows */}
+                    {section.rows.map((row, idx) => (
                       <tr key={row.id} className={idx % 2 === 0 ? 'bg-background' : 'bg-muted/20'}>
-                        <PermRowComponent row={row} permissions={permissions} onToggle={handleToggle} />
+                        <td className="p-3 sticky left-0 z-10 bg-inherit">
+                          <div className="flex items-center gap-2">
+                            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-muted text-xs shrink-0">
+                              {row.icon}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-medium text-sm leading-tight">{row.label}</p>
+                              <p className="text-[11px] text-muted-foreground leading-tight">{row.description}</p>
+                            </div>
+                          </div>
+                        </td>
+                        {ALL_ROLES.map((role) => {
+                          const val = getPermValue(permissions[role], row)
+                          return (
+                            <td key={role} className="p-3 text-center">
+                              <div className="flex justify-center">
+                                <Switch
+                                  checked={val}
+                                  onCheckedChange={() => handleToggle(role, row)}
+                                  className="data-[state=checked]:bg-primary"
+                                />
+                              </div>
+                            </td>
+                          )
+                        })}
                       </tr>
                     ))}
                   </>
-                )}
-
-                {/* ── Abilities Section ── */}
-                {(filterSection === 'all' || filterSection === 'ability') && (
-                  <>
-                    <tr>
-                      <td colSpan={ALL_ROLES.length + 1} className="px-3 py-2 bg-muted/30">
-                        <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                          <Pencil className="h-3.5 w-3.5" />
-                          Acciones y Habilidades
-                        </div>
-                      </td>
-                    </tr>
-                    {abilityRows.map((row, idx) => (
-                      <tr key={row.id} className={idx % 2 === 0 ? 'bg-background' : 'bg-muted/20'}>
-                        <PermRowComponent row={row} permissions={permissions} onToggle={handleToggle} />
-                      </tr>
-                    ))}
-                  </>
-                )}
-
-                {/* ── Settings Tabs Section ── */}
-                {(filterSection === 'all' || filterSection === 'tab') && (
-                  <>
-                    <tr>
-                      <td colSpan={ALL_ROLES.length + 1} className="px-3 py-2 bg-muted/30">
-                        <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                          <Shield className="h-3.5 w-3.5" />
-                          Pestañas de Configuración
-                        </div>
-                      </td>
-                    </tr>
-                    {tabRows.map((row, idx) => (
-                      <tr key={row.id} className={idx % 2 === 0 ? 'bg-background' : 'bg-muted/20'}>
-                        <PermRowComponent row={row} permissions={permissions} onToggle={handleToggle} />
-                      </tr>
-                    ))}
-                  </>
-                )}
+                ))}
               </tbody>
             </table>
           </div>
@@ -440,16 +399,16 @@ export function RolePermissionsEditor() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {ALL_ROLES.map((role) => {
               const rolePerms = permissions[role]
-              const activeViews = viewRows.filter(r => getPermValue(rolePerms, r)).length
-              const activeAbilities = abilityRows.filter(r => getPermValue(rolePerms, r)).length
-              const activeTabs = tabRows.filter(r => getPermValue(rolePerms, r)).length
+              const activeViews = VIEW_ROWS.filter(r => getPermValue(rolePerms, r)).length
+              const activeAbilities = ABILITY_ROWS.filter(r => getPermValue(rolePerms, r)).length
+              const activeTabs = TAB_ROWS.filter(r => getPermValue(rolePerms, r)).length
               return (
                 <div key={role} className={`rounded-lg border p-3 ${ROLE_COLORS[role]}`}>
                   <p className="text-xs font-semibold mb-1">{getRoleLabel(role)}</p>
                   <div className="flex gap-3 text-[11px]">
-                    <span><strong>{activeViews}</strong>/{viewRows.length} vistas</span>
-                    <span><strong>{activeAbilities}</strong>/{abilityRows.length} acciones</span>
-                    <span><strong>{activeTabs}</strong>/{tabRows.length} pestañas</span>
+                    <span><strong>{activeViews}</strong>/{VIEW_ROWS.length} vistas</span>
+                    <span><strong>{activeAbilities}</strong>/{ABILITY_ROWS.length} acciones</span>
+                    <span><strong>{activeTabs}</strong>/{TAB_ROWS.length} pestañas</span>
                   </div>
                 </div>
               )
