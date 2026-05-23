@@ -101,6 +101,8 @@ export async function POST(
       payment: result.payment,
     })
   } catch (error) {
-    return NextResponse.json({ error: 'Error al registrar pago' }, { status: 500 })
+    console.error('=== ERROR REGISTRAR PAGO ===', error)
+    const msg = error instanceof Error ? error.message : 'Error desconocido'
+    return NextResponse.json({ error: `Error al registrar pago: ${msg}` }, { status: 500 })
   }
 }
