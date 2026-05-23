@@ -90,8 +90,18 @@ const DENOMINATIONS = [
   { value: 0.25, label: 'Bs 0,25', type: 'moneda' },
 ]
 
-/** Helper to filter numeric input (digits, comma, period only) */
-const numericFilter = (value: string) => value.replace(/[^0-9.,]/g, '')
+const MAX_INITIAL = 500000
+
+/** Helper to filter numeric input (digits, comma, period only) and enforce max */
+const numericFilter = (value: string) => {
+  const cleaned = value.replace(/[^0-9.,]/g, '')
+  const num = parseFloat(cleaned.replace(/,/g, '')) || 0
+  if (num > MAX_INITIAL) {
+    // If exceeds max, clamp to max
+    return MAX_INITIAL.toString()
+  }
+  return cleaned
+}
 
 export function CashRegisterView() {
   const { user, permissions } = useAuth()
@@ -237,9 +247,9 @@ export function CashRegisterView() {
         return
       }
       const amt = parseFloat(initialAmt) || 0
-      // Fix 1: Cap initial amount at 500000
-      if (amt > 500000) {
-        toast.error('El monto inicial no puede exceder Bs 500.000,00')
+      // Fix 1: Cap initial amount at MAX_INITIAL
+      if (amt > MAX_INITIAL) {
+        toast.error(`El monto inicial no puede exceder Bs ${MAX_INITIAL.toLocaleString('es-VE', { minimumFractionDigits: 2 })}`)
         setSaving(false)
         return
       }
@@ -900,13 +910,12 @@ export function CashRegisterView() {
                 id="initial"
                 type="text"
                 inputMode="numeric"
-                max="500000"
-                className="cash-input [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]"
+                className={`cash-input [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield] ${parseFloat(initialAmt.replace(/,/g, '')) >= MAX_INITIAL ? 'border-amber-500 focus-visible:ring-amber-500' : ''}`}
                 value={initialAmt}
                 onChange={(e) => setInitialAmt(numericFilter(e.target.value))}
                 placeholder="0.00"
               />
-              <p className="text-xs text-muted-foreground">Máximo permitido: Bs 500.000,00</p>
+              <p className={`text-xs ${parseFloat(initialAmt.replace(/,/g, '')) >= MAX_INITIAL ? 'text-amber-500 font-semibold' : 'text-muted-foreground'}`}>Máximo permitido: Bs 500.000,00</p>
             </div>
             <Button className="w-full bg-primary hover:bg-primary/90 text-white" onClick={openRegister} disabled={saving || !selectedUserId}>
               {saving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Abriendo...</> : 'Abrir Caja'}
