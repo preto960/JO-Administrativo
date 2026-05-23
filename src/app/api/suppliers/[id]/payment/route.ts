@@ -14,6 +14,10 @@ export async function POST(
       return NextResponse.json({ error: 'El monto debe ser mayor a 0' }, { status: 400 })
     }
 
+    if (!userId) {
+      return NextResponse.json({ error: 'Usuario no identificado' }, { status: 400 })
+    }
+
     const supplier = await db.supplier.findUnique({ where: { id } })
     if (!supplier) {
       return NextResponse.json({ error: 'Proveedor no encontrado' }, { status: 404 })
@@ -24,11 +28,19 @@ export async function POST(
     }
 
     const result = await db.$transaction(async (tx) => {
-      // Find pending payables and reduce them
+      // Find pending AND partially-paid payables (both can still have pendingBalance > 0)
       const payables = await tx.accountPayable.findMany({
-        where: { supplierId: id, status: 'pendiente' },
+        where: {
+          supplierId: id,
+          status: { in: ['pendiente', 'parcial'] },
+          pendingBalance: { gt: 0 },
+        },
         orderBy: { createdAt: 'asc' },
       })
+
+      if (payables.length === 0) {
+        throw new Error('No hay deudas pendientes para este proveedor')
+      }
 
       let remaining = amount
       const paymentRecords: { payableId: string; deduction: number }[] = []
@@ -49,6 +61,10 @@ export async function POST(
 
       const actualDeduction = amount - remaining
 
+      if (actualDeduction <= 0) {
+        throw new Error('No se pudo aplicar el pago a ninguna deuda')
+      }
+
       // Update supplier balance
       await tx.supplier.update({
         where: { id },
@@ -63,15 +79,15 @@ export async function POST(
           method: method || 'efectivo',
           reference: reference || null,
           cashRegId: cashRegId || null,
-          userId: userId || '',
+          userId,
         },
         include: {
           user: { select: { name: true } },
         },
       })
 
-      // If a cash register is specified, create a cash movement (salida)
-      if (cashRegId) {
+      // If a cash register is specified and valid, create a cash movement (salida)
+      if (cashRegId && currencyId) {
         const reg = await tx.cashRegister.findUnique({ where: { id: cashRegId } })
         if (reg && reg.status === 'abierta') {
           await tx.cashMovement.create({
@@ -80,8 +96,8 @@ export async function POST(
               type: 'salida',
               amount: actualDeduction,
               concept: `Pago a proveedor: ${supplier.name}`,
-              currencyId: currencyId || '',
-              userId: userId || '',
+              currencyId,
+              userId,
             },
           })
           await tx.cashRegister.update({
@@ -103,6 +119,7 @@ export async function POST(
   } catch (error) {
     console.error('=== ERROR REGISTRAR PAGO ===', error)
     const msg = error instanceof Error ? error.message : 'Error desconocido'
-    return NextResponse.json({ error: `Error al registrar pago: ${msg}` }, { status: 500 })
+    const status = msg.includes('No hay deudas') || msg.includes('No se pudo') ? 400 : 500
+    return NextResponse.json({ error: `Error al registrar pago: ${msg}` }, { status })
   }
 }
