@@ -42,3 +42,23 @@ Stage Summary:
 - Server-side protection on all write API routes prevents unauthorized access
 - useAuth() re-renders when custom permissions load from database
 - All Settings sub-tabs properly gated by permission level
+
+---
+Task ID: 1
+Agent: Main Agent
+Task: Agregar botón "Pagar" directo en la tarjeta del proveedor
+
+Work Log:
+- Analicé el módulo de proveedores existente (suppliers-view.tsx)
+- Confirmé que ya existía toda la funcionalidad de pagos (diálogo Abonar, API payment, FIFO allocation)
+- Identifiqué que el botón "Abonar" solo estaba accesible dentro del diálogo de Deudas
+- Agregué botón "Pagar" directamente en la tarjeta del proveedor, visible cuando balance > 0
+- El botón abre directamente el diálogo de pago con el monto pre-llenado al balance total
+- Compilación exitosa sin errores
+
+Stage Summary:
+- Botón "Pagar" agregado en cada tarjeta de proveedor con deuda
+- Usa estilo verde (border-green-300, text-green-700) para distinguirlo
+- Se muestra condicionalmente solo cuando supplier.balance > 0
+- No requiere permiso canManage (cualquier usuario puede registrar pagos)
+- Archivo modificado: src/components/clients/suppliers-view.tsx

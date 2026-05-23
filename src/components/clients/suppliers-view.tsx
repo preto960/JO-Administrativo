@@ -592,6 +592,11 @@ export function SuppliersView() {
                     <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Ver Deudas" onClick={() => openDebtDialog(supplier)}>
                       <DollarSign className="h-3.5 w-3.5" />
                     </Button>
+                    {supplier.balance > 0 && (
+                      <Button size="sm" variant="outline" className="h-7 text-xs border-green-300 text-green-700 hover:bg-green-50 hover:text-green-800 dark:border-green-800 dark:text-green-400 dark:hover:bg-green-950/30" title="Pagar Deuda" onClick={() => openPaymentDialog(supplier)}>
+                        <DollarSign className="mr-1 h-3 w-3" /> Pagar
+                      </Button>
+                    )}
                     {canManage && (
                       <Button size="sm" variant="outline" className="h-7 text-xs text-primary hover:text-primary" title="Agregar Pedido" onClick={() => openPayableDialog(supplier)}>
                         <Plus className="mr-1 h-3 w-3" /> Pedido
