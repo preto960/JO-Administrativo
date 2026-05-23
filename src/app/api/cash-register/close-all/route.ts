@@ -167,7 +167,7 @@ export async function POST(request: NextRequest) {
         data: {
           userId: reg.user.id,
           title: 'Caja Cerrada',
-          message: `Todas las cajas de la sucursal "${reg.branch.name}" han sido cerradas. Tu caja "${reg.name || 'Sin nombre'}" ha sido cerrada automáticamente.`,
+          message: `Todas las cajas de la sucursal "${reg.branch.name}" han sido cerradas. Tu caja "${reg.name || 'Sin nombre'}" ha sido cerrada automáticamente. Monto final: $${expected.toLocaleString('es-VE', { minimumFractionDigits: 2 })}`,
           type: 'warning',
         },
       })

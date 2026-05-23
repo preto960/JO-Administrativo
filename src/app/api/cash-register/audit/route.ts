@@ -64,16 +64,45 @@ export async function POST(request: NextRequest) {
       },
     })
 
+    // Fix 10 & 12: Update currentAmt to counted amount (adjusts excedente)
+    if (difference !== 0) {
+      const currencies = await db.currency.findMany({ select: { id: true, isBase: true } })
+      const baseCurrency = currencies.find(c => c.isBase)
+      await db.$transaction(async (tx) => {
+        await tx.cashRegister.update({
+          where: { id: cashRegId },
+          data: { currentAmt: Math.round(counted * 100) / 100 },
+        })
+        // Create automatic adjustment movement
+        await tx.cashMovement.create({
+          data: {
+            cashRegId,
+            userId,
+            type: difference > 0 ? 'entrada' : 'salida',
+            amount: Math.abs(difference),
+            concept: `Ajuste por arqueo (${difference > 0 ? 'sobrante' : 'faltante'})`,
+            currencyId: baseCurrency?.id || currencies[0]?.id || '',
+          },
+        })
+      })
+    }
+
+    const fmt = (v: number) => v.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
     await logAction({
       action: 'cut_cash',
       entity: 'cash_register',
       entityId: cashRegId,
-      details: { summary: `Arqueo de caja - Esperado: $${expected.toFixed(2)}, Contado: $${counted.toFixed(2)}, Diferencia: $${difference.toFixed(2)}`, expected, counted, difference },
+      details: {
+        summary: `Arqueo de caja - Esperado: $${fmt(expected)}, Contado: $${fmt(counted)}, Diferencia: $${fmt(difference)}`,
+        expected, counted, difference,
+      },
       request,
     })
 
     return NextResponse.json(audit, { status: 201 })
   } catch (error) {
+    console.error('Error al registrar arqueo:', error)
     return NextResponse.json({ error: 'Error al registrar arqueo de caja' }, { status: 500 })
   }
 }

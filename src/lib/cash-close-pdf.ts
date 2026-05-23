@@ -443,6 +443,7 @@ function drawSalesDetail(doc: jsPDF, report: CashCloseReport, startY: number): n
       styles: {
         fontSize: 7.5,
         cellPadding: 2,
+        overflow: 'linebreak',
       },
       headStyles: {
         fillColor: C.grayLight,
@@ -451,7 +452,7 @@ function drawSalesDetail(doc: jsPDF, report: CashCloseReport, startY: number): n
         fontSize: 7,
       },
       columnStyles: {
-        0: { textColor: C.dark },
+        0: { textColor: C.dark, cellWidth: 'auto', overflow: 'linebreak' },
         1: { halign: 'center', cellWidth: 20 },
         2: { halign: 'right', cellWidth: 35 },
         3: { halign: 'right', fontStyle: 'bold', textColor: C.primary },
@@ -465,7 +466,7 @@ function drawSalesDetail(doc: jsPDF, report: CashCloseReport, startY: number): n
     })
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    y = (doc as any).lastAutoTable.finalY + 2
+    y = (doc as any).lastAutoTable.finalY + 6
 
     // Payment methods for this sale
     if (sale.payments.length > 0) {
@@ -476,7 +477,7 @@ function drawSalesDetail(doc: jsPDF, report: CashCloseReport, startY: number): n
         `${p.method} ${symbol}${fmt(p.amount)}${p.reference ? ` (Ref: ${p.reference})` : ''}`
       ).join('  |  ')
       doc.text(payStr, 42, y, { maxWidth: doc.internal.pageSize.getWidth() - 84 })
-      y += 8
+      y += 10
     }
 
     y += 4

@@ -150,7 +150,7 @@ export async function POST(request: NextRequest) {
         data: {
           userId: register.user.id,
           title: 'Caja Cerrada',
-          message: `Tu caja "${register.name || 'Sin nombre'}" en la sucursal "${register.branch.name}" ha sido cerrada por un administrador. Monto final: $${actualAmt.toFixed(2)}`,
+          message: `Tu caja "${register.name || 'Sin nombre'}" en la sucursal "${register.branch.name}" ha sido cerrada por un administrador. Monto final: $${actualAmt.toLocaleString('es-VE', { minimumFractionDigits: 2 })}`,
           type: 'warning',
         },
       })
@@ -170,7 +170,7 @@ async function logCashClose(request: NextRequest, cashRegId: string, actualAmt: 
       entity: 'cash_register',
       entityId: cashRegId,
       details: {
-        summary: `Caja cerrada - Esperado: $${expected.toFixed(2)}, Real: $${actualAmt.toFixed(2)}, Diferencia: $${difference.toFixed(2)}`,
+        summary: `Caja cerrada - Esperado: $${expected.toLocaleString('es-VE', { minimumFractionDigits: 2 })}, Real: $${actualAmt.toLocaleString('es-VE', { minimumFractionDigits: 2 })}, Diferencia: $${difference.toLocaleString('es-VE', { minimumFractionDigits: 2 })}`,
         actual: actualAmt, expected, difference, totalSales, totalExpenses, totalRetiros,
       },
       request,

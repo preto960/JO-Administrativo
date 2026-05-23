@@ -40,6 +40,16 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import {
   Wallet, Plus, ArrowUpCircle, ArrowDownCircle, Lock, Eye, Loader2,
   UserCircle, AlertTriangle, Banknote, ClipboardCheck, CheckCircle2,
   Clock, ShoppingCart, Building2, TrendingUp, CircleDollarSign,
@@ -67,6 +77,8 @@ interface BranchItem {
   active: boolean
 }
 
+// NOTE: Denominaciones deberían venir de la configuración del país en Settings.
+// Actualmente están hardcodeadas para Venezuela (VE).
 const DENOMINATIONS = [
   { value: 100, label: 'Bs 100', type: 'billete' },
   { value: 50, label: 'Bs 50', type: 'billete' },
@@ -78,10 +90,16 @@ const DENOMINATIONS = [
   { value: 0.25, label: 'Bs 0,25', type: 'moneda' },
 ]
 
+/** Helper to filter numeric input (digits, comma, period only) */
+const numericFilter = (value: string) => value.replace(/[^0-9.,]/g, '')
+
 export function CashRegisterView() {
   const { user, permissions } = useAuth()
   const { branches, selectedBranchId, setSelectedBranchId } = useAppStore()
   const canManageCash = permissions.canManageCash
+
+  /** Format number with thousands separator for display */
+  const fmt = (val: number) => val.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
   const [registers, setRegisters] = useState<CashRegister[]>([])
   const [loading, setLoading] = useState(true)
@@ -102,6 +120,7 @@ export function CashRegisterView() {
   const [closeActual, setCloseActual] = useState('')
   const [closingAll, setClosingAll] = useState(false)
   const [expandedHistory, setExpandedHistory] = useState<string | null>(null)
+  const [showCloseAllConfirm, setShowCloseAllConfirm] = useState(false)
 
   // Retiro de Excedente state
   const [showWithdrawal, setShowWithdrawal] = useState(false)
@@ -177,6 +196,31 @@ export function CashRegisterView() {
   const totalOpenAmt = openRegisters.reduce((sum, r) => sum + r.currentAmt, 0)
   const totalSales = openRegisters.reduce((sum, r) => sum + r._count.sales, 0)
 
+  // Fix 6: Filter out users that already have an open register
+  const usersWithOpenBox = new Set(openRegisters.map(r => r.user.id))
+  const filteredUsers = availableUsers.filter(u => !usersWithOpenBox.has(u.id))
+
+  // Fix 14/19: Auto-refresh every 30s when there are open registers
+  useEffect(() => {
+    if (openRegisters.length === 0) return
+    const interval = setInterval(() => { fetchData(filterBranchId) }, 30000)
+    return () => clearInterval(interval)
+  }, [openRegisters.length, filterBranchId])
+
+  // Fix 14/19: Refresh when user returns to the tab
+  useEffect(() => {
+    const onFocus = () => { if (openRegisters.length > 0) fetchData(filterBranchId) }
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [openRegisters.length, filterBranchId])
+
+  const openCreateDialog = () => {
+    setInitialAmt('')
+    setRegisterName('')
+    setSelectedUserId('')
+    setShowOpen(true)
+  }
+
   const openRegister = async () => {
     setSaving(true)
     try {
@@ -192,9 +236,16 @@ export function CashRegisterView() {
         setSaving(false)
         return
       }
+      const amt = parseFloat(initialAmt) || 0
+      // Fix 1: Cap initial amount at 500000
+      if (amt > 500000) {
+        toast.error('El monto inicial no puede exceder Bs 500.000,00')
+        setSaving(false)
+        return
+      }
       await api.post('/api/cash-register/open', {
         userId: effectiveUserId,
-        initialAmt: parseFloat(initialAmt) || 0,
+        initialAmt: amt,
         name: registerName.trim() || undefined,
         branchId: targetBranch,
       })
@@ -202,6 +253,7 @@ export function CashRegisterView() {
       setShowOpen(false)
       setRegisterName('')
       setSelectedUserId('')
+      setInitialAmt('') // Fix 5: Reset initial amount after success
       fetchData(targetBranch)
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Error al abrir caja'
@@ -247,11 +299,16 @@ export function CashRegisterView() {
 
   const closeRegister = async () => {
     if (!closeRegId) return
+    // Fix 17: Validate closeActual is provided
+    if (!closeActual || parseFloat(closeActual) < 0) {
+      toast.error('Debe ingresar el monto real en caja')
+      return
+    }
     setSaving(true)
     try {
       await api.post('/api/cash-register/close', {
         cashRegId: closeRegId,
-        actual: closeActual ? parseFloat(closeActual) : undefined,
+        actual: parseFloat(closeActual),
       })
       toast.success('Caja cerrada exitosamente')
       setShowClose(false)
@@ -278,14 +335,15 @@ export function CashRegisterView() {
     try {
       const currencies = await api.get<Array<{ id: string; isBase: boolean }>>('/api/currencies')
       const baseCurrency = currencies.find(c => c.isBase)
-      const result = await api.post('/api/cash-register/withdrawal', {
+      const result = await api.post<{ amount: number }>('/api/cash-register/withdrawal', {
         cashRegId: withdrawalRegId,
         amount: parseFloat(withdrawalAmount),
         concept: withdrawalConcept.trim() || undefined,
         currencyId: baseCurrency?.id || currencies[0]?.id || '',
         userId: user?.id || '',
       })
-      toast.success(`Retiro de excedente por $${result.amount.toFixed(2)} registrado`)
+      // Fix 9: Use fmt() in withdrawal toast
+      toast.success(`Retiro de excedente por $${fmt(result.amount)} registrado`)
       setShowWithdrawal(false)
       setWithdrawalAmount('')
       setWithdrawalConcept('')
@@ -327,6 +385,10 @@ export function CashRegisterView() {
       )
       setAuditResult(result)
       toast.success('Arqueo de caja registrado')
+      // Fix 12: Refresh main view after audit
+      fetchData(filterBranchId)
+      // Fix 11: Auto-close audit dialog after 3 seconds
+      setTimeout(() => { resetAuditDialog() }, 3000)
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Error al registrar arqueo'
       toast.error(msg)
@@ -345,6 +407,7 @@ export function CashRegisterView() {
 
   const closeAllRegisters = async () => {
     setClosingAll(true)
+    setShowCloseAllConfirm(false)
     try {
       const result = await api.post<{ message: string }>('/api/cash-register/close-all', {
         branchId: filterBranchId || undefined,
@@ -397,7 +460,8 @@ export function CashRegisterView() {
                 ha sido cerrada por un administrador.
               </p>
               <div className="mt-3 rounded-md bg-white dark:bg-gray-900 p-3 text-sm">
-                <p className="text-muted-foreground">Monto final: <span className="font-bold">${closedInfo.actual.toFixed(2)}</span></p>
+                {/* Fix 9: Use fmt() in cashier alert */}
+                <p className="text-muted-foreground">Monto final: <span className="font-bold">${fmt(closedInfo.actual)}</span></p>
                 <p className="text-muted-foreground">Fecha de cierre: {new Date(closedInfo.cutDate).toLocaleString('es-VE')}</p>
               </div>
             </div>
@@ -421,10 +485,12 @@ export function CashRegisterView() {
               <div className="rounded-xl bg-primary/10 p-2.5">
                 <Wallet className="h-6 w-6 text-primary" />
               </div>
-              <div>
-                <p className="text-sm text-muted-foreground font-medium">Efectivo en Caja</p>
-                <p className="text-3xl font-bold tracking-tight text-primary">
-                  ${totalOpenAmt.toFixed(2)}
+              <div className="min-w-0 max-w-full">
+                {/* Fix 7: Changed label to "Efectivo Global en Cajas" */}
+                <p className="text-sm text-muted-foreground font-medium">Efectivo Global en Cajas</p>
+                {/* Fix 3: Use fmt() + Fix 4: tabular-nums truncate */}
+                <p className="text-3xl font-bold tracking-tight text-primary tabular-nums truncate max-w-full">
+                  ${fmt(totalOpenAmt)}
                 </p>
               </div>
             </div>
@@ -448,13 +514,21 @@ export function CashRegisterView() {
                 </div>
               )}
             </div>
+            {/* Fix 7: Breakdown when multiple open registers */}
+            {openRegisters.length > 1 && (
+              <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs text-muted-foreground">
+                {openRegisters.map(r => (
+                  <span key={r.id}>{r.name || r.user.name}: ${fmt(r.currentAmt)}</span>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Right: Actions */}
           <div className="border-t lg:border-t-0 lg:border-l p-4 lg:p-6 bg-muted/30 flex flex-col gap-2 justify-center min-w-[200px]">
             {canManageCash && (
               <>
-                <Button data-tutorial="cash-open-btn" className="w-full justify-start gap-2 bg-primary hover:bg-primary/90 text-white" onClick={() => setShowOpen(true)}>
+                <Button data-tutorial="cash-open-btn" className="w-full justify-start gap-2 bg-primary hover:bg-primary/90 text-white" onClick={openCreateDialog}>
                   <Plus className="h-4 w-4" /> Abrir Caja
                 </Button>
                 {openRegisters.length > 0 && (
@@ -465,7 +539,8 @@ export function CashRegisterView() {
                     }}>
                       <ArrowDownCircle className="h-4 w-4" /> Movimiento
                     </Button>
-                    <Button variant="outline" className="w-full justify-start gap-2 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30" onClick={closeAllRegisters} disabled={closingAll}>
+                    {/* Fix 18: Show AlertDialog confirmation before closing all */}
+                    <Button variant="outline" className="w-full justify-start gap-2 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30" onClick={() => setShowCloseAllConfirm(true)} disabled={closingAll}>
                       {closingAll ? <Loader2 className="h-4 w-4 animate-spin" /> : <Lock className="h-4 w-4" />}
                       Cerrar Todas
                     </Button>
@@ -514,27 +589,27 @@ export function CashRegisterView() {
                       </Badge>
                     </div>
 
-                    {/* Amounts */}
+                    {/* Amounts - Fix 3: Use fmt() + Fix 4: tabular-nums */}
                     <div className="grid grid-cols-3 gap-3">
                       <div className="text-center">
                         <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Inicial</p>
-                        <p className="text-sm font-semibold">${reg.initialAmt.toFixed(2)}</p>
+                        <p className="text-sm font-semibold tabular-nums">${fmt(reg.initialAmt)}</p>
                       </div>
                       <div className="text-center">
                         <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Actual</p>
-                        <p className="text-lg font-bold text-primary">${reg.currentAmt.toFixed(2)}</p>
+                        <p className="text-lg font-bold text-primary tabular-nums">${fmt(reg.currentAmt)}</p>
                       </div>
                       <div className="text-center">
                         <p className="text-[11px] text-muted-foreground uppercase tracking-wide">
                           <TrendingUp className="h-3 w-3 inline" />
                         </p>
-                        <p className={`text-sm font-semibold ${isPositive ? 'text-emerald-600' : 'text-red-600'}`}>
-                          {isPositive ? '+' : ''}{earnings.toFixed(2)}
+                        <p className={`text-sm font-semibold tabular-nums ${isPositive ? 'text-emerald-600' : 'text-red-600'}`}>
+                          {isPositive ? '+' : ''}{fmt(earnings)}
                         </p>
                       </div>
                     </div>
 
-                    {/* Meta info */}
+                    {/* Meta info - Fix 8: Added movements count */}
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
                       <div className="flex items-center gap-1">
                         <Clock className="h-3 w-3" />
@@ -547,6 +622,10 @@ export function CashRegisterView() {
                       <div className="flex items-center gap-1">
                         <ShoppingCart className="h-3 w-3" />
                         {reg._count.sales} venta{reg._count.sales !== 1 ? 's' : ''}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <ArrowUpCircle className="h-3 w-3" />
+                        {reg._count.movements} movimiento{reg._count.movements !== 1 ? 's' : ''}
                       </div>
                     </div>
 
@@ -624,7 +703,7 @@ export function CashRegisterView() {
                 Abre una nueva caja para comenzar a registrar ventas y movimientos.
               </p>
             </div>
-            <Button data-tutorial="cash-open-btn" className="bg-primary hover:bg-primary/90 text-white" onClick={() => setShowOpen(true)}>
+            <Button data-tutorial="cash-open-btn" className="bg-primary hover:bg-primary/90 text-white" onClick={openCreateDialog}>
               <Plus className="mr-2 h-4 w-4" /> Abrir Caja
             </Button>
           </CardContent>
@@ -685,10 +764,11 @@ export function CashRegisterView() {
                             <Clock className="h-3 w-3 inline mr-1" />
                             {formatTime(reg.openingDate)}
                           </div>
+                          {/* Fix 3: Use fmt() in history list */}
                           <div className="text-right">
-                            <p className="text-sm font-semibold">${reg.currentAmt.toFixed(2)}</p>
-                            <p className={`text-xs ${isPositive ? 'text-emerald-600' : 'text-red-600'}`}>
-                              {isPositive ? '+' : ''}{earnings.toFixed(2)}
+                            <p className="text-sm font-semibold tabular-nums">${fmt(reg.currentAmt)}</p>
+                            <p className={`text-xs tabular-nums ${isPositive ? 'text-emerald-600' : 'text-red-600'}`}>
+                              {isPositive ? '+' : ''}{fmt(earnings)}
                             </p>
                           </div>
                           <div className="text-right">
@@ -706,6 +786,7 @@ export function CashRegisterView() {
                       {/* Expanded details */}
                       {isExpanded && (
                         <div className="px-3 pb-3 pl-10">
+                          {/* Fix 3: Use fmt() in history expanded details */}
                           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3 rounded-md bg-muted/50 text-sm">
                             <div>
                               <p className="text-xs text-muted-foreground">Cajero</p>
@@ -727,16 +808,16 @@ export function CashRegisterView() {
                             )}
                             <div>
                               <p className="text-xs text-muted-foreground">Monto Inicial</p>
-                              <p className="font-medium">${reg.initialAmt.toFixed(2)}</p>
+                              <p className="font-medium tabular-nums">${fmt(reg.initialAmt)}</p>
                             </div>
                             <div>
                               <p className="text-xs text-muted-foreground">Monto Final</p>
-                              <p className="font-bold">${reg.currentAmt.toFixed(2)}</p>
+                              <p className="font-bold tabular-nums">${fmt(reg.currentAmt)}</p>
                             </div>
                             <div>
                               <p className="text-xs text-muted-foreground">Diferencia</p>
-                              <p className={`font-bold ${isPositive ? 'text-emerald-600' : 'text-red-600'}`}>
-                                {isPositive ? '+' : ''}{earnings.toFixed(2)}
+                              <p className={`font-bold tabular-nums ${isPositive ? 'text-emerald-600' : 'text-red-600'}`}>
+                                {isPositive ? '+' : ''}{fmt(earnings)}
                               </p>
                             </div>
                             <div>
@@ -779,19 +860,34 @@ export function CashRegisterView() {
           <div className="space-y-4">
             <div className="space-y-2">
               <Label>Cajero Asignado *</Label>
+              {/* Fix 6: Use filteredUsers instead of availableUsers */}
               <Select value={selectedUserId} onValueChange={setSelectedUserId}>
                 <SelectTrigger><SelectValue placeholder="Seleccionar cajero" /></SelectTrigger>
                 <SelectContent>
-                  {availableUsers.map((u) => (
-                    <SelectItem key={u.id} value={u.id}>
-                      <span className="flex items-center gap-2">
-                        <UserCircle className="h-3 w-3" />
-                        {u.name}
-                      </span>
-                    </SelectItem>
-                  ))}
+                  {filteredUsers.length > 0 ? (
+                    filteredUsers.map((u) => (
+                      <SelectItem key={u.id} value={u.id}>
+                        <span className="flex items-center gap-2">
+                          <UserCircle className="h-3 w-3" />
+                          {u.name}
+                        </span>
+                      </SelectItem>
+                    ))
+                  ) : (
+                    <div className="px-2 py-1.5 text-sm text-muted-foreground">
+                      {availableUsers.length > 0
+                        ? 'Todos los cajeros tienen una caja abierta'
+                        : 'No hay cajeros disponibles'}
+                    </div>
+                  )}
                 </SelectContent>
               </Select>
+              {/* Fix 6: Note when all cashiers have open boxes */}
+              {filteredUsers.length === 0 && availableUsers.length > 0 && (
+                <p className="text-xs text-amber-600 dark:text-amber-400">
+                  Todos los cajeros disponibles ya tienen una caja abierta.
+                </p>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="regname">Nombre de la Caja (opcional)</Label>
@@ -799,7 +895,18 @@ export function CashRegisterView() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="initial">Monto Inicial</Label>
-              <Input id="initial" type="number" step="0.01" value={initialAmt} onChange={(e) => setInitialAmt(e.target.value)} />
+              {/* Fix 1: max="500000" + Fix 2: text inputMode numeric + cash-input */}
+              <Input
+                id="initial"
+                type="text"
+                inputMode="numeric"
+                max="500000"
+                className="cash-input [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]"
+                value={initialAmt}
+                onChange={(e) => setInitialAmt(numericFilter(e.target.value))}
+                placeholder="0.00"
+              />
+              <p className="text-xs text-muted-foreground">Máximo permitido: Bs 500.000,00</p>
             </div>
             <Button className="w-full bg-primary hover:bg-primary/90 text-white" onClick={openRegister} disabled={saving || !selectedUserId}>
               {saving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Abriendo...</> : 'Abrir Caja'}
@@ -832,7 +939,8 @@ export function CashRegisterView() {
                   <SelectContent>
                     {openRegisters.map((reg) => (
                       <SelectItem key={reg.id} value={reg.id}>
-                        {reg.name || reg.user.name} — ${reg.currentAmt.toFixed(2)}
+                        {/* Fix 3: Use fmt() in movement select label */}
+                        {reg.name || reg.user.name} — ${fmt(reg.currentAmt)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -859,7 +967,16 @@ export function CashRegisterView() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="mamt">Monto</Label>
-              <Input id="mamt" type="number" step="0.01" value={moveAmount} onChange={(e) => setMoveAmount(e.target.value)} />
+              {/* Fix 2: text inputMode numeric + cash-input */}
+              <Input
+                id="mamt"
+                type="text"
+                inputMode="numeric"
+                className="cash-input [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]"
+                value={moveAmount}
+                onChange={(e) => setMoveAmount(numericFilter(e.target.value))}
+                placeholder="0.00"
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="mconcept">Concepto *</Label>
@@ -897,14 +1014,25 @@ export function CashRegisterView() {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Monto esperado:</span>
-                    <span className="font-bold">${reg.currentAmt.toFixed(2)}</span>
+                    {/* Fix 3: Use fmt() in close dialog */}
+                    <span className="font-bold tabular-nums">${fmt(reg.currentAmt)}</span>
                   </div>
                 </div>
               ) : null
             })()}
             <div className="space-y-2">
-              <Label htmlFor="closeamt">Monto Real en Caja</Label>
-              <Input id="closeamt" type="number" step="0.01" value={closeActual} onChange={(e) => setCloseActual(e.target.value)} placeholder={openRegisters[0]?.currentAmt.toFixed(2)} />
+              <Label htmlFor="closeamt">Monto Real en Caja *</Label>
+              {/* Fix 2: text inputMode numeric + cash-input */}
+              {/* Fix 15: Use correct register for placeholder */}
+              <Input
+                id="closeamt"
+                type="text"
+                inputMode="numeric"
+                className="cash-input [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]"
+                value={closeActual}
+                onChange={(e) => setCloseActual(numericFilter(e.target.value))}
+                placeholder={closeRegId ? fmt(registers.find(r => r.id === closeRegId)?.currentAmt || 0) : '0,00'}
+              />
             </div>
             <p className="text-xs text-muted-foreground">
               Se enviará un correo electrónico al administrador con el resumen del cierre.
@@ -942,7 +1070,8 @@ export function CashRegisterView() {
                   <SelectContent>
                     {openRegisters.map((reg) => (
                       <SelectItem key={reg.id} value={reg.id}>
-                        {reg.name || reg.user.name} — ${reg.currentAmt.toFixed(2)}
+                        {/* Fix 3: Use fmt() in withdrawal select label */}
+                        {reg.name || reg.user.name} — ${fmt(reg.currentAmt)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -960,20 +1089,23 @@ export function CashRegisterView() {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Saldo actual:</span>
-                    <span className="font-bold text-primary">${reg.currentAmt.toFixed(2)}</span>
+                    {/* Fix 3: Use fmt() in withdrawal card */}
+                    <span className="font-bold text-primary tabular-nums">${fmt(reg.currentAmt)}</span>
                   </div>
                 </div>
               )
             })()}
             <div className="space-y-2">
               <Label htmlFor="wamt">Monto a Retirar</Label>
+              {/* Fix 2: text inputMode numeric + cash-input */}
               <Input
                 id="wamt"
-                type="number"
-                step="0.01"
+                type="text"
+                inputMode="numeric"
+                className="cash-input [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]"
                 min="0"
                 value={withdrawalAmount}
-                onChange={(e) => setWithdrawalAmount(e.target.value)}
+                onChange={(e) => setWithdrawalAmount(numericFilter(e.target.value))}
                 placeholder="0.00"
               />
             </div>
@@ -1018,7 +1150,8 @@ export function CashRegisterView() {
                   <SelectContent>
                     {openRegisters.map((reg) => (
                       <SelectItem key={reg.id} value={reg.id}>
-                        {reg.name || reg.user.name} — ${reg.currentAmt.toFixed(2)}
+                        {/* Fix 3: Use fmt() in audit select label */}
+                        {reg.name || reg.user.name} — ${fmt(reg.currentAmt)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -1036,30 +1169,34 @@ export function CashRegisterView() {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Monto esperado:</span>
-                    <span className="font-bold text-primary">${reg.currentAmt.toFixed(2)}</span>
+                    {/* Fix 3: Use fmt() in audit card */}
+                    <span className="font-bold text-primary tabular-nums">${fmt(reg.currentAmt)}</span>
                   </div>
                 </div>
               )
             })()}
 
             <div className="space-y-3">
-              <Label className="text-sm font-medium">Denominaciones</Label>
+              {/* Fix 13: Indicate country for denominations */}
+              <Label className="text-sm font-medium">Denominaciones (VE)</Label>
               <div className="grid grid-cols-2 gap-2">
                 {DENOMINATIONS.map((denom) => (
                   <div key={denom.value} className="flex items-center gap-2">
                     <span className="text-xs font-mono w-16 text-right shrink-0 text-muted-foreground">
                       {denom.label}
                     </span>
+                    {/* Fix 2: text inputMode numeric + cash-input */}
                     <Input
-                      type="number"
+                      type="text"
+                      inputMode="numeric"
                       min="0"
-                      className="h-8 text-sm"
+                      className="h-8 text-sm cash-input [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]"
                       placeholder="0"
                       value={auditBreakdown[denom.value.toString()] || ''}
                       onChange={(e) =>
                         setAuditBreakdown((prev) => ({
                           ...prev,
-                          [denom.value.toString()]: e.target.value,
+                          [denom.value.toString()]: numericFilter(e.target.value),
                         }))
                       }
                     />
@@ -1073,11 +1210,12 @@ export function CashRegisterView() {
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Total contado:</span>
-                <span className="font-bold text-lg">
-                  ${Object.entries(auditBreakdown).reduce(
+                {/* Fix 3: Use fmt() for audit total */}
+                <span className="font-bold text-lg tabular-nums">
+                  ${fmt(Object.entries(auditBreakdown).reduce(
                     (sum, [denom, qty]) => sum + parseFloat(denom) * (parseFloat(qty) || 0),
                     0
-                  ).toFixed(2)}
+                  ))}
                 </span>
               </div>
               {auditRegId && (() => {
@@ -1091,8 +1229,9 @@ export function CashRegisterView() {
                 return (
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Diferencia:</span>
-                    <span className={`font-bold ${diff > 0 ? 'text-amber-600' : diff < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
-                      {diff > 0 ? '+' : ''}{diff.toFixed(2)}
+                    {/* Fix 3: Use fmt() for audit difference */}
+                    <span className={`font-bold tabular-nums ${diff > 0 ? 'text-amber-600' : diff < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                      {diff > 0 ? '+' : ''}{fmt(diff)}
                       {diff > 0 && ' (Sobrante)'}
                       {diff < 0 && ' (Faltante)'}
                       {diff === 0 && ' (Cuadrado)'}
@@ -1117,17 +1256,24 @@ export function CashRegisterView() {
                   </>
                 ) : auditResult.difference > 0 ? (
                   <p className="font-bold text-amber-700 dark:text-amber-400">
-                    Sobrante: ${auditResult.difference.toFixed(2)}
+                    {/* Fix 3: Use fmt() for audit result amounts */}
+                    Sobrante: ${fmt(auditResult.difference)}
                   </p>
                 ) : (
                   <p className="font-bold text-red-700 dark:text-red-400">
-                    Faltante: ${Math.abs(auditResult.difference).toFixed(2)}
+                    Faltante: ${fmt(Math.abs(auditResult.difference))}
                   </p>
                 )}
                 <div className="text-xs text-muted-foreground mt-2 space-y-0.5">
-                  <p>Esperado: ${auditResult.expected.toFixed(2)}</p>
-                  <p>Contado: ${auditResult.counted.toFixed(2)}</p>
+                  <p>Esperado: ${fmt(auditResult.expected)}</p>
+                  <p>Contado: ${fmt(auditResult.counted)}</p>
                 </div>
+                {/* Fix 10: Show message when difference detected */}
+                {auditResult.difference !== 0 && (
+                  <p className="text-xs text-muted-foreground mt-2 italic">
+                    Se detectó diferencia. El saldo actualizado se reflejará en el próximo cierre.
+                  </p>
+                )}
               </div>
             )}
 
@@ -1151,6 +1297,58 @@ export function CashRegisterView() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Fix 18: Close All Confirm AlertDialog */}
+      <AlertDialog open={showCloseAllConfirm} onOpenChange={setShowCloseAllConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <Lock className="h-5 w-5 text-red-600" />
+              Cerrar Todas las Cajas
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              ¿Está seguro de cerrar todas las cajas?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="my-2">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Caja</TableHead>
+                  <TableHead>Cajero</TableHead>
+                  <TableHead className="text-right">Monto Actual</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {openRegisters.map((reg) => (
+                  <TableRow key={reg.id}>
+                    <TableCell className="font-medium">{reg.name || 'Sin nombre'}</TableCell>
+                    <TableCell>{reg.user.name}</TableCell>
+                    {/* Fix 3: Use fmt() in close all confirmation */}
+                    <TableCell className="text-right font-semibold tabular-nums">${fmt(reg.currentAmt)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+            <div className="mt-3 rounded-md bg-muted p-3 text-sm">
+              <div className="flex justify-between font-bold">
+                <span>Total global:</span>
+                <span className="tabular-nums">${fmt(totalOpenAmt)}</span>
+              </div>
+            </div>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={closeAllRegisters}
+              disabled={closingAll}
+            >
+              {closingAll ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Cerrando...</> : 'Confirmar Cierre'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
     </div>
     </TooltipProvider>
