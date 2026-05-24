@@ -64,6 +64,8 @@ export async function POST(request: NextRequest) {
     }
 
     const branchId = branchFromBody(body) || await resolveBranchId()
+    const ivaEnabled = body.ivaEnabled === true
+    const ivaRate = Number(body.ivaRate) || 0
 
     // SERVER-SIDE STOCK VALIDATION (race condition protection)
     const productIds = lines.map((l: { productId: string }) => l.productId)
@@ -87,8 +89,7 @@ export async function POST(request: NextRequest) {
 
     if (insufficientStock.length > 0) {
       return NextResponse.json({
-        error: 'Stock insuficiente',
-        details: insufficientStock,
+        error: `Stock insuficiente: ${insufficientStock.join('; ')}`,
       }, { status: 400 })
     }
 
@@ -119,6 +120,13 @@ export async function POST(request: NextRequest) {
     })
 
     total = Math.round(total * 100) / 100
+
+    // Add IVA to total if enabled
+    let ivaAmount = 0
+    if (ivaEnabled && ivaRate > 0) {
+      ivaAmount = Math.round(total * (ivaRate / 100) * 100) / 100
+      total = Math.round((total + ivaAmount) * 100) / 100
+    }
 
     // Create sale with lines and payments in a transaction
     const sale = await db.$transaction(async (tx) => {
@@ -161,8 +169,8 @@ export async function POST(request: NextRequest) {
       }
 
       // Low stock notification to admin users — ONE notification per admin summarizing all low stock
-      const adminUsers = await tx.user.findMany({
-        where: { role: 'admin', active: true },
+      const notifiedUsers = await tx.user.findMany({
+        where: { role: { in: ['admin', 'gerente'] }, active: true },
         select: { id: true },
       })
 
@@ -183,10 +191,10 @@ export async function POST(request: NextRequest) {
 
       // Create one notification per admin with all low-stock products
       if (lowStockProducts.length > 0) {
-        for (const admin of adminUsers) {
+        for (const manager of notifiedUsers) {
           await tx.notification.create({
             data: {
-              userId: admin.id,
+              userId: manager.id,
               title: `Stock Bajo (${lowStockProducts.length} producto${lowStockProducts.length > 1 ? 's' : ''})`,
               message: lowStockProducts.join('. ') + '. Reposición necesaria.',
               type: 'warning',

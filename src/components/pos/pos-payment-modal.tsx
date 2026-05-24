@@ -17,7 +17,7 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import { Banknote, CreditCard, ArrowLeftRight, Clock, Smartphone, CheckCircle2, Loader2 } from 'lucide-react'
+import { Banknote, CreditCard, ArrowLeftRight, Clock, Smartphone, CheckCircle2, Loader2, AlertTriangle } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface PosPaymentModalProps {
@@ -55,7 +55,11 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
   const [currencies, setCurrencies] = useState<{ id: string; code: string; symbol: string; isBase: boolean }[]>([])
   const [openCashRegId, setOpenCashRegId] = useState<string | null>(null)
 
-  const total = getTotal()
+  const subtotal = getTotal()
+  const ivaEnabled = useSetting('ivaEnabled')
+  const ivaRate = Number(useSetting('ivaRate')) || 0
+  const ivaAmount = ivaEnabled ? Math.round(subtotal * (ivaRate / 100) * 100) / 100 : 0
+  const total = Math.round((subtotal + ivaAmount) * 100) / 100
   const totalBs = total * exchangeRate
   const currencySymbol = referenceCurrency === 'EUR' ? '€' : '$'
   const selectedMethod = paymentMethods.find(pm => pm.value === method)
@@ -113,16 +117,32 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
       return
     }
     if (!resolvedCurrencyId) {
-      toast.error('No se pudo determinar la moneda. Verifica la configuración o crea una moneda en el sistema.')
+      toast.error('No se pudo determinar la moneda. Verifica la configuracion o crea una moneda en el sistema.')
+      return
+    }
+    // Validate reference for pago_movil, tarjeta, transferencia
+    if (selectedMethod?.needsReference && !reference.trim()) {
+      toast.error(`La referencia es obligatoria para ${selectedMethod.label}`)
+      return
+    }
+    // Validate client for credit sales
+    if (method === 'credito' && !clientId) {
+      toast.error('Debe seleccionar un cliente para ventas a credito')
       return
     }
 
     setLoading(true)
     try {
+      const paymentAmount = isLocalMethod
+        ? parseFloat(amount) || 0
+        : Math.min(parseFloat(amount) || 0, total)
+
       await api.post('/api/sales', {
         clientId: clientId || null,
         cashRegId: openCashRegId,
         userId: user?.id || '',
+        ivaEnabled: !!ivaEnabled,
+        ivaRate,
         lines: items.map((item) => ({
           productId: item.productId,
           quantity: item.quantity,
@@ -132,9 +152,9 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
         payments: [
           {
             method,
-            amount: Math.min(amountInRefCurrency, total),
+            amount: paymentAmount,
             currencyId: resolvedCurrencyId,
-            reference: reference || undefined,
+            reference: reference.trim() || undefined,
           },
         ],
       })
@@ -143,8 +163,9 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
         clearCart()
         onClose()
       }, 2000)
-    } catch {
-      toast.error('Error al procesar la venta')
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Error al procesar la venta'
+      toast.error(msg)
     } finally {
       setLoading(false)
     }
@@ -216,6 +237,12 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
                 </label>
               ))}
             </RadioGroup>
+
+            {method === 'credito' && !clientId && (
+              <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                <AlertTriangle className="h-3 w-3 shrink-0" /> Seleccione un cliente para vender a credito
+              </p>
+            )}
 
             <Separator />
 

@@ -11,7 +11,8 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Drawer, DrawerTrigger, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription } from '@/components/ui/drawer'
-import { Search, ShoppingCart, AlertTriangle, ScanBarcode, X, Camera, Lock } from 'lucide-react'
+import { Search, ShoppingCart, AlertTriangle, ScanBarcode, X, Camera, Lock, Phone } from 'lucide-react'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { toast } from 'sonner'
@@ -57,6 +58,10 @@ export function PosTerminal() {
   const [barcodeMatches, setBarcodeMatches] = useState<ProductWithInventory[]>([])
   const searchRef = useRef<HTMLInputElement>(null)
   const barcodeRef = useRef<HTMLInputElement>(null)
+  const suggestionsRef = useRef<HTMLDivElement>(null)
+  const [showGerenteDialog, setShowGerenteDialog] = useState(false)
+  const [gerenteReason, setGerenteReason] = useState('')
+  const [showSuggestions, setShowSuggestions] = useState(false)
   const isMobile = useIsMobile()
   const currencySymbol = referenceCurrency === 'EUR' ? '€' : '$'
   const isCashier = user?.role === 'cajero'
@@ -117,6 +122,13 @@ export function PosTerminal() {
 
   const filteredProducts = useMemo(() => {
     let result = products
+    // Punto 6: Hide products with no stock in current branch
+    if (selectedBranchId) {
+      result = result.filter((p) => {
+        const branchInv = p.inventories.find(i => i.branchId === selectedBranchId)
+        return branchInv && branchInv.stock > 0
+      })
+    }
     if (searchQuery) {
       const q = searchQuery.toLowerCase()
       result = result.filter(
@@ -127,7 +139,7 @@ export function PosTerminal() {
       result = result.filter((p) => p.category?.name === categoryFilter)
     }
     return result
-  }, [searchQuery, categoryFilter, products])
+  }, [searchQuery, categoryFilter, products, selectedBranchId])
 
   // Get stock and branch-specific price for the selected branch
   const getBranchInfo = (product: ProductWithInventory): { stock: number; branchName: string | null; effectivePrice: number } => {
@@ -142,6 +154,62 @@ export function PosTerminal() {
     const firstInv = product.inventories[0]
     return { stock: firstInv?.stock ?? 0, branchName: firstInv?.branch?.name || null, effectivePrice: product.price }
   }
+
+  // Punto 4: SKU autocomplete suggestions
+  const suggestions = useMemo(() => {
+    if (!searchQuery || searchQuery.length < 2) return []
+    return filteredProducts.slice(0, 6)
+  }, [searchQuery, filteredProducts])
+
+  // Punto 2: Detect cart items whose stock dropped below requested quantity
+  const stockIssues = useMemo(() => {
+    return items.filter(item => {
+      const product = products.find(p => p.id === item.productId)
+      if (!product) return true
+      const { stock } = getBranchInfo(product)
+      return stock < item.quantity
+    })
+  }, [items, products, selectedBranchId, getBranchInfo])
+
+  // Close suggestions on click outside
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (suggestionsRef.current && !suggestionsRef.current.contains(e.target as Node)) {
+        setShowSuggestions(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  // Punto 1+2: Request gerente assistance
+  const handleRequestGerente = async () => {
+    if (!gerenteReason.trim()) return
+    try {
+      await api.post('/api/notifications/request-manager', {
+        reason: gerenteReason.trim(),
+        context: stockIssues.length > 0
+          ? `Problemas de stock: ${stockIssues.map(i => i.productName).join(', ')}`
+          : 'Solicitud desde Punto de Venta',
+      })
+      toast.success('Gerente notificado correctamente')
+      setShowGerenteDialog(false)
+      setGerenteReason('')
+    } catch {
+      toast.error('Error al notificar al gerente')
+    }
+  }
+
+  // Punto 2: Poll products every 30s to detect stock changes
+  useEffect(() => {
+    if (checkingCaja || !cajaOpen) return
+    const interval = setInterval(() => {
+      api.get<{ products: ProductWithInventory[] }>('/api/products?active=true&allInventories=true')
+        .then(res => setProducts(res.products))
+        .catch(() => {})
+    }, 30000)
+    return () => clearInterval(interval)
+  }, [checkingCaja, cajaOpen])
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
@@ -381,16 +449,63 @@ export function PosTerminal() {
           >
             <Camera className="h-4 w-4" />
           </Button>
-          <div className="relative flex-1">
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-10 w-10 shrink-0 border-orange-300 hover:bg-orange-50 hover:text-orange-600 dark:border-orange-700 dark:hover:bg-orange-950/30 dark:hover:text-orange-400"
+            onClick={() => setShowGerenteDialog(true)}
+            title="Solicitar Gerente"
+          >
+            <Phone className="h-4 w-4" />
+          </Button>
+          <div className="relative flex-1" ref={suggestionsRef}>
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               ref={searchRef}
-              placeholder="Buscar producto (F2)... "
+              placeholder="Buscar producto o SKU (F2)..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
+              onFocus={() => setShowSuggestions(true)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && suggestions.length === 1) {
+                  handleAddProduct(suggestions[0])
+                  setSearchQuery('')
+                  setShowSuggestions(false)
+ }
+              }}
               className="pl-10"
               data-tutorial="pos-search"
             />
+            {showSuggestions && suggestions.length > 0 && (
+              <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-popover border rounded-lg shadow-lg max-h-64 overflow-auto">
+                {suggestions.map((product) => {
+                  const { stock, effectivePrice } = getBranchInfo(product)
+                  return (
+                    <button
+                      key={product.id}
+                      className="w-full flex items-center gap-3 p-2.5 hover:bg-muted/50 text-left transition-colors border-b border-border/50 last:border-0"
+                      onClick={() => {
+                        handleAddProduct(product)
+                        setSearchQuery('')
+                        setShowSuggestions(false)
+                        searchRef.current?.focus()
+                      }}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{product.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {product.sku && <span className="font-mono">{product.sku}</span>}
+                          {product.sku && ' · '}Stock: {stock}
+                        </p>
+                      </div>
+                      <span className="text-sm font-bold text-primary shrink-0">
+                        {currencySymbol}{effectivePrice.toFixed(2)}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
           </div>
           {isMobile && (
             <Drawer open={cartOpen} onOpenChange={setCartOpen}>
@@ -437,6 +552,24 @@ export function PosTerminal() {
             </Badge>
           ))}
         </div>
+
+        {/* Stock issues warning */}
+        {stockIssues.length > 0 && (
+          <div className="flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-2.5">
+            <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
+            <p className="text-xs text-amber-700 dark:text-amber-400 flex-1 truncate">
+              Stock cambiado: {stockIssues.map(i => i.productName).join(', ')}
+            </p>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 shrink-0 text-xs border-amber-400 hover:bg-amber-100 dark:border-amber-700 dark:hover:bg-amber-950/50"
+              onClick={() => setShowGerenteDialog(true)}
+            >
+              <Phone className="h-3 w-3 mr-1" /> Avisar Gerente
+            </Button>
+          </div>
+        )}
 
         {/* Grid */}
         <ScrollArea className="flex-1">
@@ -540,6 +673,35 @@ export function PosTerminal() {
         onClose={() => setShowCameraScanner(false)}
         onScan={handleBarcodeScan}
       />
+
+      {/* Request Gerente Dialog */}
+      <Dialog open={showGerenteDialog} onOpenChange={setShowGerenteDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Phone className="h-5 w-5 text-orange-600" />
+              Solicitar Gerente
+            </DialogTitle>
+            <DialogDescription>Envia una notificacion al gerente o administrador para que acuda al punto de venta.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <Input
+              placeholder="Motivo de la solicitud..."
+              value={gerenteReason}
+              onChange={(e) => setGerenteReason(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleRequestGerente() }}
+              autoFocus
+            />
+            <Button
+              className="w-full bg-orange-600 hover:bg-orange-700 text-white"
+              onClick={handleRequestGerente}
+              disabled={!gerenteReason.trim()}
+            >
+              <Phone className="mr-2 h-4 w-4" /> Notificar Gerente
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Barcode Match Selection Dialog */}
       {barcodeMatches.length > 0 && (

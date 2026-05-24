@@ -52,6 +52,7 @@ export function PosCart({ onPayment }: PosCartProps) {
   const currencySymbol = referenceCurrency === 'EUR' ? '\u20ac' : '$'
 
   const [showPaused, setShowPaused] = useState(false)
+  const [qtyEdit, setQtyEdit] = useState<Record<string, string>>({})
   const hasPaused = pausedSales.length > 0
 
   const handlePause = () => {
@@ -160,7 +161,22 @@ export function PosCart({ onPayment }: PosCartProps) {
                       >
                         <Minus className="h-3 w-3" />
                       </Button>
-                      <span className="w-8 text-center text-sm font-medium">{item.quantity}</span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        className="w-10 h-6 text-center text-sm font-medium bg-transparent border border-transparent hover:border-muted-foreground/30 focus:border-primary focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        value={qtyEdit[item.productId] ?? String(item.quantity)}
+                        onFocus={() => setQtyEdit(prev => ({ ...prev, [item.productId]: String(item.quantity) }))}
+                        onChange={(e) => setQtyEdit(prev => ({ ...prev, [item.productId]: e.target.value.replace(/[^0-9]/g, '') }))}
+                        onBlur={() => {
+                          const val = parseInt(qtyEdit[item.productId]) || 0
+                          if (val <= 0) removeItem(item.productId)
+                          else if (val > item.maxStock) updateQuantity(item.productId, item.maxStock)
+                          else if (val !== item.quantity) updateQuantity(item.productId, val)
+                          setQtyEdit(prev => { const next = { ...prev }; delete next[item.productId]; return next })
+                        }}
+                        onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
+                      />
                       <Button
                         variant="outline"
                         size="icon"
