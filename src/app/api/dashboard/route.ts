@@ -45,10 +45,24 @@ export async function GET(request: NextRequest) {
     const customFrom = searchParams.get('from')
     const customTo = searchParams.get('to')
     let endDate = new Date()
-    if (customFrom) startDate = new Date(customFrom)
+    endDate.setHours(23, 59, 59, 999)
+    let isCustom = false
+    if (customFrom) {
+      startDate = new Date(customFrom)
+      startDate.setHours(0, 0, 0, 0)
+      isCustom = true
+    }
     if (customTo) {
       endDate = new Date(customTo)
       endDate.setHours(23, 59, 59, 999)
+      isCustom = true
+    }
+    if (isCustom) {
+      // Build a readable label for the custom range
+      const fmt = (d: Date) => d.toLocaleDateString('es-VE', { day: 'numeric', month: 'short' })
+      chartLabel = `${fmt(startDate)} – ${fmt(endDate)}`
+      chartDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
+      chartDays = Math.min(chartDays, 365) // cap at 1 year
     }
 
     // Sales in period
@@ -98,6 +112,16 @@ export async function GET(request: NextRequest) {
     // Period totals
     const ingresosPeriodo = salesPeriod.reduce((s, sale) => s + sale.total, 0)
     const gastosPeriodo = expensesPeriod.reduce((s, e) => s + e.amount, 0)
+
+    // Period-level utility calculations (for filtered views)
+    const costoVentasPeriodo = salesPeriod.reduce((s, sale) =>
+      s + sale.lines.reduce((ls, l) => ls + (l.unitCost * l.quantity), 0), 0)
+    const utilidadBrutaPeriodo = ingresosPeriodo - costoVentasPeriodo
+    const perdidasPeriodo = adjustmentsPeriod.reduce((s, a) => {
+      const prod = a.product
+      return s + (a.quantity * (prod?.costAvg || 0))
+    }, 0)
+    const utilidadNetaPeriodo = utilidadBrutaPeriodo - gastosPeriodo - perdidasPeriodo
 
     // Top 5 products by revenue (from period sales)
     const productRevenue: Record<string, { name: string; revenue: number; qty: number }> = {}
@@ -200,13 +224,23 @@ export async function GET(request: NextRequest) {
         }
       }
     } else {
-      // Daily chart for week/month (last chartDays days)
-      for (let i = chartDays - 1; i >= 0; i--) {
-        const d = new Date()
-        d.setDate(d.getDate() - i)
+      // Daily chart for week/month/custom
+      const rangeStart = isCustom ? new Date(startDate) : new Date()
+      if (!isCustom) rangeStart.setDate(rangeStart.getDate() - (chartDays - 1))
+      rangeStart.setHours(0, 0, 0, 0)
+      const rangeEnd = isCustom ? new Date(endDate) : new Date()
+      rangeEnd.setHours(23, 59, 59, 999)
+      const totalDays = Math.ceil((rangeEnd.getTime() - rangeStart.getTime()) / (1000 * 60 * 60 * 24)) + 1
+      const cappedDays = Math.min(totalDays, 60) // cap chart points for readability
+      // If range > 60 days, group into weeks; otherwise show daily
+      const groupByDays = totalDays > 60 ? 7 : 1
+      for (let i = 0; i < totalDays; i += groupByDays) {
+        const d = new Date(rangeStart)
+        d.setDate(d.getDate() + i)
         d.setHours(0, 0, 0, 0)
         const nextD = new Date(d)
-        nextD.setDate(nextD.getDate() + 1)
+        nextD.setDate(nextD.getDate() + groupByDays)
+        if (nextD > rangeEnd) nextD.setTime(rangeEnd.getTime())
 
         const daySales = await db.sale.findMany({
           where: { date: { gte: d, lt: nextD }, status: 'completada', branchId },
@@ -214,7 +248,7 @@ export async function GET(request: NextRequest) {
         const dayTotal = daySales.reduce((s, sale) => s + sale.total, 0)
 
         chartData.push({
-          date: d.toLocaleDateString('es-VE', { weekday: 'short', day: 'numeric' }),
+          date: d.toLocaleDateString('es-VE', { weekday: 'short', day: 'numeric', month: 'short' }),
           total: Math.round(dayTotal * 100) / 100,
           count: daySales.length,
         })
@@ -239,6 +273,8 @@ export async function GET(request: NextRequest) {
       gastosPeriodo: Math.round(gastosPeriodo * 100) / 100,
       utilidadBrutaMes: Math.round(utilidadBrutaMes * 100) / 100,
       utilidadNetaMes: Math.round(utilidadNetaMes * 100) / 100,
+      utilidadBrutaPeriodo: Math.round(utilidadBrutaPeriodo * 100) / 100,
+      utilidadNetaPeriodo: Math.round(utilidadNetaPeriodo * 100) / 100,
       topProducts,
       recentSales,
       lowStockAlerts,

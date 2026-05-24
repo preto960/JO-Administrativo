@@ -62,3 +62,25 @@ Stage Summary:
 - Se muestra condicionalmente solo cuando supplier.balance > 0
 - No requiere permiso canManage (cualquier usuario puede registrar pagos)
 - Archivo modificado: src/components/clients/suppliers-view.tsx
+---
+Task ID: 1
+Agent: Main Agent
+Task: Fix dashboard date filtering - custom date range not working
+
+Work Log:
+- Analyzed dashboard API route and frontend component for date filtering logic
+- Found Bug 1: KPI cards (Row 1) were hardcoded to always show "Hoy" and "Mes" data, ignoring period filter
+- Found Bug 2: Chart data for custom period fell into else branch showing last 7 days from today instead of selected range
+- Fixed API: Added isCustom flag, proper startDate setHours(0,0,0,0), endDate setHours(23,59,59,999) for custom ranges
+- Fixed API: Added utilidadBrutaPeriodo and utilidadNetaPeriodo calculations for period-filtered utility metrics
+- Fixed API: Chart now uses actual startDate→endDate for custom ranges with weekly grouping for >60 day ranges
+- Fixed API: Returns proper chartLabel for custom ranges (e.g., "23 may – 24 may")
+- Fixed Frontend: KPI cards now always show period-specific data with dynamic labels
+- Fixed Frontend: Labels change based on period (Hoy, 7 días, Este Mes, Este Año, or custom range)
+- All TypeScript checks pass for dashboard files
+
+Stage Summary:
+- Custom date filtering now works correctly in the dashboard
+- When filtering by a specific date (e.g., yesterday), only data from that date range is shown
+- KPI cards, chart, top products, and recent sales all respect the selected period
+- Files modified: src/app/api/dashboard/route.ts, src/components/dashboard/financial-dashboard.tsx

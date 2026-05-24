@@ -28,6 +28,8 @@ interface DashboardData {
   gastosPeriodo: number
   utilidadBrutaMes: number
   utilidadNetaMes: number
+  utilidadBrutaPeriodo: number
+  utilidadNetaPeriodo: number
   topProducts: { name: string; revenue: number; qty: number }[]
   recentSales: Array<{
     id: string
@@ -143,6 +145,24 @@ export function FinancialDashboard() {
   const totalProducts = data?.topProducts.length || 0
   const totalClients = new Set(data?.recentSales.map(s => s.client?.name).filter(Boolean)).size || 0
 
+  // Determine which KPI values/labels to show based on selected period
+  const periodLabelMap: Record<string, string> = {
+    today: 'Hoy',
+    week: '7 días',
+    month: 'Este Mes',
+    year: 'Este Año',
+    custom: data?.chartLabel || 'Personalizado',
+  }
+  const pLabel = periodLabelMap[period] || data?.chartLabel || ''
+  const kpiIngresos = data?.ingresosPeriodo ?? 0
+  const kpiGastos = data?.gastosPeriodo ?? 0
+  const kpiUtilBruta = data?.utilidadBrutaPeriodo ?? 0
+  const kpiUtilNeta = data?.utilidadNetaPeriodo ?? 0
+  const kpiLabelIngresos = `Ingresos (${pLabel})`
+  const kpiLabelGastos = `Gastos (${pLabel})`
+  const kpiLabelBruta = `Util. Bruta (${pLabel})`
+  const kpiLabelNeta = `Util. Neta (${pLabel})`
+
   if (loading) {
     return (
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -207,31 +227,31 @@ export function FinancialDashboard() {
         )}
       </div>
 
-      {/* KPI Cards - Row 1 */}
+      {/* KPI Cards - Row 1: Period-filtered metrics */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KpiCard
-          title="Ingresos Hoy"
-          value={`$${data.ingresosHoy.toFixed(2)}`}
+          title={kpiLabelIngresos}
+          value={`$${kpiIngresos.toFixed(2)}`}
           icon={DollarSign}
           trend="up"
           color="primary"
         />
         <KpiCard
-          title="Gastos Hoy"
-          value={`$${data.gastosHoy.toFixed(2)}`}
+          title={kpiLabelGastos}
+          value={`$${kpiGastos.toFixed(2)}`}
           icon={ShoppingCart}
-          trend={data.gastosHoy > 0 ? 'down' : 'up'}
+          trend={kpiGastos > 0 ? 'down' : 'up'}
           color="red"
         />
         <KpiCard
-          title="Utilidad Bruta (Mes)"
-          value={`$${data.utilidadBrutaMes.toFixed(2)}`}
+          title={kpiLabelBruta}
+          value={`$${kpiUtilBruta.toFixed(2)}`}
           icon={Target}
           color="violet"
         />
         <KpiCard
-          title="Utilidad Neta (Mes)"
-          value={`$${data.utilidadNetaMes.toFixed(2)}`}
+          title={kpiLabelNeta}
+          value={`$${kpiUtilNeta.toFixed(2)}`}
           icon={PiggyBank}
           color="amber"
         />
