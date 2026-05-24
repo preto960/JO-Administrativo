@@ -4,7 +4,6 @@ import { useEffect } from 'react'
 import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar'
 import { AppSidebar } from './app-sidebar'
 import { AppHeader } from './app-header'
-import { ThemeProvider } from 'next-themes'
 import { useAppStore } from '@/stores/use-app-store'
 import { PosTerminal } from '@/components/pos/pos-terminal'
 import { FinancialDashboard } from '@/components/dashboard/financial-dashboard'
@@ -75,16 +74,14 @@ export function AppShell() {
   // Don't render the app shell until we know the user's role
   if (isLoading) {
     return (
-      <ThemeProvider attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange>
-        <div className="flex h-screen items-center justify-center">
-          <p className="text-muted-foreground">Cargando...</p>
-        </div>
-      </ThemeProvider>
+      <div className="flex h-screen items-center justify-center">
+        <p className="text-muted-foreground">Cargando...</p>
+      </div>
     )
   }
 
   return (
-    <ThemeProvider attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange>
+    <>
       <SidebarProvider>
         <AppSidebar />
         <SidebarInset>
@@ -96,6 +93,6 @@ export function AppShell() {
       </SidebarProvider>
       <OnboardingTutorial />
       <SettingsInitializer />
-    </ThemeProvider>
+    </>
   )
 }
