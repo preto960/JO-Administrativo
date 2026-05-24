@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { resolveBranchId, branchFromBody } from '@/lib/resolve-branch'
+import { notifyUser } from '@/lib/notify'
 
 export async function GET(request: NextRequest) {
   try {
@@ -114,13 +115,10 @@ export async function POST(request: NextRequest) {
               select: { id: true },
             })
             for (const admin of adminUsers) {
-              await tx.notification.create({
-                data: {
-                  userId: admin.id,
-                  title: 'Stock Reposicionado',
-                  message: `"${product.name}" fue reposicionado a ${newStock} unidades (mín: ${inventory?.minStock || 0}).`,
-                  type: 'success',
-                },
+              await notifyUser(admin.id, {
+                title: 'Stock Reposicionado',
+                message: `"${product.name}" fue reposicionado a ${newStock} unidades (min: ${inventory?.minStock || 0}).`,
+                type: 'success',
               })
             }
           }

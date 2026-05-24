@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/require-auth'
+import { notifyUser } from '@/lib/notify'
 
 export async function POST(request: NextRequest) {
   try {
@@ -38,13 +39,10 @@ export async function POST(request: NextRequest) {
 
     await Promise.all(
       managers.map((manager) =>
-        db.notification.create({
-          data: {
-            userId: manager.id,
-            title: 'Solicitud de Gerente',
-            message: fullMessage,
-            type: 'info',
-          },
+        notifyUser(manager.id, {
+          title: 'Solicitud de Gerente',
+          message: fullMessage,
+          type: 'info',
         })
       )
     )

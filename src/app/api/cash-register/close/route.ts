@@ -2,6 +2,7 @@ import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { buildReportFromRegister, generateCashClosePDF } from '@/lib/cash-close-pdf'
 import { logAction } from '@/lib/audit-log'
+import { notifyUser } from '@/lib/notify'
 
 export async function POST(request: NextRequest) {
   try {
@@ -146,13 +147,10 @@ export async function POST(request: NextRequest) {
 
     // Create notification for the cashier whose register was closed
     if (register.user.id) {
-      await db.notification.create({
-        data: {
-          userId: register.user.id,
-          title: 'Caja Cerrada',
-          message: `Tu caja "${register.name || 'Sin nombre'}" en la sucursal "${register.branch.name}" ha sido cerrada por un administrador. Monto final: $${actualAmt.toLocaleString('es-VE', { minimumFractionDigits: 2 })}`,
-          type: 'warning',
-        },
+      await notifyUser(register.user.id, {
+        title: 'Caja Cerrada',
+        message: `Tu caja "${register.name || 'Sin nombre'}" en la sucursal "${register.branch.name}" ha sido cerrada por un administrador. Monto final: $${actualAmt.toLocaleString('es-VE', { minimumFractionDigits: 2 })}`,
+        type: 'warning',
       })
     }
 

@@ -2,6 +2,7 @@ import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { resolveBranchId } from '@/lib/resolve-branch'
 import { buildReportFromRegister, generateMultiCashClosePDF, type CashCloseReport } from '@/lib/cash-close-pdf'
+import { notifyUser } from '@/lib/notify'
 
 export async function POST(request: NextRequest) {
   try {
@@ -163,13 +164,10 @@ export async function POST(request: NextRequest) {
 
     // Create notifications for all cashiers whose registers were closed
     for (const reg of openRegisters) {
-      await db.notification.create({
-        data: {
-          userId: reg.user.id,
-          title: 'Caja Cerrada',
-          message: `Todas las cajas de la sucursal "${reg.branch.name}" han sido cerradas. Tu caja "${reg.name || 'Sin nombre'}" ha sido cerrada automáticamente. Monto final: $${expected.toLocaleString('es-VE', { minimumFractionDigits: 2 })}`,
-          type: 'warning',
-        },
+      await notifyUser(reg.user.id, {
+        title: 'Caja Cerrada',
+        message: `Todas las cajas de la sucursal "${reg.branch.name}" han sido cerradas. Tu caja "${reg.name || 'Sin nombre'}" ha sido cerrada automaticamente. Monto final: $${reg.currentAmt.toLocaleString('es-VE', { minimumFractionDigits: 2 })}`,
+        type: 'warning',
       })
     }
 

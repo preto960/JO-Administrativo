@@ -34,58 +34,47 @@ export function useNotifications(userId: string | undefined, onNewNotification?:
     }
   }, [userId])
 
+  // Fetch + Polling fallback (every 30s) + Pusher real-time
   useEffect(() => {
     if (!userId) return
 
-    // Initialize Pusher
-    if (!pusherRef.current) {
-      pusherRef.current = new Pusher(process.env.NEXT_PUBLIC_PUSHER_KEY || '', {
-        cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER || 'us2',
-      })
+    // Initial fetch
+    fetchNotifications()
+
+    // Polling fallback every 30s (catches notifications if Pusher is not configured)
+    const pollInterval = setInterval(fetchNotifications, 30_000)
+
+    // Initialize Pusher (may silently fail if not configured)
+    if (!pusherRef.current && process.env.NEXT_PUBLIC_PUSHER_KEY) {
+      try {
+        pusherRef.current = new Pusher(process.env.NEXT_PUBLIC_PUSHER_KEY, {
+          cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER || 'us2',
+        })
+      } catch {
+        // Pusher not available — polling will handle it
+      }
     }
 
-    const channel = pusherRef.current.subscribe(`user-${userId}`)
-    const publicChannel = pusherRef.current.subscribe('notifications')
+    if (pusherRef.current) {
+      const channel = pusherRef.current.subscribe(`user-${userId}`)
 
-    channel.bind(pusherEvents.NOTIFICATION_NEW, (data: NotificationMessage) => {
-      setNotifications((prev) => [data, ...prev])
-      setUnreadCount((prev) => prev + 1)
-      onNewNotification?.(data)
-    })
-
-    publicChannel.bind(pusherEvents.NOTIFICATION_NEW, (data: NotificationMessage & { userId?: string }) => {
-      if (data.userId === userId) {
+      channel.bind(pusherEvents.NOTIFICATION_NEW, (data: NotificationMessage) => {
         setNotifications((prev) => [data, ...prev])
         setUnreadCount((prev) => prev + 1)
         onNewNotification?.(data)
-      }
-    })
+      })
 
-    // Fetch initial notifications
-    let cancelled = false
-    const doFetch = async () => {
-      if (cancelled) return
-      try {
-        const res = await fetch(`/api/notifications?userId=${userId}`)
-        if (res.ok && !cancelled) {
-          const data = await res.json()
-          setNotifications(data)
-          setUnreadCount(data.filter((n: NotificationMessage) => !n.read).length)
-        }
-      } catch {
-        // Silent fail
+      return () => {
+        clearInterval(pollInterval)
+        channel.unbind_all()
+        channel.unsubscribe()
       }
     }
-    doFetch()
 
     return () => {
-      cancelled = true
-      channel.unbind_all()
-      channel.unsubscribe()
-      publicChannel.unbind_all()
-      publicChannel.unsubscribe()
+      clearInterval(pollInterval)
     }
-  }, [userId, onNewNotification])
+  }, [userId, fetchNotifications, onNewNotification])
 
   const markAsRead = useCallback(async (id: string) => {
     try {
