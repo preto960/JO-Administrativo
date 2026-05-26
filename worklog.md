@@ -84,3 +84,31 @@ Stage Summary:
 - When filtering by a specific date (e.g., yesterday), only data from that date range is shown
 - KPI cards, chart, top products, and recent sales all respect the selected period
 - Files modified: src/app/api/dashboard/route.ts, src/components/dashboard/financial-dashboard.tsx
+---
+Task ID: 2
+Agent: Main Agent + 4 subagents
+Task: Sistema de moneda centralizado — soporte multi-divisa
+
+Work Log:
+- Created src/lib/currency.ts: centralized currency utilities (getCurrencySymbol, formatCurrency, formatAmount, formatCurrencyLocale, toBaseCurrency, fromBaseCurrency)
+- Created src/hooks/use-currency.ts: client-side React hook (useCurrency) with fmt, fmtBase, fmtWith, toBase, fromBase
+- Updated Prisma schema: added currencyId to Sale, CashRegister, AccountReceivable, AccountPayable models + Currency relations
+- Ran prisma generate to update client
+- Replaced ~50+ hardcoded $ in 17 files across 6 modules:
+  - Dashboard: 10 instances (KPIs, chart tooltip, top products, recent sales, alerts)
+  - Cash Register: 22 instances (all amounts now use fmtBase for base currency)
+  - POS: 3 files (terminal, cart, payment-modal) - symbol derivation centralized
+  - Clients: clients-table.tsx (17 instances), suppliers-view.tsx (11 instances)
+  - Email templates: 15 instances across 4 functions, added currencyCode parameter
+  - API routes: sales, cash-register, cash-register/withdrawal, cash-register/movement, cash-register/close-all, clients/[id]/payment, notifications/check-deadlines
+- API routes now include currencyId when creating Sale, CashRegister, AccountReceivable records
+- Fixed pre-existing bug: close-all notification used undefined "expected" variable, now uses reg.currentAmt
+- Resolved git rebase conflicts with remote, verified zero TS errors
+
+Stage Summary:
+- All currency symbols now derive dynamically from Settings.referenceCurrency
+- Supports 16+ currency codes (USD, EUR, GBP, COP, VES, BRL, PEN, CLP, MXN, ARS, TRY, JPY, CNY, CAD, AUD, CHF)
+- Cash register amounts correctly show base currency symbol (Bs.)
+- POS/Dashboard amounts correctly show reference currency symbol ($ or €)
+- New Sale and CashRegister records include currencyId for future multi-currency queries
+- Pushed to main: commit 7be1d6e
