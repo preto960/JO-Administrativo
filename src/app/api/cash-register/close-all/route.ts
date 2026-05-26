@@ -2,7 +2,7 @@ import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { resolveBranchId } from '@/lib/resolve-branch'
 import { buildReportFromRegister, generateMultiCashClosePDF, type CashCloseReport } from '@/lib/cash-close-pdf'
-import { notifyUser } from '@/lib/notify'
+import { formatCurrency } from '@/lib/currency'
 
 export async function POST(request: NextRequest) {
   try {
@@ -156,7 +156,7 @@ export async function POST(request: NextRequest) {
             }
           }),
           pdfBuffer,
-        })
+        }, referenceCurrency || undefined)
       } catch (e) {
         console.error('[Email] Failed to generate/send PDF for mass cash close:', e)
       }
@@ -164,10 +164,13 @@ export async function POST(request: NextRequest) {
 
     // Create notifications for all cashiers whose registers were closed
     for (const reg of openRegisters) {
-      await notifyUser(reg.user.id, {
-        title: 'Caja Cerrada',
-        message: `Todas las cajas de la sucursal "${reg.branch.name}" han sido cerradas. Tu caja "${reg.name || 'Sin nombre'}" ha sido cerrada automaticamente. Monto final: $${reg.currentAmt.toLocaleString('es-VE', { minimumFractionDigits: 2 })}`,
-        type: 'warning',
+      await db.notification.create({
+        data: {
+          userId: reg.user.id,
+          title: 'Caja Cerrada',
+          message: `Todas las cajas de la sucursal "${reg.branch.name}" han sido cerradas. Tu caja "${reg.name || 'Sin nombre'}" ha sido cerrada autom\u00E1ticamente. Monto final: ${formatCurrency(reg.currentAmt)}`,
+          type: 'warning',
+        },
       })
     }
 

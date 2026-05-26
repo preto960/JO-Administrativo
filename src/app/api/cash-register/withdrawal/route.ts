@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { logAction } from '@/lib/audit-log'
+import { formatCurrency } from '@/lib/currency'
 
 export async function POST(request: NextRequest) {
   try {
@@ -52,7 +53,7 @@ export async function POST(request: NextRequest) {
       action: 'cash_withdrawal',
       entity: 'cash_register',
       entityId: cashRegId,
-      details: { summary: `Retiro de excedente: $${amount.toFixed(2)}`, amount, concept: concept || 'Retiro de excedente' },
+      details: { summary: `Retiro de excedente: ${formatCurrency(amount)}`, amount, concept: concept || 'Retiro de excedente' },
       request,
     })
 

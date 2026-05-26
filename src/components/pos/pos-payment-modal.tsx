@@ -19,6 +19,7 @@ import {
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Banknote, CreditCard, ArrowLeftRight, Clock, Smartphone, CheckCircle2, Loader2, AlertTriangle } from 'lucide-react'
 import { toast } from 'sonner'
+import { useCurrency } from '@/hooks/use-currency'
 
 interface PosPaymentModalProps {
   onClose: () => void
@@ -45,7 +46,6 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
   const { items, getTotal, clearCart, clientId } = usePosStore()
   const { user } = useAuth()
   const exchangeRate = useSetting('exchangeRate')
-  const referenceCurrency = useSetting('referenceCurrency')
   const baseCurrencyId = useSetting('baseCurrencyId')
   const [method, setMethod] = useState('divisas')
   const [amount, setAmount] = useState('')
@@ -61,7 +61,7 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
   const ivaAmount = ivaEnabled ? Math.round(subtotal * (ivaRate / 100) * 100) / 100 : 0
   const total = Math.round((subtotal + ivaAmount) * 100) / 100
   const totalBs = total * exchangeRate
-  const currencySymbol = referenceCurrency === 'EUR' ? '€' : '$'
+  const { sym: currencySymbol, baseSym, refCode, fmt, fmtBase } = useCurrency()
   const selectedMethod = paymentMethods.find(pm => pm.value === method)
 
   // Resolve currencyId: prefer baseCurrencyId from settings, fallback to isBase currency or first available
@@ -183,8 +183,8 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
     return 0
   }, [amount, method, isLocalMethod, totalBs, total])
 
-  const amountLabel = isLocalMethod ? 'Monto (Bs.)' : 'Monto'
-  const changeLabel = isLocalMethod ? 'Bs.' : currencySymbol
+  const amountLabel = isLocalMethod ? `Monto (${baseSym})` : 'Monto'
+  const changeLabel = isLocalMethod ? baseSym : currencySymbol
 
   return (
     <Dialog open onOpenChange={() => !success && onClose()}>
@@ -193,7 +193,7 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
           <DialogTitle>Cobrar</DialogTitle>
           <DialogDescription>
             Total: {currencySymbol}{total.toFixed(2)}
-            {exchangeRate > 0 && <span className="ml-2">· Bs. {totalBs.toFixed(2)}</span>}
+            {exchangeRate > 0 && <span className="ml-2">· {baseSym} {totalBs.toFixed(2)}</span>}
           </DialogDescription>
         </DialogHeader>
 
@@ -258,7 +258,7 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
               />
               {isLocalMethod && exchangeRate > 0 && (
                 <p className="text-xs text-muted-foreground">
-                  Equivale a {currencySymbol}{amountInRefCurrency.toFixed(2)} (Tasa: {exchangeRate.toFixed(2)} Bs./{referenceCurrency})
+                  Equivale a {currencySymbol}{amountInRefCurrency.toFixed(2)} (Tasa: {exchangeRate.toFixed(2)} {baseSym}/{refCode})
                 </p>
               )}
               {changeAmount > 0 && (
@@ -294,7 +294,7 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
                   Procesando...
                 </>
               ) : (
-                `Confirmar Pago ${isLocalMethod ? 'Bs.' : currencySymbol}${parseFloat(amount || '0').toFixed(2)}`
+                <>Confirmar Pago {isLocalMethod ? baseSym : currencySymbol}{parseFloat(amount || '0').toFixed(2)}</>
               )}
             </Button>
           </div>

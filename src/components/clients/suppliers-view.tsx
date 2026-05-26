@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { api } from '@/lib/api'
 import { useAuth } from '@/hooks/use-auth'
-import { useAppStore, useSetting } from '@/stores/use-app-store'
+import { useAppStore } from '@/stores/use-app-store'
 import {
   Table,
   TableBody,
@@ -43,6 +43,7 @@ import {
 } from '@/components/ui/select'
 import { Building2, Plus, Loader2, Eye, Pencil, DollarSign, CalendarDays, FileText, Trash2, Search, Phone, Mail, MapPin, UserCircle, Upload, ExternalLink } from 'lucide-react'
 import { toast } from 'sonner'
+import { useCurrency } from '@/hooks/use-currency'
 
 const RIF_REGEX = /^[JVEG]-\d{8,9}-\d$/
 
@@ -80,9 +81,7 @@ export function SuppliersView() {
   const { user, permissions } = useAuth()
   const canManage = permissions.canManageSuppliers
   const baseCurrencyId = useAppStore((s) => s.settings?.baseCurrencyId || '')
-  const exchangeRate = useSetting('exchangeRate')
-  const referenceCurrency = useSetting('referenceCurrency')
-  const currencySymbol = referenceCurrency === 'EUR' ? '€' : '$'
+  const { sym: currencySymbol, rate: exchangeRate, fmt } = useCurrency()
   const localCurrencyMethods = ['efectivo', 'pago_movil', 'tarjeta', 'transferencia']
 
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
@@ -416,7 +415,7 @@ export function SuppliersView() {
         invoiceNumber: payableInvoiceNumber.trim(),
         invoiceUrl: payableInvoiceUrl || null,
       })
-      toast.success(`Pedido por $${amt.toFixed(2)} registrado`)
+      toast.success(`Pedido por ${fmt(amt)} registrado`)
       setShowPayableDialog(false)
       fetchSuppliers()
     } catch (error) {
@@ -435,7 +434,7 @@ export function SuppliersView() {
       return
     }
     if (amt > paymentSupplier.balance) {
-      toast.error(`El monto no puede ser mayor al balance ($${paymentSupplier.balance.toFixed(2)})`)
+      toast.error(`El monto no puede ser mayor al balance (${fmt(paymentSupplier.balance)})`)
       return
     }
     const requiresRef = ['pago_movil', 'tarjeta', 'transferencia'].includes(paymentMethod)
@@ -453,7 +452,7 @@ export function SuppliersView() {
         userId: user?.id || '',
         currencyId: baseCurrencyId || undefined,
       })
-      toast.success(`Pago de $${amt.toFixed(2)} registrado exitosamente`)
+      toast.success(`Pago de ${fmt(amt)} registrado exitosamente`)
       setShowPaymentDialog(false)
       fetchSuppliers()
       // Refresh debt dialog if open
@@ -545,7 +544,7 @@ export function SuppliersView() {
                       : 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400'
                     }`}>
                       {supplier.balance > 0
-                        ? `$${supplier.balance.toFixed(2)}`
+                        ? `${fmt(supplier.balance)}`
                         : 'Sin deuda'
                       }
                     </span>
@@ -577,7 +576,7 @@ export function SuppliersView() {
                   <div className="flex items-center gap-3 text-xs text-muted-foreground">
                     {supplier.balance > 0 && (
                       <div className="text-red-600 font-medium">
-                        Debe: ${supplier.balance.toFixed(2)}
+                        Debe: {fmt(supplier.balance)}
                       </div>
                     )}
                     {supplier.nextDueDate && (
@@ -711,7 +710,7 @@ export function SuppliersView() {
               <div className="rounded-md bg-muted p-3 space-y-1 text-sm">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Deuda actual:</span>
-                  <span className="font-medium text-red-600">${payableSupplier.balance.toFixed(2)}</span>
+                  <span className="font-medium text-red-600">{fmt(payableSupplier.balance)}</span>
                 </div>
               </div>
             )}
@@ -832,7 +831,7 @@ export function SuppliersView() {
                 <Card>
                   <CardContent className="p-3 text-center">
                     <p className="text-xs text-muted-foreground">Deuda Total</p>
-                    <p className="text-xl font-bold text-red-600">${totalDebt.toFixed(2)}</p>
+                    <p className="text-xl font-bold text-red-600">{fmt(totalDebt)}</p>
                   </CardContent>
                 </Card>
                 <Card>
@@ -909,11 +908,11 @@ export function SuppliersView() {
                                 {p.description || p.purchase?.lines?.map(l => l.product.name).join(', ') || '—'}
                               </TableCell>
                               <TableCell className="text-sm">
-                                ${p.amount.toFixed(2)}
+                                {fmt(p.amount)}
                               </TableCell>
                               <TableCell className="text-sm font-medium">
                                 <span className={p.pendingBalance > 0 ? 'text-red-600' : 'text-primary'}>
-                                  ${p.pendingBalance.toFixed(2)}
+                                  {fmt(p.pendingBalance)}
                                 </span>
                               </TableCell>
                               <TableCell className="text-xs">
@@ -957,7 +956,7 @@ export function SuppliersView() {
               <div className="rounded-md bg-muted p-3 space-y-1 text-sm">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Deuda total:</span>
-                  <span className="font-medium text-red-600">${paymentSupplier.balance.toFixed(2)}</span>
+                  <span className="font-medium text-red-600">{fmt(paymentSupplier.balance)}</span>
                 </div>
               </div>
             )}
@@ -993,7 +992,7 @@ export function SuppliersView() {
               />
               {paymentSupplier && (
                 <p className="text-xs text-muted-foreground">
-                  Saldo después del pago: ${((paymentSupplier.balance || 0) - (parseFloat(paymentAmount) || 0)).toFixed(2)}
+                  Saldo después del pago: {fmt((paymentSupplier.balance || 0) - (parseFloat(paymentAmount) || 0))}
                 </p>
               )}
             </div>

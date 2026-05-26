@@ -46,6 +46,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Plus, Search, Users, DollarSign, Loader2, Receipt, Truck, X, Trash2, Printer, FileText, Mail, Pencil, Phone, MapPin, ShoppingCart, Eye, EyeOff, AlertTriangle } from 'lucide-react'
 import { toast } from 'sonner'
 import { useSetting } from '@/stores/use-app-store'
+import { useCurrency } from '@/hooks/use-currency'
 
 const localCurrencyMethods = ['efectivo', 'pago_movil', 'tarjeta', 'transferencia']
 
@@ -124,9 +125,8 @@ export function ClientsTable() {
   const [openCashRegId, setOpenCashRegId] = useState<string | null>(null)
   const baseCurrencyId = useAppStore((s) => s.baseCurrencyId || '')
 
-  const exchangeRate = useSetting('exchangeRate')
   const referenceCurrency = useSetting('referenceCurrency')
-  const currencySymbol = referenceCurrency === 'EUR' ? '\u20ac' : '$'
+  const { sym: currencySymbol, rate: exchangeRate, fmt } = useCurrency()
   const isLocalMethod = localCurrencyMethods.includes(paymentMethod)
 
   // Delete confirmation dialog
@@ -394,7 +394,7 @@ export function ClientsTable() {
       return
     }
     if (paymentAmountInRef > paymentClient.pendingBalance) {
-      toast.error(`El monto no puede ser mayor al saldo pendiente (${currencySymbol}${paymentClient.pendingBalance.toFixed(2)})`)
+      toast.error(`El monto no puede ser mayor al saldo pendiente (${fmt(paymentClient.pendingBalance)})`)
       return
     }
     if (paymentMethod === 'efectivo' && !openCashRegId) {
@@ -411,7 +411,7 @@ export function ClientsTable() {
         userId: user.id,
         currencyId: baseCurrencyId,
       })
-      const displayLabel = isLocalMethod ? `Bs. ${parseFloat(paymentAmount).toFixed(2)}` : `${currencySymbol}${paymentAmountInRef.toFixed(2)}`
+      const displayLabel = isLocalMethod ? `Bs. ${parseFloat(paymentAmount).toFixed(2)}` : `${fmt(paymentAmountInRef)}`
       toast.success(`Cobro de ${displayLabel} registrado exitosamente`)
       setShowPaymentDialog(false)
       fetchClients()
@@ -487,7 +487,7 @@ export function ClientsTable() {
         userId: user?.id || '',
         branchId: selectedBranchId || undefined,
       })
-      toast.success(`Despacho registrado. Total: $${dispatchTotal.toFixed(2)}`)
+      toast.success(`Despacho registrado. Total: ${fmt(dispatchTotal)}`)
       setShowDispatchDialog(false)
       fetchClients()
     } catch (error) {
@@ -565,7 +565,7 @@ export function ClientsTable() {
                       : 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400'
                     }`}>
                       {client.pendingBalance > 0
-                        ? `${currencySymbol}${client.pendingBalance.toFixed(2)}`
+                        ? `${fmt(client.pendingBalance)}`
                         : 'Sin deuda'
                       }
                     </span>
@@ -600,7 +600,7 @@ export function ClientsTable() {
                   </div>
                   {client.pendingBalance > 0 && (
                     <div className="text-red-600 font-medium">
-                      Debe: {currencySymbol}{client.pendingBalance.toFixed(2)}
+                      Debe: {fmt(client.pendingBalance)}
                     </div>
                   )}
                 </div>
@@ -739,7 +739,7 @@ export function ClientsTable() {
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium truncate">{line.productName}</p>
                           <p className="text-xs text-muted-foreground">
-                            ${line.unitPrice.toFixed(2)} c/u · Stock: {line.stock}
+                            {fmt(line.unitPrice)} c/u · Stock: {line.stock}
                           </p>
                         </div>
                         <div className="flex items-center gap-2">
@@ -762,7 +762,7 @@ export function ClientsTable() {
                           </Button>
                         </div>
                         <div className="text-right w-20">
-                          <p className="text-sm font-semibold">${(line.unitPrice * line.quantity).toFixed(2)}</p>
+                          <p className="text-sm font-semibold">{fmt(line.unitPrice * line.quantity)}</p>
                         </div>
                         <Button
                           size="sm"
@@ -777,7 +777,7 @@ export function ClientsTable() {
 
                     <div className="flex justify-between items-center pt-2 border-t">
                       <span className="text-sm font-medium">Total del Despacho:</span>
-                      <span className="text-lg font-bold text-primary">${dispatchTotal.toFixed(2)}</span>
+                      <span className="text-lg font-bold text-primary">{fmt(dispatchTotal)}</span>
                     </div>
                   </div>
                 </CardContent>
@@ -799,7 +799,7 @@ export function ClientsTable() {
               disabled={savingDispatch || dispatchLines.length === 0}
             >
               {savingDispatch ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Truck className="mr-2 h-4 w-4" />}
-              {savingDispatch ? 'Procesando...' : `Confirmar Despacho ($${dispatchTotal.toFixed(2)})`}
+              {savingDispatch ? 'Procesando...' : `Confirmar Despacho (${fmt(dispatchTotal)})`}
             </Button>
           </div>
         </DialogContent>
@@ -828,7 +828,7 @@ export function ClientsTable() {
                   <CardContent className="p-3 text-center">
                     <p className="text-xs text-muted-foreground">Total Comprado</p>
                     <p className="text-xl font-bold">
-                      ${sales.reduce((s, sale) => s + sale.total, 0).toFixed(2)}
+                      {fmt(sales.reduce((s, sale) => s + sale.total, 0))}
                     </p>
                   </CardContent>
                 </Card>
@@ -872,7 +872,7 @@ export function ClientsTable() {
                                   </div>
                                 </TableCell>
                                 <TableCell className="text-sm font-medium text-right whitespace-nowrap">
-                                  ${sale.total.toFixed(2)}
+                                  {fmt(sale.total)}
                                 </TableCell>
                                 <TableCell className="text-xs hidden lg:table-cell">
                                   {sale.payments.map(p => p.method).join(', ') || '—'}
@@ -881,7 +881,7 @@ export function ClientsTable() {
                                   {isCredit ? (
                                     <Badge variant="outline" className="text-amber-600 border-amber-300">
                                       {sale.receivables[0]?.pendingBalance > 0
-                                        ? `Pendiente: $${sale.receivables[0].pendingBalance.toFixed(2)}`
+                                        ? `Pendiente: ${fmt(sale.receivables[0].pendingBalance)}`
                                         : 'Credito'}
                                     </Badge>
                                   ) : (
@@ -946,7 +946,7 @@ export function ClientsTable() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Deuda pendiente:</span>
-                  <span className="font-medium text-red-600">${paymentClient.pendingBalance.toFixed(2)}</span>
+                  <span className="font-medium text-red-600">{fmt(paymentClient.pendingBalance)}</span>
                 </div>
               </div>
             )}
@@ -976,11 +976,11 @@ export function ClientsTable() {
               />
               {isLocalMethod && exchangeRate > 0 && (
                 <p className="text-xs text-muted-foreground">
-                  Equivale a {currencySymbol}{paymentAmountInRef.toFixed(2)} (Tasa: {exchangeRate.toFixed(2)} Bs./{referenceCurrency})
+                  Equivale a {fmt(paymentAmountInRef)} (Tasa: {exchangeRate.toFixed(2)} Bs./{referenceCurrency})
                 </p>
               )}
               <p className="text-xs text-muted-foreground">
-                Saldo después del cobro: {currencySymbol}{((paymentClient?.pendingBalance || 0) - paymentAmountInRef).toFixed(2)}
+                Saldo después del cobro: {fmt((paymentClient?.pendingBalance || 0) - paymentAmountInRef)}
               </p>
             </div>
             {(paymentMethod === 'pago_movil' || paymentMethod === 'tarjeta' || paymentMethod === 'transferencia') && (

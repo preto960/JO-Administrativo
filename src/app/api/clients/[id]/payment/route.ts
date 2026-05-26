@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
+import { formatCurrency } from '@/lib/currency'
 
 export async function POST(
   request: NextRequest,
@@ -19,6 +20,9 @@ export async function POST(
     }
 
     // Get pending receivables for this client
+    const settings = await db.settings.findFirst()
+    const currencyCode = settings?.referenceCurrency || null
+
     const receivables = await db.accountReceivable.findMany({
       where: {
         clientId,
@@ -33,7 +37,7 @@ export async function POST(
 
     const totalPending = receivables.reduce((sum, r) => sum + r.pendingBalance, 0)
     if (amount > totalPending) {
-      return NextResponse.json({ error: `El monto excede el total pendiente ($${totalPending.toFixed(2)})` }, { status: 400 })
+      return NextResponse.json({ error: `El monto excede el total pendiente (${formatCurrency(totalPending, currencyCode)})` }, { status: 400 })
     }
 
     // Distribute payment across receivables (FIFO)
@@ -95,7 +99,7 @@ export async function POST(
     })
 
     return NextResponse.json({
-      message: `Pago de $${amount.toFixed(2)} registrado exitosamente`,
+      message: `Pago de ${formatCurrency(amount, currencyCode)} registrado exitosamente`,
       applied: results,
     })
   } catch (error) {

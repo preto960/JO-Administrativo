@@ -1,7 +1,7 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { resolveBranchId, branchFromBody } from '@/lib/resolve-branch'
-import { notifyUser } from '@/lib/notify'
+import { formatCurrency } from '@/lib/currency'
 
 export async function GET(request: NextRequest) {
   try {
@@ -67,6 +67,9 @@ export async function POST(request: NextRequest) {
     const branchId = branchFromBody(body) || await resolveBranchId()
     const ivaEnabled = body.ivaEnabled === true
     const ivaRate = Number(body.ivaRate) || 0
+
+    const settings = await db.settings.findFirst()
+    const refCurrency = await db.currency.findFirst({ where: { code: settings?.referenceCurrency || 'USD' } })
 
     // SERVER-SIDE STOCK VALIDATION (race condition protection)
     const productIds = lines.map((l: { productId: string }) => l.productId)
@@ -139,6 +142,7 @@ export async function POST(request: NextRequest) {
           branchId,
           total,
           status: 'completada',
+          currencyId: refCurrency?.id || '',
           lines: { create: saleLinesData },
           payments: {
             create: payments.map((p: { method: string; amount: number; currencyId: string; reference?: string }) => ({
@@ -169,6 +173,41 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      // Low stock notification to admin users — ONE notification per admin summarizing all low stock
+      const notifiedUsers = await tx.user.findMany({
+        where: { role: { in: ['admin', 'gerente'] }, active: true },
+        select: { id: true },
+      })
+
+      // Collect unique low-stock products
+      const lowStockProducts: string[] = []
+      for (const line of lines) {
+        const inv = await tx.inventory.findUnique({
+          where: { productId_branchId: { productId: line.productId, branchId } },
+          include: { product: { select: { name: true } } },
+        })
+        if (inv && inv.minStock > 0 && inv.stock <= inv.minStock) {
+          const msg = `"${inv.product.name}" tiene ${inv.stock} uds (mín: ${inv.minStock})`
+          if (!lowStockProducts.includes(msg)) {
+            lowStockProducts.push(msg)
+          }
+        }
+      }
+
+      // Create one notification per admin with all low-stock products
+      if (lowStockProducts.length > 0) {
+        for (const manager of notifiedUsers) {
+          await tx.notification.create({
+            data: {
+              userId: manager.id,
+              title: `Stock Bajo (${lowStockProducts.length} producto${lowStockProducts.length > 1 ? 's' : ''})`,
+              message: lowStockProducts.join('. ') + '. Reposición necesaria.',
+              type: 'warning',
+            },
+          })
+        }
+      }
+
       // Update cash register currentAmt if cash payment
       if (cashRegId) {
         const cashPayments = payments.filter((p: { method: string }) => p.method === 'efectivo')
@@ -195,6 +234,7 @@ export async function POST(request: NextRequest) {
               amount: cp.amount,
               pendingBalance: cp.amount,
               status: 'pendiente',
+              currencyId: refCurrency?.id || '',
               dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
             },
           })
@@ -203,32 +243,6 @@ export async function POST(request: NextRequest) {
 
       return newSale
     })
-
-    // After transaction: check low stock and notify (outside tx so Pusher works independently)
-    const lowStockProducts: string[] = []
-    for (const line of lines) {
-      const inv = await db.inventory.findUnique({
-        where: { productId_branchId: { productId: line.productId, branchId } },
-        include: { product: { select: { name: true } } },
-      })
-      if (inv && inv.minStock > 0 && inv.stock <= inv.minStock) {
-        const msg = `"${inv.product.name}" tiene ${inv.stock} uds (min: ${inv.minStock})`
-        if (!lowStockProducts.includes(msg)) lowStockProducts.push(msg)
-      }
-    }
-    if (lowStockProducts.length > 0) {
-      const managers = await db.user.findMany({
-        where: { role: { in: ['admin', 'gerente'] }, active: true },
-        select: { id: true },
-      })
-      for (const manager of managers) {
-        await notifyUser(manager.id, {
-          title: `Stock Bajo (${lowStockProducts.length} producto${lowStockProducts.length > 1 ? 's' : ''})`,
-          message: lowStockProducts.join('. ') + '. Reposicion necesaria.',
-          type: 'warning',
-        })
-      }
-    }
 
     return NextResponse.json(sale, { status: 201 })
   } catch (error) {

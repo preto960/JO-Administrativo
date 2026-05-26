@@ -133,7 +133,7 @@ export async function POST(request: NextRequest) {
           ivaEnabled: settings?.ivaEnabled || false,
           ivaRate: settings?.ivaRate || 0,
           pdfBuffer,
-        })
+        }, settings?.referenceCurrency || undefined)
         console.log('[Email] Cash close email sent successfully')
       } catch (e) {
         console.error('[Email] Failed to generate/send PDF for cash close:', e)

@@ -78,6 +78,10 @@ model Currency {
   salePayments      SalePayment[]
   cashMovements     CashMovement[]
   expenses          Expense[]
+  sales             Sale[]
+  cashRegisters     CashRegister[]
+  receivables       AccountReceivable[]
+  payables          AccountPayable[]
 }
 
 model ExchangeRate {
@@ -207,22 +211,24 @@ model PurchaseLine {
 }
 
 model Sale {
-  id         String   @id @default(cuid())
-  clientId   String?
-  cashRegId  String?
-  userId     String
-  branchId   String
-  date       DateTime @default(now())
-  total      Float    @default(0)
-  status     String   @default("completada")
-  syncStatus String   @default("synced")
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id           String    @id @default(cuid())
+  clientId     String?
+  cashRegId    String?
+  userId       String
+  branchId     String
+  currencyId   String    @default("")
+  date         DateTime  @default(now())
+  total        Float     @default(0)
+  status       String    @default("completada")
+  syncStatus   String    @default("synced")
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
-  client  Client?       @relation(fields: [clientId], references: [id])
-  cashReg CashRegister? @relation(fields: [cashRegId], references: [id])
-  user    User          @relation(fields: [userId], references: [id])
-  branch   Branch       @relation(fields: [branchId], references: [id])
+  client   Client?       @relation(fields: [clientId], references: [id])
+  cashReg  CashRegister? @relation(fields: [cashRegId], references: [id])
+  currency Currency?     @relation(fields: [currencyId], references: [id])
+  user     User          @relation(fields: [userId], references: [id])
+  branch   Branch        @relation(fields: [branchId], references: [id])
 
   lines       SaleLine[]
   payments    SalePayment[]
@@ -260,6 +266,7 @@ model CashRegister {
   name        String?
   userId      String
   branchId    String
+  currencyId  String    @default("")
   openingDate DateTime  @default(now())
   closingDate DateTime?
   initialAmt  Float     @default(0)
@@ -268,6 +275,7 @@ model CashRegister {
 
   user      User           @relation(fields: [userId], references: [id])
   branch    Branch         @relation(fields: [branchId], references: [id])
+  currency  Currency?      @relation(fields: [currencyId], references: [id])
   sales     Sale[]
   movements CashMovement[]
   cuts      CashCut[]
@@ -337,19 +345,22 @@ model AccountReceivable {
   id             String    @id @default(cuid())
   clientId       String
   saleId         String
+  currencyId     String    @default("")
   amount         Float
   pendingBalance Float
   dueDate        DateTime?
   status         String    @default("pendiente")
 
-  client Client @relation(fields: [clientId], references: [id])
-  sale   Sale   @relation(fields: [saleId], references: [id])
+  client   Client   @relation(fields: [clientId], references: [id])
+  sale     Sale     @relation(fields: [saleId], references: [id])
+  currency Currency? @relation(fields: [currencyId], references: [id])
 }
 
 model AccountPayable {
   id             String    @id @default(cuid())
   supplierId     String
   purchaseId     String?
+  currencyId     String    @default("")
   amount         Float
   pendingBalance Float
   dueDate        DateTime?
@@ -361,7 +372,8 @@ model AccountPayable {
 
   supplier       Supplier?          @relation(fields: [supplierId], references: [id])
   purchase       Purchase?          @relation(fields: [purchaseId], references: [id])
- payments        SupplierPayment[]
+  currency       Currency?          @relation(fields: [currencyId], references: [id])
+  payments       SupplierPayment[]
 }
 
 model SupplierPayment {

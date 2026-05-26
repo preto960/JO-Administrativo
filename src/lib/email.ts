@@ -1,4 +1,5 @@
 import { Resend } from 'resend'
+import { formatCurrency } from '@/lib/currency'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 
@@ -46,7 +47,7 @@ function getFromEmail(): string {
 
 // ─── Single Register Close Email with PDF ────────────────────────────────────
 
-export async function sendCashCloseEmailWithPDF(data: CashCloseDataWithPDF): Promise<boolean> {
+export async function sendCashCloseEmailWithPDF(data: CashCloseDataWithPDF, currencyCode?: string): Promise<boolean> {
   try {
     const adminEmail = await getAdminEmail()
     if (!adminEmail) {
@@ -96,25 +97,25 @@ export async function sendCashCloseEmailWithPDF(data: CashCloseDataWithPDF): Pro
             <table style="width: 100%; border-collapse: collapse;">
               <tr>
                 <td style="padding: 6px 0;">Monto Inicial:</td>
-                <td style="padding: 6px 0; text-align: right; font-weight: bold;">$${data.initialAmt.toFixed(2)}</td>
+                <td style="padding: 6px 0; text-align: right; font-weight: bold;">${formatCurrency(data.initialAmt, currencyCode)}</td>
               </tr>
               ${salesInfo}
               <tr>
                 <td style="padding: 6px 0;">Total Ventas (efectivo):</td>
-                <td style="padding: 6px 0; text-align: right; font-weight: bold; color: green;">+$${data.totalSales.toFixed(2)}</td>
+                <td style="padding: 6px 0; text-align: right; font-weight: bold; color: green;">+${formatCurrency(data.totalSales, currencyCode)}</td>
               </tr>
               ${data.ivaEnabled && data.ivaRate && data.ivaRate > 0 ? `
               <tr>
                 <td style="padding: 6px 0;">I.V.A. Recaudado (${data.ivaRate}%):</td>
-                <td style="padding: 6px 0; text-align: right; font-weight: bold; color: #2563eb;">+$${(data.totalSales * data.ivaRate / 100).toFixed(2)}</td>
+                <td style="padding: 6px 0; text-align: right; font-weight: bold; color: #2563eb;">+${formatCurrency(data.totalSales * data.ivaRate / 100, currencyCode)}</td>
               </tr>` : ''}
               <tr>
                 <td style="padding: 6px 0;">Total Gastos:</td>
-                <td style="padding: 6px 0; text-align: right; font-weight: bold; color: red;">-$${data.totalExpenses.toFixed(2)}</td>
+                <td style="padding: 6px 0; text-align: right; font-weight: bold; color: red;">-${formatCurrency(data.totalExpenses, currencyCode)}</td>
               </tr>
               <tr style="border-top: 2px solid #333;">
                 <td style="padding: 6px 0; font-weight: bold;">Total en Caja:</td>
-                <td style="padding: 6px 0; text-align: right; font-weight: bold;">$${data.actual.toFixed(2)}</td>
+                <td style="padding: 6px 0; text-align: right; font-weight: bold;">${formatCurrency(data.actual, currencyCode)}</td>
               </tr>
             </table>
           </div>
@@ -145,7 +146,7 @@ export async function sendCashCloseEmailWithPDF(data: CashCloseDataWithPDF): Pro
 
 // ─── Mass Close Email with PDF ───────────────────────────────────────────────
 
-export async function sendCashCloseAllEmailWithPDF(data: CashCloseAllData): Promise<boolean> {
+export async function sendCashCloseAllEmailWithPDF(data: CashCloseAllData, currencyCode?: string): Promise<boolean> {
   try {
     const adminEmail = await getAdminEmail()
     if (!adminEmail) {
@@ -166,8 +167,8 @@ export async function sendCashCloseAllEmailWithPDF(data: CashCloseAllData): Prom
           <td style="padding: 8px;">${c.cashierName}</td>
           <td style="padding: 8px;">${c.registerName || '—'}</td>
           ${salesCol}
-          <td style="padding: 8px; text-align: right;">$${c.totalSales.toFixed(2)}</td>
-          <td style="padding: 8px; text-align: right;">$${c.actual.toFixed(2)}</td>
+          <td style="padding: 8px; text-align: right;">${formatCurrency(c.totalSales, currencyCode)}</td>
+          <td style="padding: 8px; text-align: right;">${formatCurrency(c.actual, currencyCode)}</td>
         </tr>
       `
     }).join('')
@@ -203,7 +204,7 @@ export async function sendCashCloseAllEmailWithPDF(data: CashCloseAllData): Prom
               ${rows}
               <tr style="border-top: 2px solid #333; font-weight: bold;">
                 <td colspan="${salesHeader ? '4' : '3'}" style="padding: 10px; text-align: right;">Total General:</td>
-                <td style="padding: 10px; text-align: right;">$${grandTotal.toFixed(2)}</td>
+                <td style="padding: 10px; text-align: right;">${formatCurrency(grandTotal, currencyCode)}</td>
               </tr>
             </tbody>
           </table>
@@ -234,7 +235,7 @@ export async function sendCashCloseAllEmailWithPDF(data: CashCloseAllData): Prom
 
 // ─── Legacy functions (kept for backward compatibility) ───────────────────────
 
-export async function sendCashCloseEmail(data: CashCloseData): Promise<boolean> {
+export async function sendCashCloseEmail(data: CashCloseData, currencyCode?: string): Promise<boolean> {
   try {
     const adminEmail = await getAdminEmail()
     if (!adminEmail) {
@@ -280,19 +281,19 @@ export async function sendCashCloseEmail(data: CashCloseData): Promise<boolean> 
             <table style="width: 100%; border-collapse: collapse;">
               <tr>
                 <td style="padding: 6px 0;">Monto Inicial:</td>
-                <td style="padding: 6px 0; text-align: right; font-weight: bold;">$${data.initialAmt.toFixed(2)}</td>
+                <td style="padding: 6px 0; text-align: right; font-weight: bold;">${formatCurrency(data.initialAmt, currencyCode)}</td>
               </tr>
               <tr>
                 <td style="padding: 6px 0;">Total Ventas (efectivo):</td>
-                <td style="padding: 6px 0; text-align: right; font-weight: bold; color: green;">+$${data.totalSales.toFixed(2)}</td>
+                <td style="padding: 6px 0; text-align: right; font-weight: bold; color: green;">+${formatCurrency(data.totalSales, currencyCode)}</td>
               </tr>
               <tr>
                 <td style="padding: 6px 0;">Total Gastos:</td>
-                <td style="padding: 6px 0; text-align: right; font-weight: bold; color: red;">-$${data.totalExpenses.toFixed(2)}</td>
+                <td style="padding: 6px 0; text-align: right; font-weight: bold; color: red;">-${formatCurrency(data.totalExpenses, currencyCode)}</td>
               </tr>
               <tr style="border-top: 2px solid #333;">
                 <td style="padding: 6px 0; font-weight: bold;">Total en Caja:</td>
-                <td style="padding: 6px 0; text-align: right; font-weight: bold;">$${data.actual.toFixed(2)}</td>
+                <td style="padding: 6px 0; text-align: right; font-weight: bold;">${formatCurrency(data.actual, currencyCode)}</td>
               </tr>
             </table>
           </div>
@@ -324,7 +325,7 @@ export async function sendCashCloseAllEmail(cuts: Array<{
   totalSales: number
   totalExpenses: number
   totalRetiros: number
-}>): Promise<boolean> {
+}>, currencyCode?: string): Promise<boolean> {
   try {
     const adminEmail = await getAdminEmail()
     if (!adminEmail) {
@@ -340,8 +341,8 @@ export async function sendCashCloseAllEmail(cuts: Array<{
         <tr style="border-bottom: 1px solid #eee;">
           <td style="padding: 8px;">${c.cashierName}</td>
           <td style="padding: 8px;">${c.registerName || '—'}</td>
-          <td style="padding: 8px; text-align: right;">$${c.totalSales.toFixed(2)}</td>
-          <td style="padding: 8px; text-align: right;">$${c.actual.toFixed(2)}</td>
+          <td style="padding: 8px; text-align: right;">${formatCurrency(c.totalSales, currencyCode)}</td>
+          <td style="padding: 8px; text-align: right;">${formatCurrency(c.actual, currencyCode)}</td>
         </tr>
       `
     }).join('')
@@ -367,7 +368,7 @@ export async function sendCashCloseAllEmail(cuts: Array<{
               ${rows}
               <tr style="border-top: 2px solid #333; font-weight: bold;">
                 <td colspan="3" style="padding: 10px; text-align: right;">Total General:</td>
-                <td style="padding: 10px; text-align: right;">$${grandTotal.toFixed(2)}</td>
+                <td style="padding: 10px; text-align: right;">${formatCurrency(grandTotal, currencyCode)}</td>
               </tr>
             </tbody>
           </table>

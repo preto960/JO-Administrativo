@@ -1,6 +1,6 @@
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
-import { notifyUser } from '@/lib/notify'
+import { formatCurrency } from '@/lib/currency'
 
 // Number of days before due date to trigger a warning notification
 const WARNING_DAYS = 3
@@ -55,12 +55,15 @@ export async function POST() {
         })
 
         if (!existingNotif) {
-          await notifyUser(user.id, {
-            title: daysLeft <= 0
-              ? `Pago vencido a proveedor`
-              : `Pago a proveedor vence en ${daysLeft} dia${daysLeft !== 1 ? 's' : ''}`,
-            message: `Deuda con ${payable.supplier?.name || 'Desconocido'} por $${payable.pendingBalance.toFixed(2)} ${daysLeft <= 0 ? 'vencida' : `vence el ${new Date(payable.dueDate!).toLocaleDateString('es-VE')}`}. [ID: ${payable.id}]`,
-            type: daysLeft <= 0 ? 'error' : 'warning',
+          await db.notification.create({
+            data: {
+              userId: user.id,
+              title: daysLeft <= 0
+                ? `Pago vencido a proveedor`
+                : `Pago a proveedor vence en ${daysLeft} día${daysLeft !== 1 ? 's' : ''}`,
+              message: `Deuda con ${payable.supplier?.name || 'Desconocido'} por ${formatCurrency(payable.pendingBalance)} ${daysLeft <= 0 ? 'vencida' : `vence el ${new Date(payable.dueDate!).toLocaleDateString('es-VE')}`}. [ID: ${payable.id}]`,
+              type: daysLeft <= 0 ? 'error' : 'warning',
+            },
           })
           createdCount++
         }
@@ -96,12 +99,15 @@ export async function POST() {
         })
 
         if (!existingNotif) {
-          await notifyUser(user.id, {
-            title: daysLeft <= 0
-              ? `Cuenta de cliente vencida`
-              : `Cuenta de cliente vence en ${daysLeft} dia${daysLeft !== 1 ? 's' : ''}`,
-            message: `Cuenta por cobrar a ${receivable.client?.name || 'Desconocido'} por $${receivable.pendingBalance.toFixed(2)} ${daysLeft <= 0 ? 'vencida' : `vence el ${new Date(receivable.dueDate!).toLocaleDateString('es-VE')}`}. [ID: ${receivable.id}]`,
-            type: daysLeft <= 0 ? 'error' : 'warning',
+          await db.notification.create({
+            data: {
+              userId: user.id,
+              title: daysLeft <= 0
+                ? `Cuenta de cliente vencida`
+                : `Cuenta de cliente vence en ${daysLeft} día${daysLeft !== 1 ? 's' : ''}`,
+              message: `Cuenta por cobrar a ${receivable.client?.name || 'Desconocido'} por ${formatCurrency(receivable.pendingBalance)} ${daysLeft <= 0 ? 'vencida' : `vence el ${new Date(receivable.dueDate!).toLocaleDateString('es-VE')}`}. [ID: ${receivable.id}]`,
+              type: daysLeft <= 0 ? 'error' : 'warning',
+            },
           })
           createdCount++
         }

@@ -16,6 +16,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { toast } from 'sonner'
+import { useCurrency } from '@/hooks/use-currency'
 import { BarcodeScannerDialog } from './barcode-scanner-dialog'
 
 interface ProductWithInventory {
@@ -42,7 +43,6 @@ export function PosTerminal() {
   const { addItem, getCurrentQty, searchQuery, setSearchQuery, categoryFilter, setCategoryFilter, validateBranch } = usePosStore()
   const { items, getTotal, getItemCount } = usePosStore()
   const exchangeRate = useSetting('exchangeRate')
-  const referenceCurrency = useSetting('referenceCurrency')
   const selectedBranchId = useAppStore((s) => s.selectedBranchId)
   const { user } = useAuth()
   const [products, setProducts] = useState<ProductWithInventory[]>([])
@@ -63,7 +63,7 @@ export function PosTerminal() {
   const [gerenteReason, setGerenteReason] = useState('')
   const [showSuggestions, setShowSuggestions] = useState(false)
   const isMobile = useIsMobile()
-  const currencySymbol = referenceCurrency === 'EUR' ? '€' : '$'
+  const { sym: currencySymbol } = useCurrency()
   const isCashier = user?.role === 'cajero'
 
   // Check if there's an open cash register (blocks cashiers)

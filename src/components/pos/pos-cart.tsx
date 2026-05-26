@@ -18,6 +18,7 @@ import {
   Clock, UserCircle, X, Package,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { useCurrency } from '@/hooks/use-currency'
 
 interface PosCartProps {
   onPayment: () => void
@@ -49,7 +50,7 @@ export function PosCart({ onPayment }: PosCartProps) {
   const ivaAmountBs = ivaEnabled ? subtotalBs * (ivaRate / 100) : 0
   const totalBs = subtotalBs + ivaAmountBs
   const totalWithIvaUsd = exchangeRate > 0 ? totalBs / exchangeRate : total
-  const currencySymbol = referenceCurrency === 'EUR' ? '\u20ac' : '$'
+  const { sym: currencySymbol, baseSym, fmt, fmtBase } = useCurrency()
 
   const [showPaused, setShowPaused] = useState(false)
   const [qtyEdit, setQtyEdit] = useState<Record<string, string>>({})
@@ -194,7 +195,7 @@ export function PosCart({ onPayment }: PosCartProps) {
                       </span>
                       {exchangeRate > 0 && (
                         <p className="text-[10px] text-muted-foreground">
-                          Bs. {itemTotalBs.toFixed(2)}
+                          {baseSym} {itemTotalBs.toFixed(2)}
                         </p>
                       )}
                     </div>
@@ -220,15 +221,15 @@ export function PosCart({ onPayment }: PosCartProps) {
               {ivaEnabled && (
                 <>
                   <div className="flex items-center justify-between">
-                    <span className="text-xs text-muted-foreground">Subtotal (Bs.)</span>
+                    <span className="text-xs text-muted-foreground">{`Subtotal (${baseSym})`}</span>
                     <span className="text-sm font-medium">
-                      Bs. {subtotalBs.toFixed(2)}
+                      {baseSym} {subtotalBs.toFixed(2)}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-xs text-muted-foreground">I.V.A. ({(ivaRate ?? 0).toFixed(2)}%)</span>
                     <span className="text-sm font-medium text-blue-600">
-                      +Bs. {ivaAmountBs.toFixed(2)}
+                      +{baseSym} {ivaAmountBs.toFixed(2)}
                     </span>
                   </div>
                 </>
@@ -238,10 +239,10 @@ export function PosCart({ onPayment }: PosCartProps) {
           {exchangeRate > 0 && (
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">
-                Total {ivaEnabled ? '(con I.V.A.)' : '(Bs.)'}
+                Total {ivaEnabled ? '(con I.V.A.)' : `(${baseSym})`}
               </span>
               <span className="text-2xl font-bold text-primary dark:text-primary">
-                Bs. {totalBs.toFixed(2)}
+                {baseSym} {totalBs.toFixed(2)}
               </span>
             </div>
           )}
@@ -264,7 +265,7 @@ export function PosCart({ onPayment }: PosCartProps) {
             onClick={onPayment}
             data-tutorial="pos-pay"
           >
-            Cobrar {exchangeRate > 0 ? `Bs. ${totalBs.toFixed(2)}` : `${currencySymbol}${total.toFixed(2)}`}
+            Cobrar {exchangeRate > 0 ? `${baseSym} ${totalBs.toFixed(2)}` : `${currencySymbol}${total.toFixed(2)}`}
           </Button>
         </div>
       </div>

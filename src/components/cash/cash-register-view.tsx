@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '@/lib/api'
 import { useAuth } from '@/hooks/use-auth'
+import { useCurrency } from '@/hooks/use-currency'
 import { useAppStore } from '@/stores/use-app-store'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
@@ -107,6 +108,7 @@ export function CashRegisterView() {
   const { user, permissions } = useAuth()
   const { branches, selectedBranchId, setSelectedBranchId } = useAppStore()
   const canManageCash = permissions.canManageCash
+  const { fmtBase } = useCurrency()
 
   /** Format number with thousands separator for display */
   const fmt = (val: number) => val.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -353,7 +355,7 @@ export function CashRegisterView() {
         userId: user?.id || '',
       })
       // Fix 9: Use fmt() in withdrawal toast
-      toast.success(`Retiro de excedente por $${fmt(result.amount)} registrado`)
+      toast.success(`Retiro de excedente por ${fmtBase(result.amount)} registrado`)
       setShowWithdrawal(false)
       setWithdrawalAmount('')
       setWithdrawalConcept('')
@@ -471,7 +473,7 @@ export function CashRegisterView() {
               </p>
               <div className="mt-3 rounded-md bg-white dark:bg-gray-900 p-3 text-sm">
                 {/* Fix 9: Use fmt() in cashier alert */}
-                <p className="text-muted-foreground">Monto final: <span className="font-bold">${fmt(closedInfo.actual)}</span></p>
+                <p className="text-muted-foreground">Monto final: <span className="font-bold">{fmtBase(closedInfo.actual)}</span></p>
                 <p className="text-muted-foreground">Fecha de cierre: {new Date(closedInfo.cutDate).toLocaleString('es-VE')}</p>
               </div>
             </div>
@@ -500,7 +502,7 @@ export function CashRegisterView() {
                 <p className="text-sm text-muted-foreground font-medium">Efectivo Global en Cajas</p>
                 {/* Fix 3: Use fmt() + Fix 4: tabular-nums truncate */}
                 <p className="text-3xl font-bold tracking-tight text-primary tabular-nums truncate max-w-full">
-                  ${fmt(totalOpenAmt)}
+                  {fmtBase(totalOpenAmt)}
                 </p>
               </div>
             </div>
@@ -528,7 +530,7 @@ export function CashRegisterView() {
             {openRegisters.length > 1 && (
               <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs text-muted-foreground">
                 {openRegisters.map(r => (
-                  <span key={r.id}>{r.name || r.user.name}: ${fmt(r.currentAmt)}</span>
+                  <span key={r.id}>{r.name || r.user.name}: {fmtBase(r.currentAmt)}</span>
                 ))}
               </div>
             )}
@@ -603,11 +605,11 @@ export function CashRegisterView() {
                     <div className="grid grid-cols-3 gap-3">
                       <div className="text-center">
                         <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Inicial</p>
-                        <p className="text-sm font-semibold tabular-nums">${fmt(reg.initialAmt)}</p>
+                        <p className="text-sm font-semibold tabular-nums">{fmtBase(reg.initialAmt)}</p>
                       </div>
                       <div className="text-center">
                         <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Actual</p>
-                        <p className="text-lg font-bold text-primary tabular-nums">${fmt(reg.currentAmt)}</p>
+                        <p className="text-lg font-bold text-primary tabular-nums">{fmtBase(reg.currentAmt)}</p>
                       </div>
                       <div className="text-center">
                         <p className="text-[11px] text-muted-foreground uppercase tracking-wide">
@@ -776,7 +778,7 @@ export function CashRegisterView() {
                           </div>
                           {/* Fix 3: Use fmt() in history list */}
                           <div className="text-right">
-                            <p className="text-sm font-semibold tabular-nums">${fmt(reg.currentAmt)}</p>
+                            <p className="text-sm font-semibold tabular-nums">{fmtBase(reg.currentAmt)}</p>
                             <p className={`text-xs tabular-nums ${isPositive ? 'text-emerald-600' : 'text-red-600'}`}>
                               {isPositive ? '+' : ''}{fmt(earnings)}
                             </p>
@@ -818,11 +820,11 @@ export function CashRegisterView() {
                             )}
                             <div>
                               <p className="text-xs text-muted-foreground">Monto Inicial</p>
-                              <p className="font-medium tabular-nums">${fmt(reg.initialAmt)}</p>
+                              <p className="font-medium tabular-nums">{fmtBase(reg.initialAmt)}</p>
                             </div>
                             <div>
                               <p className="text-xs text-muted-foreground">Monto Final</p>
-                              <p className="font-bold tabular-nums">${fmt(reg.currentAmt)}</p>
+                              <p className="font-bold tabular-nums">{fmtBase(reg.currentAmt)}</p>
                             </div>
                             <div>
                               <p className="text-xs text-muted-foreground">Diferencia</p>
@@ -949,7 +951,7 @@ export function CashRegisterView() {
                     {openRegisters.map((reg) => (
                       <SelectItem key={reg.id} value={reg.id}>
                         {/* Fix 3: Use fmt() in movement select label */}
-                        {reg.name || reg.user.name} — ${fmt(reg.currentAmt)}
+                        {reg.name || reg.user.name} — {fmtBase(reg.currentAmt)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -1024,7 +1026,7 @@ export function CashRegisterView() {
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Monto esperado:</span>
                     {/* Fix 3: Use fmt() in close dialog */}
-                    <span className="font-bold tabular-nums">${fmt(reg.currentAmt)}</span>
+                    <span className="font-bold tabular-nums">{fmtBase(reg.currentAmt)}</span>
                   </div>
                 </div>
               ) : null
@@ -1080,7 +1082,7 @@ export function CashRegisterView() {
                     {openRegisters.map((reg) => (
                       <SelectItem key={reg.id} value={reg.id}>
                         {/* Fix 3: Use fmt() in withdrawal select label */}
-                        {reg.name || reg.user.name} — ${fmt(reg.currentAmt)}
+                        {reg.name || reg.user.name} — {fmtBase(reg.currentAmt)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -1099,7 +1101,7 @@ export function CashRegisterView() {
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Saldo actual:</span>
                     {/* Fix 3: Use fmt() in withdrawal card */}
-                    <span className="font-bold text-primary tabular-nums">${fmt(reg.currentAmt)}</span>
+                    <span className="font-bold text-primary tabular-nums">{fmtBase(reg.currentAmt)}</span>
                   </div>
                 </div>
               )
@@ -1160,7 +1162,7 @@ export function CashRegisterView() {
                     {openRegisters.map((reg) => (
                       <SelectItem key={reg.id} value={reg.id}>
                         {/* Fix 3: Use fmt() in audit select label */}
-                        {reg.name || reg.user.name} — ${fmt(reg.currentAmt)}
+                        {reg.name || reg.user.name} — {fmtBase(reg.currentAmt)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -1179,7 +1181,7 @@ export function CashRegisterView() {
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Monto esperado:</span>
                     {/* Fix 3: Use fmt() in audit card */}
-                    <span className="font-bold text-primary tabular-nums">${fmt(reg.currentAmt)}</span>
+                    <span className="font-bold text-primary tabular-nums">{fmtBase(reg.currentAmt)}</span>
                   </div>
                 </div>
               )
@@ -1221,7 +1223,7 @@ export function CashRegisterView() {
                 <span className="text-muted-foreground">Total contado:</span>
                 {/* Fix 3: Use fmt() for audit total */}
                 <span className="font-bold text-lg tabular-nums">
-                  ${fmt(Object.entries(auditBreakdown).reduce(
+                  {fmtBase(Object.entries(auditBreakdown).reduce(
                     (sum, [denom, qty]) => sum + parseFloat(denom) * (parseFloat(qty) || 0),
                     0
                   ))}
@@ -1266,16 +1268,16 @@ export function CashRegisterView() {
                 ) : auditResult.difference > 0 ? (
                   <p className="font-bold text-amber-700 dark:text-amber-400">
                     {/* Fix 3: Use fmt() for audit result amounts */}
-                    Sobrante: ${fmt(auditResult.difference)}
+                    Sobrante: {fmtBase(auditResult.difference)}
                   </p>
                 ) : (
                   <p className="font-bold text-red-700 dark:text-red-400">
-                    Faltante: ${fmt(Math.abs(auditResult.difference))}
+                    Faltante: {fmtBase(Math.abs(auditResult.difference))}
                   </p>
                 )}
                 <div className="text-xs text-muted-foreground mt-2 space-y-0.5">
-                  <p>Esperado: ${fmt(auditResult.expected)}</p>
-                  <p>Contado: ${fmt(auditResult.counted)}</p>
+                  <p>Esperado: {fmtBase(auditResult.expected)}</p>
+                  <p>Contado: {fmtBase(auditResult.counted)}</p>
                 </div>
                 {/* Fix 10: Show message when difference detected */}
                 {auditResult.difference !== 0 && (
@@ -1334,7 +1336,7 @@ export function CashRegisterView() {
                     <TableCell className="font-medium">{reg.name || 'Sin nombre'}</TableCell>
                     <TableCell>{reg.user.name}</TableCell>
                     {/* Fix 3: Use fmt() in close all confirmation */}
-                    <TableCell className="text-right font-semibold tabular-nums">${fmt(reg.currentAmt)}</TableCell>
+                    <TableCell className="text-right font-semibold tabular-nums">{fmtBase(reg.currentAmt)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -1342,7 +1344,7 @@ export function CashRegisterView() {
             <div className="mt-3 rounded-md bg-muted p-3 text-sm">
               <div className="flex justify-between font-bold">
                 <span>Total global:</span>
-                <span className="tabular-nums">${fmt(totalOpenAmt)}</span>
+                <span className="tabular-nums">{fmtBase(totalOpenAmt)}</span>
               </div>
             </div>
           </div>
