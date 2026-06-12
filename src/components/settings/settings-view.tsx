@@ -64,6 +64,7 @@ import {
   ClipboardList,
   BookOpen,
   Globe,
+  Wallet,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuth } from '@/hooks/use-auth'
@@ -74,6 +75,7 @@ import { ColorPicker, applyBothColors } from './color-picker'
 import { RolePermissionsEditor } from './role-permissions-editor'
 import { AuditLogView } from '@/components/audit/audit-log-view'
 import { TutorialTextsEditor } from './tutorial-texts-editor'
+import { PaymentMethodsTab } from './payment-methods-tab'
 import { getPermissions, canAccessView } from '@/lib/permissions'
 
 interface Branch {
@@ -382,6 +384,12 @@ export function SettingsView() {
             <TabsTrigger data-tutorial="settings-tab-moneda" value="moneda" className="gap-1.5">
               <DollarSign className="h-3.5 w-3.5 hidden sm:block" />
               <span>Moneda</span>
+            </TabsTrigger>
+          )}
+          {userPerms?.canAccessTabMoneda && (
+            <TabsTrigger data-tutorial="settings-tab-metodos-pago" value="metodos_pago" className="gap-1.5">
+              <Wallet className="h-3.5 w-3.5 hidden sm:block" />
+              <span>Métodos de Pago</span>
             </TabsTrigger>
           )}
           {userPerms?.canAccessTabIva && (
@@ -910,6 +918,11 @@ export function SettingsView() {
               </Card>
             )}
           </div>
+        </TabsContent>
+
+        {/* ── Métodos de Pago Tab ─────────────────────── */}
+        <TabsContent value="metodos_pago">
+          <PaymentMethodsTab country={settings.country || 'VE'} />
         </TabsContent>
 
         {/* ── I.V.A. Tab ──────────────────────────────────── */}

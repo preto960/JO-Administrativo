@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { formatCurrency } from '@/lib/currency'
+import { getPaymentMethodsFromDB, FALLBACK_METHODS } from '@/lib/payment-methods'
 
 export async function POST(
   request: NextRequest,
@@ -69,8 +70,10 @@ export async function POST(
         remaining = Math.round((remaining - applied) * 100) / 100
       }
 
-      // Create cash movement if cash register is open
-      if (cashRegId && method === 'efectivo') {
+      // Create cash movement if cash register is open and method is cash
+      const pmList = await getPaymentMethodsFromDB().catch(() => FALLBACK_METHODS)
+      const cashCodes = new Set(pmList.filter(m => m.isCash).map(m => m.code))
+      if (cashRegId && cashCodes.has(method)) {
         const effectiveCurrencyId = currencyId || (await tx.currency.findFirst({ where: { isBase: true } }))?.id
         if (effectiveCurrencyId) {
           await tx.cashMovement.create({

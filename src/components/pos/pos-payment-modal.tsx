@@ -24,20 +24,37 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import { Banknote, CreditCard, ArrowLeftRight, Clock, Smartphone, CheckCircle2, Loader2, AlertTriangle, UserPlus, User } from 'lucide-react'
+import {
+  Banknote,
+  CreditCard,
+  ArrowLeftRight,
+  Clock,
+  Smartphone,
+  CircleDollarSign,
+  CheckCircle2,
+  Loader2,
+  AlertTriangle,
+  UserPlus,
+  User,
+  type LucideIcon,
+} from 'lucide-react'
 import { toast } from 'sonner'
 import { useCurrency } from '@/hooks/use-currency'
+import { FALLBACK_METHODS } from '@/lib/payment-methods'
 
 interface PosPaymentModalProps {
   onClose: () => void
 }
 
-interface PaymentMethod {
-  value: string
-  label: string
-  icon: React.ElementType
-  needsReference?: boolean
-  isLocalCurrency?: boolean
+interface PaymentMethodItem {
+  code: string
+  name: string
+  icon: string
+  enabled: boolean
+  needsReference: boolean
+  isLocalCurrency: boolean
+  isCash: boolean
+  isCredit: boolean
 }
 
 interface ClientOption {
@@ -47,27 +64,34 @@ interface ClientOption {
   email: string | null
 }
 
-const paymentMethods: PaymentMethod[] = [
-  { value: 'divisas', label: 'Divisas', icon: Banknote, isLocalCurrency: false },
-  { value: 'efectivo', label: 'Efectivo', icon: Banknote, isLocalCurrency: true },
-  { value: 'pago_movil', label: 'Pago Móvil', icon: Smartphone, needsReference: true, isLocalCurrency: true },
-  { value: 'tarjeta', label: 'Tarjeta', icon: CreditCard, needsReference: true, isLocalCurrency: true },
-  { value: 'transferencia', label: 'Transferencia', icon: ArrowLeftRight, needsReference: true, isLocalCurrency: true },
-  { value: 'credito', label: 'Crédito', icon: Clock, isLocalCurrency: false },
-]
+// Icon resolver
+const ICON_MAP: Record<string, LucideIcon> = {
+  Banknote,
+  CreditCard,
+  ArrowLeftRight,
+  Clock,
+  Smartphone,
+  CircleDollarSign,
+}
+
+function getIcon(iconName: string): LucideIcon {
+  return ICON_MAP[iconName] || CircleDollarSign
+}
 
 export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
   const { items, getTotal, clearCart, clientId, setClientId } = usePosStore()
   const { user } = useAuth()
   const exchangeRate = useSetting('exchangeRate')
   const baseCurrencyId = useSetting('baseCurrencyId')
-  const [method, setMethod] = useState('divisas')
+  const country = useSetting('country') || 'VE'
+  const [method, setMethod] = useState('')
   const [amount, setAmount] = useState('')
   const [reference, setReference] = useState('')
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
   const [currencies, setCurrencies] = useState<{ id: string; code: string; symbol: string; isBase: boolean }[]>([])
   const [openCashRegId, setOpenCashRegId] = useState<string | null>(null)
+  const [dbMethods, setDbMethods] = useState<PaymentMethodItem[]>([])
 
   // Client selection
   const [clients, setClients] = useState<ClientOption[]>([])
@@ -85,9 +109,13 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
   const total = Math.round((subtotal + ivaAmount) * 100) / 100
   const totalBs = total * exchangeRate
   const { sym: currencySymbol, baseSym, refCode, fmt, fmtBase, multiEnabled } = useCurrency()
-  const selectedMethod = paymentMethods.find(pm => pm.value === method)
 
-  // Resolve currencyId: prefer baseCurrencyId from settings, fallback to isBase currency or first available
+  // Only enabled methods
+  const paymentMethods = useMemo(() => dbMethods.filter(m => m.enabled), [dbMethods])
+
+  const selectedMethod = paymentMethods.find(pm => pm.code === method)
+
+  // Resolve currencyId
   const resolvedCurrencyId = baseCurrencyId
     || currencies.find(c => c.isBase)?.id
     || currencies[0]?.id
@@ -98,7 +126,7 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
   const isLocalMethod = multiEnabled ? (selectedMethod?.isLocalCurrency ?? false) : false
 
   // Show client selector when credit is selected
-  const showClientSelector = method === 'credito'
+  const showClientSelector = selectedMethod?.isCredit === true
 
   // Filtered clients for search
   const filteredClients = useMemo(() => {
@@ -120,19 +148,34 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
     }
   }, [method, isLocalMethod, totalBs, total])
 
-  // Load currencies, open cash register, and clients on mount
+  // Load currencies, open cash register, clients, and payment methods on mount
   useEffect(() => {
     Promise.all([
       api.get<{ id: string; code: string; symbol: string; isBase: boolean }[]>('/api/currencies'),
       api.get<Array<{ id: string; status: string }>>('/api/cash-register'),
       api.get<ClientOption[]>('/api/clients'),
-    ]).then(([currencies, registers, clients]) => {
+      api.get<PaymentMethodItem[]>(`/api/payment-methods?country=${country}`),
+    ]).then(([currencies, registers, clients, methods]) => {
       setCurrencies(currencies)
       const openReg = registers?.find(r => r.status === 'abierta')
       if (openReg) setOpenCashRegId(openReg.id)
       if (Array.isArray(clients)) setClients(clients)
-    }).catch(() => {})
-  }, [])
+      // Use DB methods, or fallback to hardcoded
+      if (Array.isArray(methods) && methods.length > 0) {
+        const enabled = methods.filter((m: PaymentMethodItem) => m.enabled)
+        setDbMethods(methods)
+        // Set default method to first enabled
+        if (enabled.length > 0) setMethod(enabled[0].code)
+      } else {
+        setDbMethods(FALLBACK_METHODS)
+        setMethod('divisas')
+      }
+    }).catch(() => {
+      // Fallback to hardcoded
+      setDbMethods(FALLBACK_METHODS)
+      setMethod('divisas')
+    })
+  }, [country])
 
   // Create new client
   const handleCreateClient = async () => {
@@ -153,7 +196,6 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
       setNewClientName('')
       setNewClientPhone('')
       setNewClientEmail('')
-      // Scroll the new client into view in the list
       setTimeout(() => {
         const el = document.querySelector(`[data-client-id="${newClient.id}"]`)
         el?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
@@ -181,7 +223,7 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
       toast.error('El monto debe ser mayor a cero')
       return
     }
-    if (!isLocalMethod && parseFloat(amount) > total && method !== 'divisas') {
+    if (!isLocalMethod && parseFloat(amount) > total && !selectedMethod?.isCash) {
       toast.error('El monto excede el total')
       return
     }
@@ -190,10 +232,10 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
       return
     }
     if (selectedMethod?.needsReference && !reference.trim()) {
-      toast.error(`La referencia es obligatoria para ${selectedMethod.label}`)
+      toast.error(`La referencia es obligatoria para ${selectedMethod.name}`)
       return
     }
-    if (method === 'credito' && !clientId) {
+    if (selectedMethod?.isCredit && !clientId) {
       toast.error('Debe seleccionar un cliente para ventas a credito')
       return
     }
@@ -241,14 +283,14 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
   // Calculate change in the displayed currency
   const changeAmount = useMemo(() => {
     const parsed = parseFloat(amount) || 0
-    if (method === 'divisas' || method === 'efectivo') {
+    if (selectedMethod?.isCash || method === 'divisas') {
       const limit = isLocalMethod ? totalBs : total
       if (parsed > limit) {
         return parsed - limit
       }
     }
     return 0
-  }, [amount, method, isLocalMethod, totalBs, total])
+  }, [amount, method, isLocalMethod, totalBs, total, selectedMethod])
 
   const amountLabel = isLocalMethod ? `Monto (${baseSym})` : 'Monto'
   const changeLabel = isLocalMethod ? baseSym : currencySymbol
@@ -287,23 +329,32 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
 
             {/* Method Selection */}
             <RadioGroup value={method} onValueChange={(v) => { setMethod(v); setReference('') }} className="grid grid-cols-2 gap-3">
-              {paymentMethods.map((pm) => (
-                <label
-                  key={pm.value}
-                  className={`flex cursor-pointer flex-col items-center gap-2 rounded-lg border-2 p-3 transition-colors ${
-                    method === pm.value
-                      ? 'border-primary bg-primary/5 dark:bg-primary/10'
-                      : 'border-muted hover:border-muted-foreground/30'
-                  }`}
-                >
-                  <RadioGroupItem value={pm.value} className="sr-only" />
-                  <pm.icon className={`h-5 w-5 ${method === pm.value ? 'text-primary' : 'text-muted-foreground'}`} />
-                  <span className={`text-xs font-medium ${method === pm.value ? 'text-primary dark:text-primary' : ''}`}>
-                    {pm.label}
-                  </span>
-                </label>
-              ))}
+              {paymentMethods.map((pm) => {
+                const Icon = getIcon(pm.icon)
+                return (
+                  <label
+                    key={pm.code}
+                    className={`flex cursor-pointer flex-col items-center gap-2 rounded-lg border-2 p-3 transition-colors ${
+                      method === pm.code
+                        ? 'border-primary bg-primary/5 dark:bg-primary/10'
+                        : 'border-muted hover:border-muted-foreground/30'
+                    }`}
+                  >
+                    <RadioGroupItem value={pm.code} className="sr-only" />
+                    <Icon className={`h-5 w-5 ${method === pm.code ? 'text-primary' : 'text-muted-foreground'}`} />
+                    <span className={`text-xs font-medium ${method === pm.code ? 'text-primary dark:text-primary' : ''}`}>
+                      {pm.name}
+                    </span>
+                  </label>
+                )
+              })}
             </RadioGroup>
+
+            {paymentMethods.length === 0 && (
+              <p className="text-xs text-center text-muted-foreground py-2">
+                No hay métodos de pago activos. Ve a Configuración → Métodos de Pago para activarlos.
+              </p>
+            )}
 
             {/* Client selector — shown when credit is selected */}
             {showClientSelector && (
@@ -375,7 +426,6 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
                     )}
                   </>
                 ) : (
-                  /* New client form */
                   <>
                     <div className="space-y-2 rounded-md border p-3 bg-muted/30">
                       <p className="text-xs font-medium text-muted-foreground">Registrar nuevo cliente</p>
@@ -478,7 +528,7 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
               className="w-full bg-primary hover:bg-primary/90 text-white"
               size="lg"
               onClick={handlePay}
-              disabled={loading || !resolvedCurrencyId || (method === 'credito' && !clientId)}
+              disabled={loading || !resolvedCurrencyId || (selectedMethod?.isCredit && !clientId) || !method}
             >
               {loading ? (
                 <>

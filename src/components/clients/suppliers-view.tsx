@@ -44,6 +44,18 @@ import {
 import { Building2, Plus, Loader2, Eye, Pencil, DollarSign, CalendarDays, FileText, Trash2, Search, Phone, Mail, MapPin, UserCircle, Upload, ExternalLink } from 'lucide-react'
 import { toast } from 'sonner'
 import { useCurrency } from '@/hooks/use-currency'
+import { FALLBACK_METHODS } from '@/lib/payment-methods'
+
+interface PaymentMethodOption {
+  code: string
+  name: string
+  icon: string
+  enabled: boolean
+  needsReference: boolean
+  isLocalCurrency: boolean
+  isCash: boolean
+  isCredit: boolean
+}
 
 const RIF_REGEX = /^[JVEG]-\d{8,9}-\d$/
 
@@ -82,7 +94,8 @@ export function SuppliersView() {
   const canManage = permissions.canManageSuppliers
   const baseCurrencyId = useAppStore((s) => s.settings?.baseCurrencyId || '')
   const { sym: currencySymbol, rate: exchangeRate, fmt } = useCurrency()
-  const localCurrencyMethods = ['efectivo', 'pago_movil', 'tarjeta', 'transferencia']
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>([])
+  const country = useAppStore((s) => s.settings?.country || 'VE')
 
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [search, setSearch] = useState('')
@@ -166,7 +179,7 @@ export function SuppliersView() {
 
   useEffect(() => { fetchSuppliers() }, [])
 
-  // Fetch open cash register
+  // Fetch open cash register and payment methods
   useEffect(() => {
     api.get<Array<{ id: string; status: string }>>('/api/cash-register')
       .then(regs => {
@@ -174,7 +187,18 @@ export function SuppliersView() {
         if (openReg) setOpenCashRegId(openReg.id)
       })
       .catch(() => {})
-  }, [])
+    api.get<PaymentMethodOption[]>(`/api/payment-methods?country=${country}`)
+      .then(methods => {
+        if (Array.isArray(methods) && methods.length > 0) {
+          setPaymentMethods(methods.filter(m => m.enabled && !m.isCredit))
+        } else {
+          setPaymentMethods(FALLBACK_METHODS.filter(m => m.enabled && !m.isCredit))
+        }
+      })
+      .catch(() => {
+        setPaymentMethods(FALLBACK_METHODS.filter(m => m.enabled && !m.isCredit))
+      })
+  }, [country])
 
   const filtered = suppliers.filter(
     (s) =>
@@ -273,7 +297,8 @@ export function SuppliersView() {
 
   const openPaymentDialog = (supplier: Supplier) => {
     setPaymentSupplier(supplier)
-    setPaymentMethod('efectivo')
+    const firstNonCredit = paymentMethods.find(m => !m.isCredit)
+    setPaymentMethod(firstNonCredit?.code || 'efectivo')
     setPaymentReference('')
     setPaymentAmount(supplier.balance.toFixed(2))
     setShowPaymentDialog(true)
@@ -283,6 +308,9 @@ export function SuppliersView() {
     setPaymentMethod(method)
     setPaymentReference('')
   }
+
+  // Current payment method for template conditions
+  const currentPaymentPm = paymentMethods.find(m => m.code === paymentMethod)
 
   const handleSave = async () => {
     // Validate name
@@ -437,7 +465,8 @@ export function SuppliersView() {
       toast.error(`El monto no puede ser mayor al balance (${fmt(paymentSupplier.balance)})`)
       return
     }
-    const requiresRef = ['pago_movil', 'tarjeta', 'transferencia'].includes(paymentMethod)
+    const currentPm = paymentMethods.find(m => m.code === paymentMethod)
+    const requiresRef = currentPm?.needsReference ?? false
     if (requiresRef && !paymentReference.trim()) {
       toast.error('La referencia es obligatoria para este método de pago')
       return
@@ -969,11 +998,12 @@ export function SuppliersView() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="efectivo">Efectivo</SelectItem>
-                  <SelectItem value="transferencia">Transferencia</SelectItem>
-                  <SelectItem value="pago_movil">Pago Móvil</SelectItem>
-                  <SelectItem value="tarjeta">Tarjeta</SelectItem>
-                  <SelectItem value="divisas">Divisas ({currencySymbol})</SelectItem>
+                  {paymentMethods.map(pm => (
+                    <SelectItem key={pm.code} value={pm.code}>{pm.name}</SelectItem>
+                  ))}
+                  {paymentMethods.length === 0 && (
+                    <SelectItem value="efectivo">Efectivo</SelectItem>
+                  )}
                 </SelectContent>
               </Select>
             </div>
@@ -998,7 +1028,7 @@ export function SuppliersView() {
             </div>
 
             {/* Reference (required for certain methods) */}
-            {(paymentMethod === 'pago_movil' || paymentMethod === 'tarjeta' || paymentMethod === 'transferencia') && (
+            {currentPaymentPm?.needsReference && (
               <div className="space-y-2">
                 <Label>Referencia *</Label>
                 <Input
@@ -1010,7 +1040,7 @@ export function SuppliersView() {
             )}
 
             {/* Cash register warning */}
-            {paymentMethod === 'efectivo' && !openCashRegId && (
+            {currentPaymentPm?.isCash && !openCashRegId && (
               <div className="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-2 text-xs text-amber-700 dark:text-amber-400">
                 No hay caja abierta. El pago no se registrará como salida de caja.
               </div>

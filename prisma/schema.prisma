@@ -411,6 +411,24 @@ model Expense {
   branch   Branch   @relation(fields: [branchId], references: [id])
 }
 
+model PaymentMethod {
+  id             String   @id @default(cuid())
+  code           String   @unique          // "efectivo", "divisas", "pago_movil", etc.
+  name           String                    // Display name: "Efectivo", "Divisas", etc.
+  icon           String   @default("Banknote")  // Lucide icon name
+  enabled        Boolean  @default(true)
+  needsReference Boolean  @default(false)
+  isLocalCurrency Boolean @default(false)  // Uses country's local currency (Bs, COP, etc.)
+  isCash         Boolean  @default(false)  // Affects cash register (only efectivo = true)
+  isCredit       Boolean  @default(false)  // Creates AccountReceivable
+  sortOrder      Int      @default(0)
+  countries      String   @default("ALL")  // "ALL" = all countries, or comma-joined "VE,CO,MX"
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("PaymentMethod")
+}
+
 model Settings {
   id                    String   @id @default(cuid())
   key                   String   @default("general")

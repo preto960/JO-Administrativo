@@ -47,8 +47,18 @@ import { Plus, Search, Users, DollarSign, Loader2, Receipt, Truck, X, Trash2, Pr
 import { toast } from 'sonner'
 import { useSetting } from '@/stores/use-app-store'
 import { useCurrency } from '@/hooks/use-currency'
+import { FALLBACK_METHODS } from '@/lib/payment-methods'
 
-const localCurrencyMethods = ['efectivo', 'pago_movil', 'tarjeta', 'transferencia']
+interface PaymentMethodOption {
+  code: string
+  name: string
+  icon: string
+  enabled: boolean
+  needsReference: boolean
+  isLocalCurrency: boolean
+  isCash: boolean
+  isCredit: boolean
+}
 
 interface Client {
   id: string
@@ -127,10 +137,13 @@ export function ClientsTable() {
   const [paying, setPaying] = useState(false)
   const [openCashRegId, setOpenCashRegId] = useState<string | null>(null)
   const baseCurrencyId = useAppStore((s) => s.baseCurrencyId || '')
+  const country = useSetting('country') || 'VE'
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>([])
 
   const referenceCurrency = useSetting('referenceCurrency')
   const { sym: currencySymbol, baseSym, rate: exchangeRate, fmt } = useCurrency()
-  const isLocalMethod = localCurrencyMethods.includes(paymentMethod)
+  const selectedPm = paymentMethods.find(m => m.code === paymentMethod)
+  const isLocalMethod = selectedPm?.isLocalCurrency ?? false
 
   // Delete confirmation dialog
   const [deleteTarget, setDeleteTarget] = useState<Client | null>(null)
@@ -192,7 +205,7 @@ export function ClientsTable() {
     }
   }, [pendingClientId, clients.length])
 
-  // Fetch open cash register
+  // Fetch open cash register and payment methods
   useEffect(() => {
     api.get<Array<{ id: string; status: string }>>('/api/cash-register')
       .then(regs => {
@@ -200,7 +213,18 @@ export function ClientsTable() {
         if (openReg) setOpenCashRegId(openReg.id)
       })
       .catch(() => {})
-  }, [])
+    api.get<PaymentMethodOption[]>(`/api/payment-methods?country=${country}`)
+      .then(methods => {
+        if (Array.isArray(methods) && methods.length > 0) {
+          setPaymentMethods(methods.filter(m => m.enabled && !m.isCredit))
+        } else {
+          setPaymentMethods(FALLBACK_METHODS.filter(m => m.enabled && !m.isCredit))
+        }
+      })
+      .catch(() => {
+        setPaymentMethods(FALLBACK_METHODS.filter(m => m.enabled && !m.isCredit))
+      })
+  }, [country])
 
   const inactiveCount = clients.filter((c) => c.deletedAt !== null).length
 
@@ -346,24 +370,25 @@ export function ClientsTable() {
 
   const openPayment = (client: Client) => {
     setPaymentClient(client)
-    setPaymentMethod('divisas')
+    // Set default to first available non-credit method
+    const firstNonCredit = paymentMethods.find(m => !m.isCredit)
+    setPaymentMethod(firstNonCredit?.code || 'divisas')
     setPaymentReference('')
     // Set amount in reference currency by default
     setPaymentAmount(client.pendingBalance.toFixed(2))
     setShowPaymentDialog(true)
   }
 
-  // When payment method changes, toggle between Bs. and reference currency
-  const handlePaymentMethodChange = (method: string) => {
-    setPaymentMethod(method)
+  // When payment method changes, toggle between local and reference currency
+  const handlePaymentMethodChange = (methodCode: string) => {
+    setPaymentMethod(methodCode)
     setPaymentReference('')
     if (paymentClient) {
-      const isLocal = localCurrencyMethods.includes(method)
+      const pm = paymentMethods.find(m => m.code === methodCode)
+      const isLocal = pm?.isLocalCurrency ?? false
       if (isLocal && exchangeRate > 0) {
-        // Show amount in Bs.
         setPaymentAmount((paymentClient.pendingBalance * exchangeRate).toFixed(2))
       } else {
-        // Show amount in reference currency
         setPaymentAmount(paymentClient.pendingBalance.toFixed(2))
       }
     }
@@ -413,7 +438,7 @@ export function ClientsTable() {
       toast.error(`El monto no puede ser mayor al saldo pendiente (${fmt(paymentClient.pendingBalance)})`)
       return
     }
-    if (paymentMethod === 'efectivo' && !openCashRegId) {
+    if (selectedPm?.isCash && !openCashRegId) {
       toast.error('No hay caja abierta. Abra una caja registradora antes de cobrar en efectivo.')
       return
     }
@@ -1034,11 +1059,14 @@ export function ClientsTable() {
               <Select value={paymentMethod} onValueChange={handlePaymentMethodChange}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="divisas">Divisas ({currencySymbol})</SelectItem>
-                  <SelectItem value="efectivo">Efectivo (Bs.)</SelectItem>
-                  <SelectItem value="pago_movil">Pago Móvil (Bs.)</SelectItem>
-                  <SelectItem value="tarjeta">Tarjeta (Bs.)</SelectItem>
-                  <SelectItem value="transferencia">Transferencia (Bs.)</SelectItem>
+                  {paymentMethods.map(pm => (
+                    <SelectItem key={pm.code} value={pm.code}>
+                      {pm.name}{pm.isLocalCurrency ? ` (${baseSym})` : ` (${currencySymbol})`}
+                    </SelectItem>
+                  ))}
+                  {paymentMethods.length === 0 && (
+                    <SelectItem value="divisas">Divisas ({currencySymbol})</SelectItem>
+                  )}
                 </SelectContent>
               </Select>
             </div>
@@ -1062,7 +1090,7 @@ export function ClientsTable() {
                 Saldo después del cobro: {fmt((paymentClient?.pendingBalance || 0) - paymentAmountInRef)}
               </p>
             </div>
-            {(paymentMethod === 'pago_movil' || paymentMethod === 'tarjeta' || paymentMethod === 'transferencia') && (
+            {selectedPm?.needsReference && (
               <div className="space-y-2">
                 <Label>Referencia</Label>
                 <Input
@@ -1072,7 +1100,7 @@ export function ClientsTable() {
                 />
               </div>
             )}
-            {paymentMethod === 'efectivo' && !openCashRegId && (
+            {selectedPm?.isCash && !openCashRegId && (
               <div className="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-3 text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2">
                 <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
                 <div>

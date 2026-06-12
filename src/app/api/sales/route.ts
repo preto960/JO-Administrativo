@@ -2,6 +2,7 @@ import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { resolveBranchId, branchFromBody } from '@/lib/resolve-branch'
 import { formatCurrency } from '@/lib/currency'
+import { getPaymentMethodsFromDB, FALLBACK_METHODS } from '@/lib/payment-methods'
 
 export async function GET(request: NextRequest) {
   try {
@@ -208,9 +209,14 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      // Determine payment method types from DB
+      const pmList = await getPaymentMethodsFromDB().catch(() => FALLBACK_METHODS)
+      const cashCodes = new Set(pmList.filter(m => m.isCash).map(m => m.code))
+      const creditCodes = new Set(pmList.filter(m => m.isCredit).map(m => m.code))
+
       // Update cash register currentAmt if cash payment
       if (cashRegId) {
-        const cashPayments = payments.filter((p: { method: string }) => p.method === 'efectivo')
+        const cashPayments = payments.filter((p: { method: string }) => cashCodes.has(p.method))
         const cashTotal = cashPayments.reduce((sum: number, p: { amount: number }) => sum + p.amount, 0)
         if (cashTotal > 0) {
           const reg = await tx.cashRegister.findUnique({ where: { id: cashRegId } })
@@ -224,7 +230,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Handle credit sale - create account receivable
-      const creditPayments = payments.filter((p: { method: string }) => p.method === 'credito')
+      const creditPayments = payments.filter((p: { method: string }) => creditCodes.has(p.method))
       for (const cp of creditPayments) {
         if (clientId) {
           await tx.accountReceivable.create({

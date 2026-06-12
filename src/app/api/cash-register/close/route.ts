@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { buildReportFromRegister, generateCashClosePDF } from '@/lib/cash-close-pdf'
 import { logAction } from '@/lib/audit-log'
 import { notifyUser } from '@/lib/notify'
+import { getPaymentMethodsFromDB, FALLBACK_METHODS } from '@/lib/payment-methods'
 
 export async function POST(request: NextRequest) {
   try {
@@ -39,9 +40,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Calculate totals from sales (cash payments only)
+    const pmList = await getPaymentMethodsFromDB().catch(() => FALLBACK_METHODS)
+    const cashCodes = new Set(pmList.filter(m => m.isCash).map(m => m.code))
     const totalSales = register.sales.reduce((sum, sale) => {
       return sum + sale.payments
-        .filter(p => p.method === 'efectivo')
+        .filter(p => cashCodes.has(p.method))
         .reduce((s, p) => s + p.amount, 0)
     }, 0)
 

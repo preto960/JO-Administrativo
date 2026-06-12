@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { resolveBranchId } from '@/lib/resolve-branch'
 import { buildReportFromRegister, generateMultiCashClosePDF, type CashCloseReport } from '@/lib/cash-close-pdf'
 import { formatCurrency } from '@/lib/currency'
+import { getPaymentMethodsFromDB, FALLBACK_METHODS } from '@/lib/payment-methods'
 
 export async function POST(request: NextRequest) {
   try {
@@ -30,12 +31,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: 'No hay cajas abiertas' })
     }
 
+    const pmList = await getPaymentMethodsFromDB().catch(() => FALLBACK_METHODS)
+    const cashCodes = new Set(pmList.filter(m => m.isCash).map(m => m.code))
+
     const results = await db.$transaction(async (tx) => {
       const cuts: any[] = []
       for (const register of openRegisters) {
         const totalSales = register.sales.reduce((sum, sale) => {
           return sum + sale.payments
-            .filter(p => p.method === 'efectivo')
+            .filter(p => cashCodes.has(p.method))
             .reduce((s, p) => s + p.amount, 0)
         }, 0)
 
@@ -98,7 +102,7 @@ export async function POST(request: NextRequest) {
         const reports: CashCloseReport[] = []
         for (const r of openRegisters) {
           const totalSales = r.sales.reduce((sum, sale) => {
-            return sum + sale.payments.filter(p => p.method === 'efectivo').reduce((s, p) => s + p.amount, 0)
+            return sum + sale.payments.filter(p => cashCodes.has(p.method)).reduce((s, p) => s + p.amount, 0)
           }, 0)
           const totalExpenses = r.movements.filter(m => m.type === 'salida').reduce((sum, m) => sum + m.amount, 0)
           const totalEntries = r.movements.filter(m => m.type === 'entrada').reduce((sum, m) => sum + m.amount, 0)
@@ -131,7 +135,7 @@ export async function POST(request: NextRequest) {
           registersCount: openRegisters.length,
           cuts: openRegisters.map(r => {
             const totalSales = r.sales.reduce((sum, sale) => {
-              return sum + sale.payments.filter(p => p.method === 'efectivo').reduce((s, p) => s + p.amount, 0)
+              return sum + sale.payments.filter(p => cashCodes.has(p.method)).reduce((s, p) => s + p.amount, 0)
             }, 0)
             const totalExpenses = r.movements.filter(m => m.type === 'salida').reduce((sum, m) => sum + m.amount, 0)
             const totalEntries = r.movements.filter(m => m.type === 'entrada').reduce((sum, m) => sum + m.amount, 0)
