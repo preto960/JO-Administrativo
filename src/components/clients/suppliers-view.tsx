@@ -160,7 +160,7 @@ export function SuppliersView() {
   const [paymentSupplier, setPaymentSupplier] = useState<Supplier | null>(null)
   const [showPaymentDialog, setShowPaymentDialog] = useState(false)
   const [paymentAmount, setPaymentAmount] = useState('')
-  const [paymentMethod, setPaymentMethod] = useState('efectivo')
+  const [paymentMethod, setPaymentMethod] = useState('')
   const [paymentReference, setPaymentReference] = useState('')
   const [savingPayment, setSavingPayment] = useState(false)
   const [openCashRegId, setOpenCashRegId] = useState<string | null>(null)
@@ -298,7 +298,7 @@ export function SuppliersView() {
   const openPaymentDialog = (supplier: Supplier) => {
     setPaymentSupplier(supplier)
     const firstNonCredit = paymentMethods.find(m => !m.isCredit)
-    setPaymentMethod(firstNonCredit?.code || 'efectivo')
+    setPaymentMethod(firstNonCredit?.code || paymentMethods[0]?.code || '')
     setPaymentReference('')
     setPaymentAmount(supplier.balance.toFixed(2))
     setShowPaymentDialog(true)
@@ -1002,7 +1002,7 @@ export function SuppliersView() {
                     <SelectItem key={pm.code} value={pm.code}>{pm.name}</SelectItem>
                   ))}
                   {paymentMethods.length === 0 && (
-                    <SelectItem value="efectivo">Efectivo</SelectItem>
+                    <SelectItem value="">Cargando métodos...</SelectItem>
                   )}
                 </SelectContent>
               </Select>

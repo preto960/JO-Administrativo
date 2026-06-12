@@ -76,7 +76,7 @@ export async function POST(
         data: {
           supplierId: id,
           amount: actualDeduction,
-          method: method || 'efectivo',
+          method: method || '',
           reference: reference || null,
           cashRegId: cashRegId || null,
           userId,

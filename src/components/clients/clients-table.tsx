@@ -131,7 +131,7 @@ export function ClientsTable() {
   // Payment dialog
   const [paymentClient, setPaymentClient] = useState<Client | null>(null)
   const [paymentAmount, setPaymentAmount] = useState('')
-  const [paymentMethod, setPaymentMethod] = useState('efectivo')
+  const [paymentMethod, setPaymentMethod] = useState('')
   const [paymentReference, setPaymentReference] = useState('')
   const [showPaymentDialog, setShowPaymentDialog] = useState(false)
   const [paying, setPaying] = useState(false)
@@ -372,7 +372,7 @@ export function ClientsTable() {
     setPaymentClient(client)
     // Set default to first available non-credit method
     const firstNonCredit = paymentMethods.find(m => !m.isCredit)
-    setPaymentMethod(firstNonCredit?.code || 'divisas')
+    setPaymentMethod(firstNonCredit?.code || paymentMethods[0]?.code || '')
     setPaymentReference('')
     // Set amount in reference currency by default
     setPaymentAmount(client.pendingBalance.toFixed(2))
@@ -898,7 +898,10 @@ export function ClientsTable() {
                         </TableHeader>
                         <TableBody>
                           {sales.map((sale) => {
-                            const isCredit = sale.payments.some(p => p.method === 'credito') || sale.receivables.some(r => r.status === 'pendiente')
+                            const isCredit = sale.payments.some(p => {
+                              const pm = paymentMethods.find(m => m.code === p.method)
+                              return pm?.isCredit
+                            }) || sale.receivables.some(r => r.status === 'pendiente')
                             return (
                               <TableRow key={sale.id}>
                                 <TableCell className="text-xs font-mono whitespace-nowrap">
@@ -1065,7 +1068,7 @@ export function ClientsTable() {
                     </SelectItem>
                   ))}
                   {paymentMethods.length === 0 && (
-                    <SelectItem value="divisas">Divisas ({currencySymbol})</SelectItem>
+                    <SelectItem value="">Cargando métodos...</SelectItem>
                   )}
                 </SelectContent>
               </Select>
