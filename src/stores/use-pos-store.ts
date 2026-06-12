@@ -10,6 +10,7 @@ export interface CartItem {
   currencySymbol: string
   lineTotal: number
   maxStock: number
+  displayUnit?: string // e.g. 'kg', 'L', '' for unit
 }
 
 export interface PausedSale {

@@ -177,10 +177,11 @@ export function SettingsView() {
   const [userActive, setUserActive] = useState(true)
 
   // Categories state
-  const [categories, setCategories] = useState<Array<{ id: string; name: string; _count: { products: number } }>>([])
+  const [categories, setCategories] = useState<Array<{ id: string; name: string; unitType: string; _count: { products: number } }>>([])
   const [showCatDialog, setShowCatDialog] = useState(false)
-  const [editingCat, setEditingCat] = useState<{ id: string; name: string } | null>(null)
+  const [editingCat, setEditingCat] = useState<{ id: string; name: string; unitType: string } | null>(null)
   const [catName, setCatName] = useState('')
+  const [catUnitType, setCatUnitType] = useState('unit')
   const [catSaving, setCatSaving] = useState(false)
 
   // Delete confirmation dialogs
@@ -1287,6 +1288,7 @@ export function SettingsView() {
                 <Button data-tutorial="categories-new-btn" size="sm" className="bg-primary hover:bg-primary/90 text-white" onClick={() => {
                   setEditingCat(null)
                   setCatName('')
+                  setCatUnitType('unit')
                   setShowCatDialog(true)
                 }}>
                   <Plus className="mr-1 h-3.5 w-3.5" /> Nueva
@@ -1299,6 +1301,7 @@ export function SettingsView() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Nombre</TableHead>
+                      <TableHead>Tipo</TableHead>
                       <TableHead className="text-center">Productos</TableHead>
                       <TableHead className="text-right">Acciones</TableHead>
                     </TableRow>
@@ -1311,6 +1314,11 @@ export function SettingsView() {
                             <Tag className="h-4 w-4 text-muted-foreground" />
                             <span className="font-medium">{cat.name}</span>
                           </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="text-xs">
+                            {cat.unitType === 'weight' ? 'Peso (g/kg)' : cat.unitType === 'volume' ? 'Volumen (ml/L)' : 'Unidad'}
+                          </Badge>
                         </TableCell>
                         <TableCell className="text-center">
                           <Badge variant={cat._count.products > 0 ? 'default' : 'secondary'}>
@@ -1326,6 +1334,7 @@ export function SettingsView() {
                               onClick={() => {
                                 setEditingCat(cat)
                                 setCatName(cat.name)
+                                setCatUnitType(cat.unitType || 'unit')
                                 setShowCatDialog(true)
                               }}
                               title="Editar"
@@ -1436,8 +1445,25 @@ export function SettingsView() {
                   }
                 }}
               />
+            </div>
+            <div className="space-y-2">
+              <Label>Tipo de Venta</Label>
+              <Select value={catUnitType} onValueChange={setCatUnitType}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="unit">Por unidad</SelectItem>
+                  <SelectItem value="weight">Por peso (g / kg)</SelectItem>
+                  <SelectItem value="volume">Por volumen (ml / L)</SelectItem>
+                </SelectContent>
+              </Select>
               <p className="text-xs text-muted-foreground">
-                Las categorías se usan para organizar productos en el catálogo y filtrar en el punto de venta.
+                {catUnitType === 'unit'
+                  ? 'Los productos se venden por unidades enteras.'
+                  : catUnitType === 'weight'
+                  ? 'En el POS aparecerán botones rápidos de 100g, 250g, 500g, 1kg y campo libre. El precio se calcula proporcional al kilo.'
+                  : 'En el POS aparecerán botones rápidos de 100ml, 250ml, 500ml, 1L y campo libre. El precio se calcula proporcional al litro.'}
               </p>
             </div>
             <Button
@@ -1451,11 +1477,11 @@ export function SettingsView() {
                 setCatSaving(true)
                 try {
                   if (editingCat) {
-                    const updated = await api.put('/api/categories', { id: editingCat.id, name: catName.trim() })
+                    const updated = await api.put('/api/categories', { id: editingCat.id, name: catName.trim(), unitType: catUnitType })
                     toast.success('Categoría actualizada')
                     setCategories(prev => prev.map(c => c.id === editingCat.id ? updated : c))
                   } else {
-                    const created = await api.post('/api/categories', { name: catName.trim() })
+                    const created = await api.post('/api/categories', { name: catName.trim(), unitType: catUnitType })
                     toast.success('Categoría creada')
                     setCategories(prev => [...prev, created])
                   }

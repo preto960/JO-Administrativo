@@ -27,13 +27,14 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { name } = body
+    const { name, unitType } = body
 
     if (!name?.trim()) {
       return NextResponse.json({ error: 'El nombre de la categoría es obligatorio' }, { status: 400 })
     }
 
     const trimmedName = name.trim()
+    const validUnitType = unitType === 'weight' || unitType === 'volume' ? unitType : 'unit'
 
     // Check if category with same name already exists
     const existing = await db.category.findFirst({
@@ -45,7 +46,7 @@ export async function POST(request: NextRequest) {
     }
 
     const category = await db.category.create({
-      data: { name: trimmedName },
+      data: { name: trimmedName, unitType: validUnitType },
       include: { _count: { select: { products: true } } },
     })
 
@@ -53,7 +54,7 @@ export async function POST(request: NextRequest) {
       action: 'create',
       entity: 'category',
       entityId: category.id,
-      details: { summary: `Categoría creada: ${trimmedName}`, name: trimmedName },
+      details: { summary: `Categoría creada: ${trimmedName}`, name: trimmedName, unitType: validUnitType },
       request,
     })
 
@@ -67,13 +68,14 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json()
-    const { id, name } = body
+    const { id, name, unitType } = body
 
     if (!id || !name?.trim()) {
       return NextResponse.json({ error: 'ID y nombre son obligatorios' }, { status: 400 })
     }
 
     const trimmedName = name.trim()
+    const validUnitType = unitType === 'weight' || unitType === 'volume' ? unitType : 'unit'
 
     // Check if another category with same name exists
     const existing = await db.category.findFirst({
@@ -86,7 +88,7 @@ export async function PUT(request: NextRequest) {
 
     const category = await db.category.update({
       where: { id },
-      data: { name: trimmedName },
+      data: { name: trimmedName, unitType: validUnitType },
       include: { _count: { select: { products: true } } },
     })
 
@@ -94,7 +96,7 @@ export async function PUT(request: NextRequest) {
       action: 'update',
       entity: 'category',
       entityId: id,
-      details: { summary: `Categoría renombrada: ${trimmedName}`, name: trimmedName },
+      details: { summary: `Categoría actualizada: ${trimmedName}`, name: trimmedName, unitType: validUnitType },
       request,
     })
 

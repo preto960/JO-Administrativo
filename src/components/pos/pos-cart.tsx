@@ -137,7 +137,7 @@ export function PosCart({ onPayment }: PosCartProps) {
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium leading-tight truncate">{item.productName}</p>
                       <p className="text-xs text-muted-foreground">
-                        {currencySymbol}{item.unitPrice.toFixed(2)} c/u
+                        {currencySymbol}{item.unitPrice.toFixed(2)}{item.displayUnit ? ` /${item.displayUnit}` : ' c/u'}
                       </p>
                       {atMaxStock && (
                         <p className="text-[10px] text-amber-600 font-medium mt-0.5">

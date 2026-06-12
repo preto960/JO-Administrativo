@@ -123,8 +123,9 @@ model Product {
 }
 
 model Category {
-  id        String   @id @default(cuid())
-  name      String
+  id       String  @id @default(cuid())
+  name     String
+  unitType String  @default("unit") // unit | weight | volume
   createdAt DateTime @default(now())
 
   products Product[]

@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Drawer, DrawerTrigger, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription } from '@/components/ui/drawer'
-import { Search, ShoppingCart, AlertTriangle, ScanBarcode, X, Camera, Lock, Phone } from 'lucide-react'
+import { Search, ShoppingCart, AlertTriangle, ScanBarcode, X, Camera, Lock, Phone, Scale } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -30,13 +30,14 @@ interface ProductWithInventory {
   imageUrl: string
   active: boolean
   currency: { symbol: string }
-  category: { name: string } | null
+  category: { name: string; unitType: string } | null
   inventories: { stock: number; branchId: string; price: number; branch?: { id: string; name: string } }[]
 }
 
 interface Category {
   id: string
   name: string
+  unitType: string
 }
 
 export function PosTerminal() {
@@ -64,6 +65,18 @@ export function PosTerminal() {
   const [showSuggestions, setShowSuggestions] = useState(false)
   const isMobile = useIsMobile()
   const { sym: currencySymbol } = useCurrency()
+
+  // Unit quantity selector for weight/volume products
+  const [unitProduct, setUnitProduct] = useState<ProductWithInventory | null>(null)
+  const [unitAmount, setUnitAmount] = useState('')
+  const unitType = unitProduct?.category?.unitType || 'unit'
+  const unitLabel = unitType === 'weight' ? 'kg' : unitType === 'volume' ? 'L' : ''
+  const unitSmallLabel = unitType === 'weight' ? 'g' : unitType === 'volume' ? 'ml' : ''
+  const unitQuickOptions = unitType === 'weight'
+    ? [0.1, 0.25, 0.5, 0.75, 1]
+    : unitType === 'volume'
+    ? [0.1, 0.25, 0.5, 0.75, 1]
+    : []
   const isCashier = user?.role === 'cajero'
 
   // Check if there's an open cash register (blocks cashiers)
@@ -227,6 +240,13 @@ export function PosTerminal() {
   }, [handleKeyDown])
 
   const handleAddProduct = (product: ProductWithInventory) => {
+    const ut = product.category?.unitType
+    if (ut === 'weight' || ut === 'volume') {
+      setUnitProduct(product)
+      setUnitAmount('')
+      return
+    }
+
     const { stock, effectivePrice } = getBranchInfo(product)
 
     if (stock <= 0) {
@@ -744,6 +764,115 @@ export function PosTerminal() {
           </div>
         </div>
       )}
+
+      {/* Unit Quantity Selector for Weight/Volume products */}
+      <Dialog open={!!unitProduct} onOpenChange={(open) => { if (!open) setUnitProduct(null) }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Scale className="h-5 w-5 text-primary" />
+              {unitProduct?.name}
+            </DialogTitle>
+            <DialogDescription>
+              Selecciona la cantidad en {unitType === 'weight' ? 'gramos/kilogramos' : 'mililitros/litros'}
+            </DialogDescription>
+          </DialogHeader>
+          {unitProduct && (() => {
+            const { effectivePrice } = getBranchInfo(unitProduct)
+            const parsed = parseFloat(unitAmount) || 0
+            const calcPrice = parsed > 0 ? Math.round(parsed * effectivePrice * 100) / 100 : 0
+            const displayQuick = unitQuickOptions.map(v => ({
+              value: v,
+              label: v < 1 ? `${v * 1000}${unitSmallLabel}` : `${v}${unitLabel}`,
+            }))
+
+            return (
+              <div className="space-y-4">
+                {/* Quick buttons */}
+                <div className="grid grid-cols-5 gap-2">
+                  {displayQuick.map(opt => (
+                    <Button
+                      key={opt.value}
+                      variant={unitAmount === String(opt.value) ? 'default' : 'outline'}
+                      className="h-9 text-xs"
+                      onClick={() => setUnitAmount(String(opt.value))}
+                    >
+                      {opt.label}
+                    </Button>
+                  ))}
+                </div>
+
+                {/* Custom input */}
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    max="100"
+                    placeholder={unitType === 'weight' ? 'Ej: 0.250 para 250g' : 'Ej: 0.250 para 250ml'}
+                    value={unitAmount}
+                    onChange={(e) => setUnitAmount(e.target.value)}
+                    className="text-sm"
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        document.getElementById('unit-confirm-btn')?.click()
+                      }
+                    }}
+                  />
+                  <span className="text-sm text-muted-foreground whitespace-nowrap">
+                    {unitLabel}
+                  </span>
+                </div>
+
+                {parsed > 0 && (
+                  <div className="rounded-md bg-muted/50 p-3 text-center">
+                    <p className="text-xs text-muted-foreground">Subtotal</p>
+                    <p className="text-lg font-bold">{currencySymbol}{calcPrice.toFixed(2)}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {effectivePrice.toFixed(2)} {currencySymbol}/{unitLabel} x {parsed} {unitLabel}
+                    </p>
+                  </div>
+                )}
+
+                <Button
+                  id="unit-confirm-btn"
+                  className="w-full bg-primary hover:bg-primary/90 text-white"
+                  disabled={!unitAmount || parseFloat(unitAmount) <= 0}
+                  onClick={() => {
+                    const qty = parseFloat(unitAmount)
+                    if (!qty || qty <= 0 || !unitProduct) return
+
+                    const { stock, effectivePrice } = getBranchInfo(unitProduct)
+                    const currentQty = getCurrentQty(unitProduct.id)
+                    if (currentQty + qty > stock) {
+                      toast.error(`Stock insuficiente. Disponible: ${stock} ${unitLabel}`)
+                      return
+                    }
+
+                    addItem({
+                      productId: unitProduct.id,
+                      productName: unitProduct.name,
+                      quantity: qty,
+                      unitPrice: effectivePrice,
+                      unitCost: unitProduct.costAvg,
+                      currencySymbol: unitProduct.currency.symbol,
+                      maxStock: stock,
+                      displayUnit: unitLabel,
+                    })
+
+                    setUnitProduct(null)
+                    setUnitAmount('')
+                  }}
+                >
+                  Agregar al carrito
+                </Button>
+              </div>
+            )
+          })()}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
