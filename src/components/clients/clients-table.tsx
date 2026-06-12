@@ -882,21 +882,17 @@ export function ClientsTable() {
                                 <TableCell className="text-xs whitespace-nowrap pr-4">
                                   {new Date(sale.date).toLocaleDateString('es-VE')}
                                 </TableCell>
-                                <TableCell className="text-xs max-w-[180px] hidden md:table-cell">
-                                  <div className="flex items-center gap-1">
-                                    <div className="truncate flex-1">
-                                      {sale.lines.map(l => l.product.name).join(', ')}
-                                    </div>
-                                    <Button
-                                      size="sm"
-                                      variant="ghost"
-                                      className="h-6 w-6 p-0 shrink-0 text-muted-foreground hover:text-primary"
-                                      title="Ver productos"
-                                      onClick={() => setDetailSale(sale)}
-                                    >
-                                      <Eye className="h-3 w-3" />
-                                    </Button>
-                                  </div>
+                                <TableCell className="hidden md:table-cell">
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-6 px-2 text-xs text-muted-foreground hover:text-primary gap-1"
+                                    title="Ver productos"
+                                    onClick={() => setDetailSale(sale)}
+                                  >
+                                    <Eye className="h-3 w-3" />
+                                    {sale.lines.length}
+                                  </Button>
                                 </TableCell>
                                 <TableCell className="text-sm font-medium text-right whitespace-nowrap">
                                   {fmt(sale.total)}
