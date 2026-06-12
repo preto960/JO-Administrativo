@@ -133,3 +133,39 @@ Stage Summary:
 - Clicking the notification navigates to the Clients view and auto-opens the client's sales/dispatch history dialog
 - Non-client notifications still open the detail modal as before
 - Files modified: prisma/schema.prisma, src/app/api/notifications/check-deadlines/route.ts, src/app/api/notifications/route.ts, src/stores/use-app-store.ts, src/components/clients/clients-table.tsx, src/components/layout/notification-bell.tsx, src/hooks/use-notifications.ts
+---
+Task ID: 1
+Agent: Main Agent
+Task: Fix product currency dropdown - show only USD and EUR when multi-currency ON
+
+Work Log:
+- Added `refCode` to `useCurrency()` destructure in products-table
+- Changed currency dropdown filter from `currencies.filter(c => !c.isBase)` to `currencies.filter(c => !c.isBase && (c.code === 'USD' || c.code === 'EUR'))`
+- Updated `openCreate` to default to the reference currency (matching settings) instead of first non-base
+- When multi-currency is OFF, the dropdown is hidden (already was)
+
+Stage Summary:
+- Product form currency dropdown now only shows USD and EUR (not COP, BRL, etc.)
+- Default selection matches the "Moneda para Precios" setting (USD or EUR)
+- Files modified: src/components/products/products-table.tsx
+
+---
+Task ID: 2
+Agent: Main Agent
+Task: Fix POS credit payment client selector UX
+
+Work Log:
+- Rewrote the client selector in pos-payment-modal.tsx
+- Removed the "selected badge" pattern that hid the list after selecting a client
+- Client list now ALWAYS shows with search input above it (max-h-48, scrollable, 30 items)
+- Selected client is highlighted with primary color background + ✓ checkmark
+- Clicking a different client changes selection (only one selected at a time)
+- "Nuevo cliente" button still works, shows inline form
+- After creating a new client, returns to full list view with new client pre-selected and scrolled into view
+- Removed unused `selectedClientName` useMemo
+
+Stage Summary:
+- POS credit now shows full client list immediately when "Crédito" is selected
+- Client list is always visible with search, highlight selection, and single-select behavior
+- After creating a new client inline, the list reappears with the new client selected and visible
+- Files modified: src/components/pos/pos-payment-modal.tsx

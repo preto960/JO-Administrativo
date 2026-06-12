@@ -111,12 +111,6 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
     )
   }, [clients, clientSearch])
 
-  // Selected client name for display
-  const selectedClientName = useMemo(() => {
-    if (!clientId) return null
-    return clients.find(c => c.id === clientId)?.name || null
-  }, [clientId, clients])
-
   // When method changes, set default amount in the correct currency
   useEffect(() => {
     if (isLocalMethod) {
@@ -159,6 +153,11 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
       setNewClientName('')
       setNewClientPhone('')
       setNewClientEmail('')
+      // Scroll the new client into view in the list
+      setTimeout(() => {
+        const el = document.querySelector(`[data-client-id="${newClient.id}"]`)
+        el?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+      }, 100)
       toast.success(`Cliente "${newClient.name}" creado`)
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Error al crear cliente'
@@ -330,70 +329,49 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
 
                 {!showNewClient ? (
                   <>
-                    {/* Existing client selector */}
-                    {selectedClientName && clientId && (
-                      <div className="flex items-center gap-2 rounded-md border border-primary/30 bg-primary/5 px-3 py-2">
-                        <User className="h-4 w-4 text-primary shrink-0" />
-                        <span className="text-sm font-medium flex-1 truncate">{selectedClientName}</span>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
-                          onClick={() => setClientId(null)}
-                        >
-                          ✕
-                        </Button>
-                      </div>
-                    )}
-
+                    <Input
+                      placeholder="Buscar por nombre, teléfono o email..."
+                      value={clientSearch}
+                      onChange={(e) => setClientSearch(e.target.value)}
+                      className="text-sm"
+                    />
+                    <div className="max-h-48 overflow-y-auto rounded-md border">
+                      {filteredClients.length > 0 ? (
+                        filteredClients.slice(0, 30).map((client) => (
+                          <button
+                            key={client.id}
+                            type="button"
+                            data-client-id={client.id}
+                            className={`w-full text-left px-3 py-2.5 text-sm transition-colors border-b last:border-b-0 flex items-center gap-2 ${
+                              clientId === client.id
+                                ? 'bg-primary/10 text-primary font-medium'
+                                : 'hover:bg-muted/50'
+                            }`}
+                            onClick={() => {
+                              setClientId(client.id)
+                              setClientSearch('')
+                            }}
+                          >
+                            <User className={`h-3.5 w-3.5 shrink-0 ${clientId === client.id ? 'text-primary' : 'text-muted-foreground'}`} />
+                            <span className="truncate flex-1">{client.name}</span>
+                            {client.phone && (
+                              <span className="text-xs text-muted-foreground shrink-0">{client.phone}</span>
+                            )}
+                            {clientId === client.id && (
+                              <span className="text-xs text-primary font-medium shrink-0">✓</span>
+                            )}
+                          </button>
+                        ))
+                      ) : (
+                        <p className="text-xs text-muted-foreground text-center py-3">
+                          No se encontraron clientes
+                        </p>
+                      )}
+                    </div>
                     {!clientId && (
-                      <>
-                        <Input
-                          placeholder="Buscar por nombre, teléfono o email..."
-                          value={clientSearch}
-                          onChange={(e) => setClientSearch(e.target.value)}
-                          className="text-sm"
-                        />
-                        {filteredClients.length > 0 && (
-                          <div className="max-h-40 overflow-y-auto rounded-md border">
-                            {filteredClients.slice(0, 20).map((client) => (
-                              <button
-                                key={client.id}
-                                type="button"
-                                className="w-full text-left px-3 py-2 text-sm hover:bg-muted/50 transition-colors border-b last:border-b-0 flex items-center gap-2"
-                                onClick={() => {
-                                  setClientId(client.id)
-                                  setClientSearch('')
-                                }}
-                              >
-                                <User className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                                <span className="truncate font-medium">{client.name}</span>
-                                {client.phone && (
-                                  <span className="text-xs text-muted-foreground ml-auto shrink-0">{client.phone}</span>
-                                )}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                        {clientSearch.trim() && filteredClients.length === 0 && (
-                          <p className="text-xs text-muted-foreground text-center py-2">
-                            No se encontraron clientes.{' '}
-                            <button
-                              type="button"
-                              className="text-primary underline"
-                              onClick={() => setShowNewClient(true)}
-                            >
-                              Crear nuevo
-                            </button>
-                          </p>
-                        )}
-                        {!clientSearch.trim() && (
-                          <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
-                            <AlertTriangle className="h-3 w-3 shrink-0" /> Seleccione un cliente para vender a crédito
-                          </p>
-                        )}
-                      </>
+                      <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                        <AlertTriangle className="h-3 w-3 shrink-0" /> Seleccione un cliente para vender a crédito
+                      </p>
                     )}
                   </>
                 ) : (

@@ -101,7 +101,7 @@ function fmtStock(n: number): string {
 export function ProductsTable() {
   const { permissions } = useAuth()
   const canManage = permissions.canManageProducts
-  const { multiEnabled, sym: currencySym, fmt: fmtCurrency } = useCurrency()
+  const { multiEnabled, refCode, sym: currencySym, fmt: fmtCurrency } = useCurrency()
   const selectedBranchId = useAppStore((s) => s.selectedBranchId)
   const branches = useAppStore((s) => s.branches)
   const [products, setProducts] = useState<Product[]>([])
@@ -222,11 +222,11 @@ export function ProductsTable() {
 
   const openCreate = useCallback(() => {
     resetForm()
-    // When multi-currency is ON, default to the first non-base currency (USD/EUR)
-    const refCurrency = currencies.find((c) => !c.isBase)
-    setFormCurrency(refCurrency?.id || currencies[0]?.id || '')
+    // Default to the reference currency (USD or EUR from settings)
+    const refCurr = currencies.find((c) => c.code === refCode && !c.isBase)
+    setFormCurrency(refCurr?.id || currencies.find(c => !c.isBase)?.id || '')
     setDialogOpen(true)
-  }, [currencies, resetForm])
+  }, [currencies, refCode, resetForm])
 
   const openEdit = useCallback(
     (product: Product) => {
@@ -893,7 +893,7 @@ export function ProductsTable() {
                     <SelectValue placeholder="Seleccionar" />
                   </SelectTrigger>
                   <SelectContent>
-                    {currencies.filter(c => !c.isBase).map((c) => (
+                    {currencies.filter(c => !c.isBase && (c.code === 'USD' || c.code === 'EUR')).map((c) => (
                       <SelectItem key={c.id} value={c.id}>
                         {c.code} ({c.symbol})
                       </SelectItem>
