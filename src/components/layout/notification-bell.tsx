@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Bell, Check, CheckCheck, Trash2, Info, AlertTriangle, CheckCircle2, XCircle, X } from 'lucide-react'
+import { Bell, Check, CheckCheck, Trash2, Info, AlertTriangle, CheckCircle2, XCircle, X, ExternalLink } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -21,6 +21,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/use-auth'
 import { useNotifications } from '@/hooks/use-notifications'
+import { useAppStore } from '@/stores/use-app-store'
 import { toast } from 'sonner'
 
 const typeConfig: Record<string, { dot: string; badge: string; icon: typeof Info; label: string }> = {
@@ -59,11 +60,14 @@ interface NotificationItem {
   type: 'info' | 'warning' | 'success' | 'error'
   read?: boolean
   createdAt?: string
+  clientId?: string | null
+  clientName?: string | null
 }
 
 export function NotificationBell() {
   const { user } = useAuth()
   const { notifications, unreadCount, markAsRead, markAllAsRead, clearAll } = useNotifications(user?.id)
+  const navigateToClient = useAppStore((s) => s.navigateToClient)
   const [open, setOpen] = useState(false)
   const [selected, setSelected] = useState<NotificationItem | null>(null)
 
@@ -92,10 +96,58 @@ export function NotificationBell() {
     setOpen(false)
   }
 
+  const handleGoToClient = (notification: NotificationItem) => {
+    if (!notification.clientId) return
+    if (!notification.read) markAsRead(notification.id!)
+    setSelected(null)
+    navigateToClient(notification.clientId)
+  }
+
   const handleClearAll = () => {
     if (notifications.length === 0) return
     clearAll()
     toast.success('Notificaciones limpiadas')
+  }
+
+  // Render message with clickable client name for client-related notifications
+  const renderMessage = (notification: NotificationItem, inModal = false) => {
+    if (!notification.clientId || !notification.clientName) {
+      return <span>{notification.message}</span>
+    }
+
+    // Extract the part before and after the client name in the message
+    // Message format: "Cuenta por cobrar a {name} por {amount} ..."
+    const nameEscaped = notification.clientName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const regex = new RegExp(`(a\\s+)(${nameEscaped})(\\s+por)`, 'i')
+    const match = notification.message.match(regex)
+
+    if (!match) {
+      return <span>{notification.message}</span>
+    }
+
+    const before = notification.message.slice(0, match.index! + match[1].length)
+    const after = notification.message.slice(match.index! + match[1].length + match[2].length)
+
+    return (
+      <span>
+        {before}
+        <button
+          type="button"
+          className={cn(
+            'font-semibold text-primary hover:underline',
+            inModal && 'inline-flex items-center gap-1'
+          )}
+          onClick={(e) => {
+            e.stopPropagation()
+            handleGoToClient(notification)
+          }}
+        >
+          {notification.clientName}
+          {inModal && <ExternalLink className="h-3 w-3" />}
+        </button>
+        {after}
+      </span>
+    )
   }
 
   return (
@@ -162,7 +214,15 @@ export function NotificationBell() {
                       'flex items-start gap-2.5 p-3 cursor-pointer',
                       !notification.read && 'bg-muted/50'
                     )}
-                    onClick={() => handleOpenDetail(notification)}
+                    onClick={() => {
+                      if (notification.clientId) {
+                        if (!notification.read) markAsRead(notification.id!)
+                        navigateToClient(notification.clientId)
+                        setOpen(false)
+                      } else {
+                        handleOpenDetail(notification)
+                      }
+                    }}
                   >
                     <div className="mt-0.5 shrink-0">
                       <span className={cn('inline-block h-2 w-2 rounded-full', config.dot)} />
@@ -174,9 +234,9 @@ export function NotificationBell() {
                           <span className="shrink-0 h-1.5 w-1.5 rounded-full bg-primary" />
                         )}
                       </div>
-                      <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">
-                        {notification.message}
-                      </p>
+                      <div className="text-xs text-muted-foreground line-clamp-1 mt-0.5">
+                        {renderMessage(notification)}
+                      </div>
                     </div>
                     <span className="text-[10px] text-muted-foreground shrink-0 whitespace-nowrap mt-0.5">
                       {timeAgo(notification.createdAt!)}
@@ -207,9 +267,19 @@ export function NotificationBell() {
             </div>
           </DialogHeader>
           <div className="space-y-3">
-            <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap">
-              {selected?.message}
-            </p>
+            <div className="text-sm text-muted-foreground leading-relaxed">
+              {selected ? renderMessage(selected, true) : null}
+            </div>
+            {selected?.clientId && (
+              <Button
+                size="sm"
+                className="w-full"
+                onClick={() => handleGoToClient(selected)}
+              >
+                <ExternalLink className="mr-2 h-4 w-4" />
+                Ver cuenta del cliente
+              </Button>
+            )}
             <div className="flex items-center justify-between pt-2 border-t">
               {selected && (() => {
                 const config = typeConfig[selected.type] || typeConfig.info

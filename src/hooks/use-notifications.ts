@@ -11,6 +11,8 @@ interface NotificationMessage {
   type: 'info' | 'warning' | 'success' | 'error'
   read?: boolean
   createdAt?: string
+  clientId?: string | null
+  clientName?: string | null
 }
 
 type NotificationHandler = (notification: NotificationMessage) => void

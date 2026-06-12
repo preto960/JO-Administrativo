@@ -176,6 +176,19 @@ export function ClientsTable() {
 
   useEffect(() => { fetchClients() }, [showInactive])
 
+  // React to pendingClientId from navigation (e.g. from notification click)
+  const pendingClientId = useAppStore((s) => s.pendingClientId)
+  const clearPendingClient = useAppStore((s) => s.clearPendingClient)
+
+  useEffect(() => {
+    if (!pendingClientId || clients.length === 0) return
+    const client = clients.find(c => c.id === pendingClientId)
+    if (client) {
+      openHistory(client)
+      clearPendingClient()
+    }
+  }, [pendingClientId, clients.length])
+
   // Fetch open cash register
   useEffect(() => {
     api.get<Array<{ id: string; status: string }>>('/api/cash-register')

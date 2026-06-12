@@ -20,6 +20,8 @@ export async function GET(request: NextRequest) {
         type: true,
         read: true,
         createdAt: true,
+        clientId: true,
+        clientName: true,
       },
     })
     return NextResponse.json(notifications)

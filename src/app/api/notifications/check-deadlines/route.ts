@@ -92,9 +92,9 @@ export async function POST() {
         const existingNotif = await db.notification.findFirst({
           where: {
             userId: user.id,
-            type: 'warning',
+            clientId: receivable.clientId,
+            type: daysLeft <= 0 ? 'error' : 'warning',
             createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
-            message: { contains: receivable.id },
           },
         })
 
@@ -105,8 +105,10 @@ export async function POST() {
               title: daysLeft <= 0
                 ? `Cuenta de cliente vencida`
                 : `Cuenta de cliente vence en ${daysLeft} día${daysLeft !== 1 ? 's' : ''}`,
-              message: `Cuenta por cobrar a ${receivable.client?.name || 'Desconocido'} por ${formatCurrency(receivable.pendingBalance)} ${daysLeft <= 0 ? 'vencida' : `vence el ${new Date(receivable.dueDate!).toLocaleDateString('es-VE')}`}. [ID: ${receivable.id}]`,
+              message: `Cuenta por cobrar a ${receivable.client?.name || 'Desconocido'} por ${formatCurrency(receivable.pendingBalance)} ${daysLeft <= 0 ? 'vencida' : `vence el ${new Date(receivable.dueDate!).toLocaleDateString('es-VE')}`}.`,
               type: daysLeft <= 0 ? 'error' : 'warning',
+              clientId: receivable.clientId,
+              clientName: receivable.client?.name || null,
             },
           })
           createdCount++

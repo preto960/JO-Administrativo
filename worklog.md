@@ -112,3 +112,24 @@ Stage Summary:
 - POS/Dashboard amounts correctly show reference currency symbol ($ or €)
 - New Sale and CashRegister records include currencyId for future multi-currency queries
 - Pushed to main: commit 7be1d6e
+---
+Task ID: 3
+Agent: Main Agent
+Task: Fix client account notification - show clickable client name instead of ID, navigate to client detail
+
+Work Log:
+- Added `clientId` and `clientName` optional fields to Notification Prisma model and Client model (reverse relation)
+- Created Notification table in SQLite DB with the new columns via sql.js (table didn't exist before)
+- Updated `check-deadlines` route: stores `clientId`/`clientName` in notification, removed raw `[ID: ...]` from message text, changed dedup logic to use `clientId` + `type` instead of message text search
+- Added `pendingClientId`, `navigateToClient()`, and `clearPendingClient()` to Zustand store (`use-app-store.ts`)
+- Updated notifications GET API to include `clientId` and `clientName` in select
+- Updated `ClientsTable` component: subscribes to `pendingClientId`, auto-opens history dialog when a client ID is pending
+- Updated `NotificationBell` component: added `renderMessage()` that makes client name clickable with primary color + underline, clicking a client notification in dropdown navigates directly to client view, detail modal shows "Ver cuenta del cliente" button
+- Updated `use-notifications` hook interface to include `clientId`/`clientName`
+- Build passes successfully
+
+Stage Summary:
+- Client notifications now show the client NAME (clickable, primary-colored) instead of a raw CUID
+- Clicking the notification navigates to the Clients view and auto-opens the client's sales/dispatch history dialog
+- Non-client notifications still open the detail modal as before
+- Files modified: prisma/schema.prisma, src/app/api/notifications/check-deadlines/route.ts, src/app/api/notifications/route.ts, src/stores/use-app-store.ts, src/components/clients/clients-table.tsx, src/components/layout/notification-bell.tsx, src/hooks/use-notifications.ts

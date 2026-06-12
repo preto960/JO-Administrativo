@@ -54,11 +54,14 @@ interface AppState {
   selectedBranchId: string | null
   branches: BranchItem[]
   permissionsVersion: number
+  pendingClientId: string | null
   setActiveView: (view: AppView) => void
   setSettings: (settings: AppSettings) => void
   setSelectedBranchId: (id: string | null) => void
   setBranches: (branches: BranchItem[]) => void
   bumpPermissions: () => void
+  navigateToClient: (clientId: string) => void
+  clearPendingClient: () => void
 }
 
 const defaultSettings: AppSettings = {
@@ -93,6 +96,7 @@ export const useAppStore = create<AppState>()(
       selectedBranchId: null,
       branches: [],
       permissionsVersion: 0,
+      pendingClientId: null,
       setActiveView: (view) => {
         if (VALID_VIEWS.includes(view)) {
           set({ activeView: view })
@@ -102,6 +106,8 @@ export const useAppStore = create<AppState>()(
       setSelectedBranchId: (id) => set({ selectedBranchId: id }),
       setBranches: (branches) => set({ branches }),
       bumpPermissions: () => set((s) => ({ permissionsVersion: s.permissionsVersion + 1 })),
+      navigateToClient: (clientId) => set({ activeView: 'clients', pendingClientId: clientId }),
+      clearPendingClient: () => set({ pendingClientId: null }),
     }),
     {
       name: 'jo-admin-store',
