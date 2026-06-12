@@ -868,7 +868,7 @@ export function ClientsTable() {
                             <TableHead className="text-right">Total</TableHead>
                             <TableHead className="hidden lg:table-cell">Método</TableHead>
                             <TableHead>Estado</TableHead>
-                            <TableHead className="w-16"></TableHead>
+                            <TableHead className="w-10"></TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -882,9 +882,20 @@ export function ClientsTable() {
                                 <TableCell className="text-xs whitespace-nowrap pr-4">
                                   {new Date(sale.date).toLocaleDateString('es-VE')}
                                 </TableCell>
-                                <TableCell className="text-xs max-w-[150px] hidden md:table-cell">
-                                  <div className="truncate">
-                                    {sale.lines.map(l => l.product.name).join(', ')}
+                                <TableCell className="text-xs max-w-[180px] hidden md:table-cell">
+                                  <div className="flex items-center gap-1">
+                                    <div className="truncate flex-1">
+                                      {sale.lines.map(l => l.product.name).join(', ')}
+                                    </div>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-6 w-6 p-0 shrink-0 text-muted-foreground hover:text-primary"
+                                      title="Ver productos"
+                                      onClick={() => setDetailSale(sale)}
+                                    >
+                                      <Eye className="h-3 w-3" />
+                                    </Button>
                                   </div>
                                 </TableCell>
                                 <TableCell className="text-sm font-medium text-right whitespace-nowrap">
@@ -907,40 +918,29 @@ export function ClientsTable() {
                                   )}
                                 </TableCell>
                                 <TableCell>
-                                  <div className="flex items-center gap-1">
-                                    <Button
-                                      size="sm"
-                                      variant="ghost"
-                                      className="h-7 w-7 p-0"
-                                      title="Ver productos"
-                                      onClick={() => setDetailSale(sale)}
-                                    >
-                                      <Eye className="h-3.5 w-3.5" />
-                                    </Button>
-                                    <Button
-                                      size="sm"
-                                      variant="ghost"
-                                      className="h-7 w-7 p-0"
-                                      title="Imprimir Factura"
-                                      onClick={async () => {
-                                        try {
-                                          const res = await fetch(`/api/sales/${sale.id}/invoice`)
-                                          if (!res.ok) throw new Error()
-                                          const blob = await res.blob()
-                                          const url = URL.createObjectURL(blob)
-                                          const a = document.createElement('a')
-                                          a.href = url
-                                          a.download = `factura_${sale.id.slice(0, 8)}.pdf`
-                                          a.click()
-                                          URL.revokeObjectURL(url)
-                                        } catch {
-                                          toast.error('Error al generar factura')
-                                        }
-                                      }}
-                                    >
-                                      <Printer className="h-3.5 w-3.5" />
-                                    </Button>
-                                  </div>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-7 w-7 p-0"
+                                    title="Imprimir Factura"
+                                    onClick={async () => {
+                                      try {
+                                        const res = await fetch(`/api/sales/${sale.id}/invoice`)
+                                        if (!res.ok) throw new Error()
+                                        const blob = await res.blob()
+                                        const url = URL.createObjectURL(blob)
+                                        const a = document.createElement('a')
+                                        a.href = url
+                                        a.download = `factura_${sale.id.slice(0, 8)}.pdf`
+                                        a.click()
+                                        URL.revokeObjectURL(url)
+                                      } catch {
+                                        toast.error('Error al generar factura')
+                                      }
+                                    }}
+                                  >
+                                    <Printer className="h-3.5 w-3.5" />
+                                  </Button>
                                 </TableCell>
                               </TableRow>
                             )
