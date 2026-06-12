@@ -432,6 +432,7 @@ model Settings {
   secondaryColor        String   @default("slate")
   theme                 String   @default("light")
   rolePermissions       Json     @default("{}")
+  multiCurrencyEnabled  Boolean  @default(false)
   country               String   @default("VE")
   tutorialTexts         Json     @default("{}")
   createdAt             DateTime @default(now())

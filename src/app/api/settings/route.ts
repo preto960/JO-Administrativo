@@ -2,6 +2,7 @@ import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
 import { logAction } from '@/lib/audit-log'
 import { requireAuth } from '@/lib/require-auth'
+import { getCurrencyForCountry } from '@/lib/country-currency'
 
 export async function GET() {
   try {
@@ -33,7 +34,7 @@ export async function GET() {
     }
     return NextResponse.json(settings)
   } catch (error) {
-    return NextResponse.json({ error: 'Error al obtener configuración' }, { status: 500 })
+    return NextResponse.json({ error: 'Error al obtener configuraci\u00F3n' }, { status: 500 })
   }
 }
 
@@ -43,6 +44,55 @@ export async function PUT(request: Request) {
 
   try {
     const body = await request.json()
+
+    // If country is changing, auto-create/update the local currency
+    if (body.country) {
+      const localCurrency = getCurrencyForCountry(body.country)
+      if (localCurrency) {
+        // Upsert the local currency
+        const currency = await db.currency.upsert({
+          where: { code: localCurrency.code },
+          create: {
+            code: localCurrency.code,
+            name: localCurrency.name,
+            symbol: localCurrency.symbol,
+            isBase: true,
+          },
+          update: {
+            name: localCurrency.name,
+            symbol: localCurrency.symbol,
+            isBase: true,
+          },
+        })
+
+        // Set all other currencies as non-base
+        await db.currency.updateMany({
+          where: { id: { not: currency.id } },
+          data: { isBase: false },
+        })
+
+        // Update baseCurrencyId to point to this currency
+        body.baseCurrencyId = currency.id
+
+        // When multi-currency is disabled, also set referenceCurrency to local
+        const currentSettings = await db.settings.findFirst()
+        if (!currentSettings?.multiCurrencyEnabled) {
+          body.referenceCurrency = localCurrency.code
+        }
+      }
+    }
+
+    // If multi-currency is being disabled, reset reference currency to local
+    if (body.multiCurrencyEnabled === false) {
+      const settings = await db.settings.findFirst()
+      if (settings?.country) {
+        const localCurrency = getCurrencyForCountry(settings.country)
+        if (localCurrency) {
+          body.referenceCurrency = localCurrency.code
+          body.exchangeRate = 1
+        }
+      }
+    }
 
     let settings = await db.settings.findFirst()
     if (!settings) {
@@ -62,12 +112,12 @@ export async function PUT(request: Request) {
       action: 'update',
       entity: 'settings',
       entityId: settings.id,
-      details: { summary: `Configuración actualizada: ${changedFields.join(', ')}`, fields: changedFields },
+      details: { summary: `Configuraci\u00F3n actualizada: ${changedFields.join(', ')}`, fields: changedFields },
       request: request as any,
     })
 
     return NextResponse.json(settings)
   } catch (error) {
-    return NextResponse.json({ error: 'Error al guardar configuración' }, { status: 500 })
+    return NextResponse.json({ error: 'Error al guardar configuraci\u00F3n' }, { status: 500 })
   }
 }

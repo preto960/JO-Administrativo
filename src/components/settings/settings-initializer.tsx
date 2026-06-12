@@ -229,6 +229,9 @@ export function SettingsInitializer() {
 
     // ── Scheduled auto-fetch for exchange rates ──
     function tick() {
+      const settings = useAppStore.getState().settings
+      if (!settings?.multiCurrencyEnabled) return
+
       const key = shouldAutoFetch()
       if (key) {
         // Mark this slot as fulfilled

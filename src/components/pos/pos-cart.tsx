@@ -50,7 +50,7 @@ export function PosCart({ onPayment }: PosCartProps) {
   const ivaAmountBs = ivaEnabled ? subtotalBs * (ivaRate / 100) : 0
   const totalBs = subtotalBs + ivaAmountBs
   const totalWithIvaUsd = exchangeRate > 0 ? totalBs / exchangeRate : total
-  const { sym: currencySymbol, baseSym, fmt, fmtBase } = useCurrency()
+  const { sym: currencySymbol, baseSym, fmt, fmtBase, multiEnabled } = useCurrency()
 
   const [showPaused, setShowPaused] = useState(false)
   const [qtyEdit, setQtyEdit] = useState<Record<string, string>>({})
@@ -193,7 +193,7 @@ export function PosCart({ onPayment }: PosCartProps) {
                       <span className="text-sm font-bold text-primary dark:text-primary">
                         {currencySymbol}{item.lineTotal.toFixed(2)}
                       </span>
-                      {exchangeRate > 0 && (
+                      {multiEnabled && (
                         <p className="text-[10px] text-muted-foreground">
                           {baseSym} {itemTotalBs.toFixed(2)}
                         </p>
@@ -210,7 +210,7 @@ export function PosCart({ onPayment }: PosCartProps) {
       {/* Footer */}
       <div className="border-t p-3 space-y-2">
         <div className="space-y-1">
-          {exchangeRate > 0 && (
+          {multiEnabled && (
             <>
               <div className="flex items-center justify-between">
                 <span className="text-xs text-muted-foreground">Subtotal ({referenceCurrency})</span>
@@ -236,7 +236,7 @@ export function PosCart({ onPayment }: PosCartProps) {
               )}
             </>
           )}
-          {exchangeRate > 0 && (
+          {multiEnabled && (
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">
                 Total {ivaEnabled ? '(con I.V.A.)' : `(${baseSym})`}
@@ -265,7 +265,7 @@ export function PosCart({ onPayment }: PosCartProps) {
             onClick={onPayment}
             data-tutorial="pos-pay"
           >
-            Cobrar {exchangeRate > 0 ? `${baseSym} ${totalBs.toFixed(2)}` : `${currencySymbol}${total.toFixed(2)}`}
+            Cobrar {multiEnabled ? `${baseSym} ${totalBs.toFixed(2)}` : `${fmt(total)}`}
           </Button>
         </div>
       </div>

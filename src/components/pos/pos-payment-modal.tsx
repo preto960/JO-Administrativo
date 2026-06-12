@@ -61,7 +61,7 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
   const ivaAmount = ivaEnabled ? Math.round(subtotal * (ivaRate / 100) * 100) / 100 : 0
   const total = Math.round((subtotal + ivaAmount) * 100) / 100
   const totalBs = total * exchangeRate
-  const { sym: currencySymbol, baseSym, refCode, fmt, fmtBase } = useCurrency()
+  const { sym: currencySymbol, baseSym, refCode, fmt, fmtBase, multiEnabled } = useCurrency()
   const selectedMethod = paymentMethods.find(pm => pm.value === method)
 
   // Resolve currencyId: prefer baseCurrencyId from settings, fallback to isBase currency or first available
@@ -72,7 +72,7 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
   const hasNoCurrency = !resolvedCurrencyId && currencies.length > 0
 
   // Determine if current method uses local currency (Bs.)
-  const isLocalMethod = selectedMethod?.isLocalCurrency ?? false
+  const isLocalMethod = multiEnabled ? (selectedMethod?.isLocalCurrency ?? false) : false
 
   // When method changes, set default amount in the correct currency
   useEffect(() => {
@@ -193,7 +193,7 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
           <DialogTitle>Cobrar</DialogTitle>
           <DialogDescription>
             Total: {currencySymbol}{total.toFixed(2)}
-            {exchangeRate > 0 && <span className="ml-2">· {baseSym} {totalBs.toFixed(2)}</span>}
+            {multiEnabled && <span className="ml-2">· {baseSym} {totalBs.toFixed(2)}</span>}
           </DialogDescription>
         </DialogHeader>
 
@@ -256,7 +256,7 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
               />
-              {isLocalMethod && exchangeRate > 0 && (
+              {multiEnabled && isLocalMethod && (
                 <p className="text-xs text-muted-foreground">
                   Equivale a {currencySymbol}{amountInRefCurrency.toFixed(2)} (Tasa: {exchangeRate.toFixed(2)} {baseSym}/{refCode})
                 </p>

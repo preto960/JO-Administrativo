@@ -46,6 +46,7 @@ import { toast } from 'sonner'
 import { ProductImportDialog } from './product-import-dialog'
 import { BarcodeLabelSelector } from './barcode-label-selector'
 import { useAuth } from '@/hooks/use-auth'
+import { useCurrency } from '@/hooks/use-currency'
 
 // ── Interfaces ──────────────────────────────────────────────────────────────
 
@@ -100,6 +101,7 @@ function fmtStock(n: number): string {
 export function ProductsTable() {
   const { permissions } = useAuth()
   const canManage = permissions.canManageProducts
+  const { multiEnabled } = useCurrency()
   const selectedBranchId = useAppStore((s) => s.selectedBranchId)
   const branches = useAppStore((s) => s.branches)
   const [products, setProducts] = useState<Product[]>([])
@@ -140,20 +142,25 @@ export function ProductsTable() {
     try {
       const activeParam = showInactive ? 'all' : 'true'
       const branchParam = selectedBranchId ? `&branchId=${selectedBranchId}` : ''
-      const [prods, cats, currs] = await Promise.all([
+      const requests: Promise<unknown>[] = [
         api.get<{ products: Product[] }>(`/api/products?active=${activeParam}${branchParam}`),
         api.get<Category[]>('/api/categories'),
-        api.get<Currency[]>('/api/currencies'),
-      ])
-      setProducts(prods.products)
-      setCategories(cats)
-      setCurrencies(currs)
+      ]
+      if (multiEnabled) {
+        requests.push(api.get<Currency[]>('/api/currencies'))
+      }
+      const results = await Promise.all(requests)
+      setProducts((results[0] as { products: Product[] }).products)
+      setCategories(results[1] as Category[])
+      if (multiEnabled) {
+        setCurrencies(results[2] as Currency[])
+      }
     } catch {
       toast.error('Error al cargar datos')
     } finally {
       setLoading(false)
     }
-  }, [showInactive, selectedBranchId])
+  }, [showInactive, selectedBranchId, multiEnabled])
 
   useEffect(() => {
     fetchData()
@@ -273,7 +280,7 @@ export function ProductsTable() {
         sku: formSku.trim() || null,
         price,
         costAvg: parseFloat(formCost) || 0,
-        currencyId: formCurrency,
+        currencyId: multiEnabled ? formCurrency : undefined,
         categoryId: formCategory && formCategory !== '__none__' ? formCategory : null,
         type: 'simple',
         imageUrl: formImageUrl || undefined,
@@ -879,21 +886,23 @@ export function ProductsTable() {
                 />
               </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="pcurrency">Moneda</Label>
-              <Select value={formCurrency} onValueChange={setFormCurrency}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar" />
-                </SelectTrigger>
-                <SelectContent>
-                  {currencies.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.code} ({c.symbol})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {multiEnabled && (
+              <div className="space-y-2">
+                <Label htmlFor="pcurrency">Moneda</Label>
+                <Select value={formCurrency} onValueChange={setFormCurrency}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {currencies.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.code} ({c.symbol})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <Button
               className="w-full bg-primary hover:bg-primary/90 text-white"
               onClick={handleSave}

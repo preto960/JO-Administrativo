@@ -28,6 +28,7 @@ export interface AppSettings {
   notificationsEnabled: boolean
   ivaEnabled: boolean
   ivaRate: number
+  multiCurrencyEnabled: boolean
   primaryColor: string
   secondaryColor: string
   theme: string
@@ -77,6 +78,7 @@ const defaultSettings: AppSettings = {
   notificationsEnabled: true,
   ivaEnabled: false,
   ivaRate: 16.00,
+  multiCurrencyEnabled: false,
   primaryColor: 'blue',
   secondaryColor: 'slate',
   theme: 'light',

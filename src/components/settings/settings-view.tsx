@@ -602,6 +602,46 @@ export function SettingsView() {
         {/* ── Moneda Tab ─────────────────────────────────── */}
         <TabsContent value="moneda">
           <div className="space-y-4">
+            {/* Multi-Currency Toggle */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Modo de Moneda</CardTitle>
+                <CardDescription>Activa el modo multi-moneda si trabajas con divisas y necesitas conversión automática a tu moneda local.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between rounded-lg border p-4">
+                  <div className="space-y-0.5">
+                    <Label className="text-sm font-medium">Modo Multi-Moneda</Label>
+                    <p className="text-xs text-muted-foreground">
+                      {settings.multiCurrencyEnabled
+                        ? 'Activado: precios en divisa con conversión automática a moneda local'
+                        : 'Desactivado: todo funciona en la moneda local de tu país'}
+                    </p>
+                  </div>
+                  <div
+                    className="flex items-center gap-2"
+                    onClick={() => {
+                      const newValue = !settings.multiCurrencyEnabled
+                      const updated = { ...settings, multiCurrencyEnabled: newValue }
+                      setSettings(updated)
+                      saveSettings({ multiCurrencyEnabled: newValue } as any).catch(() => {})
+                    }}
+                  >
+                    <span className="text-xs text-muted-foreground">
+                      {settings.multiCurrencyEnabled ? 'ON' : 'OFF'}
+                    </span>
+                    <div className={`relative inline-flex h-6 w-11 cursor-pointer items-center rounded-full transition-colors ${settings.multiCurrencyEnabled ? 'bg-primary' : 'bg-muted'}`}>
+                      <div className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${settings.multiCurrencyEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Multi-currency content (only when enabled) */}
+            {settings.multiCurrencyEnabled && (
+            <>
+
             {/* Tasas del Día (BCV) */}
             <Card>
               <CardHeader>
@@ -816,6 +856,33 @@ export function SettingsView() {
                 </Button>
               </CardContent>
             </Card>
+            </>
+            )}
+
+            {/* Single-currency info (shown when OFF) */}
+            {!settings.multiCurrencyEnabled && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Moneda Local</CardTitle>
+                  <CardDescription>Tu sistema opera exclusivamente en la moneda de tu país. Cambia el país en la pestaña General para actualizar la moneda.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="rounded-lg border bg-muted/50 p-4 flex items-center gap-4">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-xl font-bold text-primary">
+                      {(() => { try { const { getCurrencyForCountry } = require('@/lib/country-currency'); const info = getCurrencyForCountry(settings.country || 'VE'); return info?.symbol || '$' } catch { return '$' } })()}
+                    </div>
+                    <div>
+                      <p className="font-semibold">
+                        {(() => { try { const { getCurrencyForCountry } = require('@/lib/country-currency'); const info = getCurrencyForCountry(settings.country || 'VE'); return info ? `${info.code} - ${info.name}` : 'Moneda local' } catch { return 'Moneda local' } })()}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        País: {settings.country || 'VE'} · Sin conversión cambiaria
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </div>
         </TabsContent>
 
