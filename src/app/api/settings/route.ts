@@ -82,6 +82,20 @@ export async function PUT(request: Request) {
       }
     }
 
+    // If multi-currency is being enabled, ensure USD and EUR exist in the DB
+    if (body.multiCurrencyEnabled === true) {
+      const referenceCurrencies = [
+        { code: 'USD', name: 'Dólar Estadounidense', symbol: '$' },
+        { code: 'EUR', name: 'Euro', symbol: '€' },
+      ]
+      for (const rc of referenceCurrencies) {
+        const exists = await db.currency.findUnique({ where: { code: rc.code } })
+        if (!exists) {
+          await db.currency.create({ data: { ...rc, isBase: false } })
+        }
+      }
+    }
+
     // If multi-currency is being disabled, reset reference currency to local
     if (body.multiCurrencyEnabled === false) {
       const settings = await db.settings.findFirst()

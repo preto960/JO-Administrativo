@@ -222,9 +222,9 @@ export function ProductsTable() {
 
   const openCreate = useCallback(() => {
     resetForm()
-    // Set default currency to base currency AFTER reset
-    const baseCurrency = currencies.find((c) => c.isBase)
-    setFormCurrency(baseCurrency?.id || currencies[0]?.id || '')
+    // When multi-currency is ON, default to the first non-base currency (USD/EUR)
+    const refCurrency = currencies.find((c) => !c.isBase)
+    setFormCurrency(refCurrency?.id || currencies[0]?.id || '')
     setDialogOpen(true)
   }, [currencies, resetForm])
 
@@ -893,7 +893,7 @@ export function ProductsTable() {
                     <SelectValue placeholder="Seleccionar" />
                   </SelectTrigger>
                   <SelectContent>
-                    {currencies.map((c) => (
+                    {currencies.filter(c => !c.isBase).map((c) => (
                       <SelectItem key={c.id} value={c.id}>
                         {c.code} ({c.symbol})
                       </SelectItem>
