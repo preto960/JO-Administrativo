@@ -76,6 +76,19 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Default currencyId to the base currency from settings if not provided
+    let currencyId = body.currencyId
+    if (!currencyId) {
+      const settings = await db.settings.findFirst()
+      if (settings?.baseCurrencyId) {
+        currencyId = settings.baseCurrencyId
+      } else {
+        // Fallback: find any base currency or first currency
+        const baseCurrency = await db.currency.findFirst({ where: { isBase: true } })
+        currencyId = baseCurrency?.id || ''
+      }
+    }
+
     const product = await db.product.create({
       data: {
         name: body.name,
@@ -83,7 +96,7 @@ export async function POST(request: NextRequest) {
         type: body.type || 'simple',
         costAvg: body.costAvg || 0,
         price: body.price,
-        currencyId: body.currencyId,
+        currencyId,
         categoryId: body.categoryId || null,
         imageUrl: body.imageUrl || '',
       },

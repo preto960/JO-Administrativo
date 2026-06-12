@@ -106,19 +106,38 @@ export async function PUT(
       return NextResponse.json(product)
     }
 
+    // Build update data — keep existing currencyId if not provided
+    const updateData: Record<string, unknown> = {
+      name: body.name,
+      sku: body.sku || null,
+      type: body.type,
+      costAvg: body.costAvg,
+      price: body.price,
+      categoryId: body.categoryId || null,
+      imageUrl: body.imageUrl || '',
+      active: body.active,
+    }
+
+    // Handle currencyId: only update if explicitly provided, otherwise keep current
+    if (body.currencyId !== undefined) {
+      updateData.currencyId = body.currencyId
+    } else if (!body.enableInBranch && !body.disableInBranch) {
+      // No currencyId sent and not a branch toggle — ensure product has a valid currency
+      const existing = await db.product.findUnique({ where: { id }, select: { currencyId: true } })
+      if (!existing?.currencyId) {
+        const settings = await db.settings.findFirst()
+        if (settings?.baseCurrencyId) {
+          updateData.currencyId = settings.baseCurrencyId
+        } else {
+          const baseCurrency = await db.currency.findFirst({ where: { isBase: true } })
+          if (baseCurrency) updateData.currencyId = baseCurrency.id
+        }
+      }
+    }
+
     const product = await db.product.update({
       where: { id },
-      data: {
-        name: body.name,
-        sku: body.sku || null,
-        type: body.type,
-        costAvg: body.costAvg,
-        price: body.price,
-        currencyId: body.currencyId,
-        categoryId: body.categoryId || null,
-        imageUrl: body.imageUrl || '',
-        active: body.active,
-      },
+      data: updateData,
       include: {
         currency: true,
         category: true,

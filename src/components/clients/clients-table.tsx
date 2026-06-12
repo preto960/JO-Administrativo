@@ -126,7 +126,7 @@ export function ClientsTable() {
   const baseCurrencyId = useAppStore((s) => s.baseCurrencyId || '')
 
   const referenceCurrency = useSetting('referenceCurrency')
-  const { sym: currencySymbol, rate: exchangeRate, fmt } = useCurrency()
+  const { sym: currencySymbol, baseSym, rate: exchangeRate, fmt } = useCurrency()
   const isLocalMethod = localCurrencyMethods.includes(paymentMethod)
 
   // Delete confirmation dialog
@@ -976,7 +976,7 @@ export function ClientsTable() {
               />
               {isLocalMethod && exchangeRate > 0 && (
                 <p className="text-xs text-muted-foreground">
-                  Equivale a {fmt(paymentAmountInRef)} (Tasa: {exchangeRate.toFixed(2)} Bs./{referenceCurrency})
+                  Equivale a {fmt(paymentAmountInRef)} (Tasa: {exchangeRate.toFixed(2)} {baseSym}/{referenceCurrency})
                 </p>
               )}
               <p className="text-xs text-muted-foreground">

@@ -1,10 +1,11 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { api } from '@/lib/api'
 import { useAuth } from '@/hooks/use-auth'
 import { useCurrency } from '@/hooks/use-currency'
-import { useAppStore } from '@/stores/use-app-store'
+import { useAppStore, useSetting } from '@/stores/use-app-store'
+import { getCurrencyForCountry } from '@/lib/country-currency'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
@@ -78,18 +79,148 @@ interface BranchItem {
   active: boolean
 }
 
-// NOTE: Denominaciones deberían venir de la configuración del país en Settings.
-// Actualmente están hardcodeadas para Venezuela (VE).
-const DENOMINATIONS = [
-  { value: 100, label: 'Bs 100', type: 'billete' },
-  { value: 50, label: 'Bs 50', type: 'billete' },
-  { value: 20, label: 'Bs 20', type: 'billete' },
-  { value: 10, label: 'Bs 10', type: 'billete' },
-  { value: 5, label: 'Bs 5', type: 'billete' },
-  { value: 1, label: 'Bs 1', type: 'billete' },
-  { value: 0.5, label: 'Bs 0,50', type: 'moneda' },
-  { value: 0.25, label: 'Bs 0,25', type: 'moneda' },
+// Denominaciones por país (billetes y monedas más comunes)
+const DENOMINATIONS_BY_COUNTRY: Record<string, Array<{ value: number; label: string; type: string }>> = {
+  VE: [
+    { value: 100, label: 'Bs 100', type: 'billete' },
+    { value: 50, label: 'Bs 50', type: 'billete' },
+    { value: 20, label: 'Bs 20', type: 'billete' },
+    { value: 10, label: 'Bs 10', type: 'billete' },
+    { value: 5, label: 'Bs 5', type: 'billete' },
+    { value: 1, label: 'Bs 1', type: 'billete' },
+    { value: 0.5, label: 'Bs 0,50', type: 'moneda' },
+    { value: 0.25, label: 'Bs 0,25', type: 'moneda' },
+  ],
+  CO: [
+    { value: 100000, label: '$100.000', type: 'billete' },
+    { value: 50000, label: '$50.000', type: 'billete' },
+    { value: 20000, label: '$20.000', type: 'billete' },
+    { value: 10000, label: '$10.000', type: 'billete' },
+    { value: 5000, label: '$5.000', type: 'billete' },
+    { value: 2000, label: '$2.000', type: 'billete' },
+    { value: 1000, label: '$1.000', type: 'billete' },
+    { value: 500, label: '$500', type: 'moneda' },
+    { value: 200, label: '$200', type: 'moneda' },
+    { value: 100, label: '$100', type: 'moneda' },
+    { value: 50, label: '$50', type: 'moneda' },
+  ],
+  MX: [
+    { value: 1000, label: '$1.000', type: 'billete' },
+    { value: 500, label: '$500', type: 'billete' },
+    { value: 200, label: '$200', type: 'billete' },
+    { value: 100, label: '$100', type: 'billete' },
+    { value: 50, label: '$50', type: 'billete' },
+    { value: 20, label: '$20', type: 'billete' },
+    { value: 10, label: '$10', type: 'moneda' },
+    { value: 5, label: '$5', type: 'moneda' },
+    { value: 2, label: '$2', type: 'moneda' },
+    { value: 1, label: '$1', type: 'moneda' },
+  ],
+  AR: [
+    { value: 100000, label: '$100.000', type: 'billete' },
+    { value: 50000, label: '$50.000', type: 'billete' },
+    { value: 20000, label: '$20.000', type: 'billete' },
+    { value: 10000, label: '$10.000', type: 'billete' },
+    { value: 5000, label: '$5.000', type: 'billete' },
+    { value: 2000, label: '$2.000', type: 'billete' },
+    { value: 1000, label: '$1.000', type: 'billete' },
+    { value: 500, label: '$500', type: 'moneda' },
+    { value: 200, label: '$200', type: 'moneda' },
+    { value: 100, label: '$100', type: 'moneda' },
+  ],
+  PE: [
+    { value: 200, label: 'S/ 200', type: 'billete' },
+    { value: 100, label: 'S/ 100', type: 'billete' },
+    { value: 50, label: 'S/ 50', type: 'billete' },
+    { value: 20, label: 'S/ 20', type: 'billete' },
+    { value: 10, label: 'S/ 10', type: 'billete' },
+    { value: 5, label: 'S/ 5', type: 'moneda' },
+    { value: 2, label: 'S/ 2', type: 'moneda' },
+    { value: 1, label: 'S/ 1', type: 'moneda' },
+  ],
+  CL: [
+    { value: 20000, label: '$20.000', type: 'billete' },
+    { value: 10000, label: '$10.000', type: 'billete' },
+    { value: 5000, label: '$5.000', type: 'billete' },
+    { value: 2000, label: '$2.000', type: 'billete' },
+    { value: 1000, label: '$1.000', type: 'billete' },
+    { value: 500, label: '$500', type: 'moneda' },
+    { value: 100, label: '$100', type: 'moneda' },
+    { value: 50, label: '$50', type: 'moneda' },
+    { value: 10, label: '$10', type: 'moneda' },
+    { value: 5, label: '$5', type: 'moneda' },
+    { value: 1, label: '$1', type: 'moneda' },
+  ],
+  BR: [
+    { value: 200, label: 'R$ 200', type: 'billete' },
+    { value: 100, label: 'R$ 100', type: 'billete' },
+    { value: 50, label: 'R$ 50', type: 'billete' },
+    { value: 20, label: 'R$ 20', type: 'billete' },
+    { value: 10, label: 'R$ 10', type: 'billete' },
+    { value: 5, label: 'R$ 5', type: 'moneda' },
+    { value: 2, label: 'R$ 2', type: 'moneda' },
+    { value: 1, label: 'R$ 1', type: 'moneda' },
+    { value: 0.50, label: 'R$ 0,50', type: 'moneda' },
+    { value: 0.25, label: 'R$ 0,25', type: 'moneda' },
+    { value: 0.10, label: 'R$ 0,10', type: 'moneda' },
+  ],
+  // Default for USD-using countries (US, EC, PA, SV)
+  US: [
+    { value: 100, label: '$100', type: 'billete' },
+    { value: 50, label: '$50', type: 'billete' },
+    { value: 20, label: '$20', type: 'billete' },
+    { value: 10, label: '$10', type: 'billete' },
+    { value: 5, label: '$5', type: 'billete' },
+    { value: 2, label: '$2', type: 'billete' },
+    { value: 1, label: '$1', type: 'billete' },
+    { value: 0.50, label: '$0,50', type: 'moneda' },
+    { value: 0.25, label: '$0,25', type: 'moneda' },
+    { value: 0.10, label: '$0,10', type: 'moneda' },
+    { value: 0.05, label: '$0,05', type: 'moneda' },
+    { value: 0.01, label: '$0,01', type: 'moneda' },
+  ],
+  // Euro zone
+  ES: [
+    { value: 500, label: '€500', type: 'billete' },
+    { value: 200, label: '€200', type: 'billete' },
+    { value: 100, label: '€100', type: 'billete' },
+    { value: 50, label: '€50', type: 'billete' },
+    { value: 20, label: '€20', type: 'billete' },
+    { value: 10, label: '€10', type: 'billete' },
+    { value: 5, label: '€5', type: 'billete' },
+    { value: 2, label: '€2', type: 'moneda' },
+    { value: 1, label: '€1', type: 'moneda' },
+    { value: 0.50, label: '€0,50', type: 'moneda' },
+    { value: 0.20, label: '€0,20', type: 'moneda' },
+    { value: 0.10, label: '€0,10', type: 'moneda' },
+    { value: 0.05, label: '€0,05', type: 'moneda' },
+    { value: 0.02, label: '€0,02', type: 'moneda' },
+    { value: 0.01, label: '€0,01', type: 'moneda' },
+  ],
+}
+
+// Fallback denominations for countries not explicitly listed
+const DEFAULT_DENOMINATIONS = [
+  { value: 1000, label: '$1.000', type: 'billete' },
+  { value: 500, label: '$500', type: 'billete' },
+  { value: 200, label: '$200', type: 'billete' },
+  { value: 100, label: '$100', type: 'billete' },
+  { value: 50, label: '$50', type: 'billete' },
+  { value: 20, label: '$20', type: 'billete' },
+  { value: 10, label: '$10', type: 'moneda' },
+  { value: 5, label: '$5', type: 'moneda' },
+  { value: 1, label: '$1', type: 'moneda' },
 ]
+
+function getDenominations(country: string): Array<{ value: number; label: string; type: string }> {
+  // Map USD-based countries to US denominations
+  const usdCountries = ['EC', 'PA', 'SV']
+  const eurCountries = ['DE', 'FR', 'IT', 'ES']
+  const key = usdCountries.includes(country) ? 'US' 
+    : eurCountries.includes(country) ? 'ES' 
+    : country
+  return DENOMINATIONS_BY_COUNTRY[key] || DEFAULT_DENOMINATIONS
+}
 
 const MAX_INITIAL = 500000
 
@@ -109,6 +240,9 @@ export function CashRegisterView() {
   const { branches, selectedBranchId, setSelectedBranchId } = useAppStore()
   const canManageCash = permissions.canManageCash
   const { fmtBase } = useCurrency()
+  const country = useSetting('country')
+
+  const denominations = useMemo(() => getDenominations(country || 'VE'), [country])
 
   /** Format number with thousands separator for display */
   const fmt = (val: number) => val.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -1188,10 +1322,10 @@ export function CashRegisterView() {
             })()}
 
             <div className="space-y-3">
-              {/* Fix 13: Indicate country for denominations */}
-              <Label className="text-sm font-medium">Denominaciones (VE)</Label>
+              {/* Denominations for the configured country */}
+              <Label className="text-sm font-medium">Denominaciones ({country || 'VE'})</Label>
               <div className="grid grid-cols-2 gap-2">
-                {DENOMINATIONS.map((denom) => (
+                {denominations.map((denom) => (
                   <div key={denom.value} className="flex items-center gap-2">
                     <span className="text-xs font-mono w-16 text-right shrink-0 text-muted-foreground">
                       {denom.label}

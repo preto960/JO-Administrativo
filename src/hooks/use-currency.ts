@@ -1,6 +1,6 @@
 'use client'
 
-import { useAppStore, useSetting, defaultSettings } from '@/stores/use-app-store'
+import { useAppStore, useSetting } from '@/stores/use-app-store'
 import { getCurrencySymbol, formatAmount } from '@/lib/currency'
 import { getCurrencyForCountry } from '@/lib/country-currency'
 
@@ -34,7 +34,7 @@ export function useCurrency() {
   const effectiveRate = multiEnabled ? rateSetting : 1
 
   const sym = getCurrencySymbol(effectiveRefCode)
-  const baseSym = localInfo?.symbol || getCurrencySymbol('VES')
+  const baseSym = localInfo?.symbol || '$'
 
   /** Format amount in the effective currency (ref when multi, local when mono) */
   const fmt = (amount: number, decimals = 2): string => {
@@ -67,7 +67,7 @@ export function useCurrency() {
   return {
     sym,
     refCode: effectiveRefCode,
-    baseCode: localInfo?.code || 'VES',
+    baseCode: localInfo?.code || '',
     baseSym,
     rate: effectiveRate,
     multiEnabled,

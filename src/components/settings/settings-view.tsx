@@ -68,6 +68,8 @@ import {
 import { toast } from 'sonner'
 import { useAuth } from '@/hooks/use-auth'
 import { ALL_ROLES, getRoleLabel } from '@/lib/permissions'
+import { getCurrencyForCountry } from '@/lib/country-currency'
+import { getCurrencySymbol } from '@/lib/currency'
 import { ColorPicker, applyBothColors } from './color-picker'
 import { RolePermissionsEditor } from './role-permissions-editor'
 import { AuditLogView } from '@/components/audit/audit-log-view'
@@ -647,8 +649,8 @@ export function SettingsView() {
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <div>
-                    <CardTitle className="text-base">Tasas del Día (BCV)</CardTitle>
-                    <CardDescription>Tasas oficiales del Banco Central de Venezuela</CardDescription>
+                    <CardTitle className="text-base">Tasas del Día</CardTitle>
+                    <CardDescription>Tasas de cambio de divisas</CardDescription>
                   </div>
                   <Button
                     variant="outline"
@@ -730,26 +732,35 @@ export function SettingsView() {
               </CardHeader>
               <CardContent>
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="rounded-lg border p-4 space-y-1">
-                    <div className="flex items-center gap-2 text-sm font-medium">
-                      <span className="text-base">$</span>
-                      USD - Dólar Estadounidense
-                    </div>
-                    <p className="text-2xl font-bold text-primary">
-                      {(settings.usdRate || 0).toFixed(2)} <span className="text-sm font-normal text-muted-foreground">Bs.</span>
-                    </p>
-                    <p className="text-xs text-muted-foreground">1 USD = {(settings.usdRate || 0).toFixed(2)} VES</p>
-                  </div>
-                  <div className="rounded-lg border p-4 space-y-1">
-                    <div className="flex items-center gap-2 text-sm font-medium">
-                      <span className="text-base">€</span>
-                      EUR - Euro
-                    </div>
-                    <p className="text-2xl font-bold text-primary">
-                      {(settings.eurRate || 0).toFixed(2)} <span className="text-sm font-normal text-muted-foreground">Bs.</span>
-                    </p>
-                    <p className="text-xs text-muted-foreground">1 EUR = {(settings.eurRate || 0).toFixed(2)} VES</p>
-                  </div>
+                  {(() => {
+                    const local = getCurrencyForCountry(settings.country || 'VE')
+                    const localSym = local?.symbol || '$'
+                    const localCode = local?.code || 'LOC'
+                    return (
+                      <>
+                      <div className="rounded-lg border p-4 space-y-1">
+                        <div className="flex items-center gap-2 text-sm font-medium">
+                          <span className="text-base">$</span>
+                          USD - Dólar Estadounidense
+                        </div>
+                        <p className="text-2xl font-bold text-primary">
+                          {(settings.usdRate || 0).toFixed(2)} <span className="text-sm font-normal text-muted-foreground">{localSym}</span>
+                        </p>
+                        <p className="text-xs text-muted-foreground">1 USD = {(settings.usdRate || 0).toFixed(2)} {localCode}</p>
+                      </div>
+                      <div className="rounded-lg border p-4 space-y-1">
+                        <div className="flex items-center gap-2 text-sm font-medium">
+                          <span className="text-base">€</span>
+                          EUR - Euro
+                        </div>
+                        <p className="text-2xl font-bold text-primary">
+                          {(settings.eurRate || 0).toFixed(2)} <span className="text-sm font-normal text-muted-foreground">{localSym}</span>
+                        </p>
+                        <p className="text-xs text-muted-foreground">1 EUR = {(settings.eurRate || 0).toFixed(2)} {localCode}</p>
+                      </div>
+                      </>
+                    )
+                  })()}
                 </div>
               </CardContent>
             </Card>
@@ -758,7 +769,12 @@ export function SettingsView() {
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">Moneda y Tasa de Referencia</CardTitle>
-                <CardDescription>Configura en qué moneda registras los precios y la tasa de conversión a Bs.</CardDescription>
+                {(() => {
+                    const local = getCurrencyForCountry(settings.country || 'VE')
+                    return (
+                      <CardDescription>Configura en qué moneda registras los precios y la tasa de conversión a {local?.symbol || 'moneda local'}.</CardDescription>
+                    )
+                  })()}
               </CardHeader>
               <CardContent className="space-y-4">
                 {/* Moneda de referencia */}
@@ -769,8 +785,14 @@ export function SettingsView() {
                     onValueChange={(v) => {
                       const updated = { ...settings, referenceCurrency: v }
                       if (!updated.customRate) {
-                        const refRate = v === 'EUR' ? updated.eurRate : updated.usdRate
-                        updated.exchangeRate = refRate || 0
+                        // Find matching rate based on currency code
+                        if (v === 'EUR') {
+                          updated.exchangeRate = updated.eurRate || 0
+                        } else if (v === 'USD') {
+                          updated.exchangeRate = updated.usdRate || 0
+                        } else {
+                          updated.exchangeRate = 0
+                        }
                       }
                       setSettings(updated)
                     }}
@@ -779,8 +801,11 @@ export function SettingsView() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="USD">USD - Dólar Estadounidense</SelectItem>
-                      <SelectItem value="EUR">EUR - Euro</SelectItem>
+                      {currencies.filter(c => !c.isBase).map((c) => (
+                        <SelectItem key={c.id} value={c.code}>
+                          {c.code} - {c.symbol}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
@@ -823,18 +848,18 @@ export function SettingsView() {
                 <div className="rounded-lg border bg-muted/50 p-4 space-y-2">
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Tasa efectiva en uso:</span>
-                    <span className="font-bold text-primary">{(settings.exchangeRate || 0).toFixed(2)} Bs.</span>
+                    <span className="font-bold text-primary">{(settings.exchangeRate || 0).toFixed(2)} {(() => { const l = getCurrencyForCountry(settings.country || 'VE'); return l?.symbol || '' })()}</span>
                   </div>
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Fuente:</span>
                     <span className="font-medium">
-                      {settings.customRate > 0 ? 'Tasa personalizada' : `BCV - ${settings.referenceCurrency || 'USD'}`}
+                      {settings.customRate > 0 ? 'Tasa personalizada' : `${settings.referenceCurrency || 'USD'}`}
                     </span>
                   </div>
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Ejemplo 10.00 {settings.referenceCurrency || 'USD'}:</span>
                     <span className="font-bold text-primary">
-                      {(10 * (settings.exchangeRate || 0)).toFixed(2)} Bs.
+                      {(10 * (settings.exchangeRate || 0)).toFixed(2)} {(() => { const l = getCurrencyForCountry(settings.country || 'VE'); return l?.symbol || '' })()}
                     </span>
                   </div>
                 </div>
@@ -869,11 +894,11 @@ export function SettingsView() {
                 <CardContent>
                   <div className="rounded-lg border bg-muted/50 p-4 flex items-center gap-4">
                     <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-xl font-bold text-primary">
-                      {(() => { try { const { getCurrencyForCountry } = require('@/lib/country-currency'); const info = getCurrencyForCountry(settings.country || 'VE'); return info?.symbol || '$' } catch { return '$' } })()}
+                      {(() => { const info = getCurrencyForCountry(settings.country || 'VE'); return info?.symbol || '$' })()}
                     </div>
                     <div>
                       <p className="font-semibold">
-                        {(() => { try { const { getCurrencyForCountry } = require('@/lib/country-currency'); const info = getCurrencyForCountry(settings.country || 'VE'); return info ? `${info.code} - ${info.name}` : 'Moneda local' } catch { return 'Moneda local' } })()}
+                        {(() => { const info = getCurrencyForCountry(settings.country || 'VE'); return info ? `${info.code} - ${info.name}` : 'Moneda local' })()}
                       </p>
                       <p className="text-xs text-muted-foreground">
                         País: {settings.country || 'VE'} · Sin conversión cambiaria
@@ -947,22 +972,41 @@ export function SettingsView() {
                   <Separator />
                   <div className="rounded-lg border bg-muted/50 p-4 space-y-2">
                     <p className="text-sm font-medium text-muted-foreground">Ejemplo de calculo:</p>
+                    {settings.multiCurrencyEnabled ? (
+                      <>
                     <div className="flex items-center justify-between text-sm">
-                      <span>Subtotal (USD):</span>
-                      <span>$100.00</span>
+                      <span>Subtotal ({settings.referenceCurrency || 'USD'}):</span>
+                      <span>{getCurrencySymbol(settings.referenceCurrency || 'USD')}100.00</span>
                     </div>
                     <div className="flex items-center justify-between text-sm">
-                      <span>Subtotal (Bs.) al 36.50:</span>
-                      <span>Bs. 3,650.00</span>
+                      <span>Subtotal ({(() => { const l = getCurrencyForCountry(settings.country || 'VE'); return l?.symbol || '$' })()}) al {(settings.exchangeRate || 0).toFixed(2)}:</span>
+                      <span>{(() => { const l = getCurrencyForCountry(settings.country || 'VE'); return l?.symbol || '$' })()} {(100 * (settings.exchangeRate || 0)).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                     </div>
                     <div className="flex items-center justify-between text-sm">
-                      <span>I.V.A. ({(settings.ivaRate ?? 0).toFixed(2)}% sobre Bs.):</span>
-                      <span className="text-blue-600 font-medium">Bs. {(3650 * (settings.ivaRate ?? 0) / 100).toFixed(2)}</span>
+                      <span>I.V.A. ({(settings.ivaRate ?? 0).toFixed(2)}% sobre {(() => { const l = getCurrencyForCountry(settings.country || 'VE'); return l?.symbol || '$' })()}):</span>
+                      <span className="text-blue-600 font-medium">{(() => { const l = getCurrencyForCountry(settings.country || 'VE'); return l?.symbol || '$' })()} {(100 * (settings.exchangeRate || 0) * (settings.ivaRate ?? 0) / 100).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                     </div>
                     <div className="flex items-center justify-between text-sm font-bold border-t pt-2 mt-2">
-                      <span>Total con IVA (Bs.):</span>
-                      <span className="text-primary">Bs. {(3650 * (1 + (settings.ivaRate ?? 0) / 100)).toFixed(2)}</span>
+                      <span>Total con IVA ({(() => { const l = getCurrencyForCountry(settings.country || 'VE'); return l?.symbol || '$' })()}):</span>
+                      <span className="text-primary">{(() => { const l = getCurrencyForCountry(settings.country || 'VE'); return l?.symbol || '$' })()} {(100 * (settings.exchangeRate || 0) * (1 + (settings.ivaRate ?? 0) / 100)).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                     </div>
+                      </>
+                    ) : (
+                      <>
+                    <div className="flex items-center justify-between text-sm">
+                      <span>Subtotal:</span>
+                      <span>{(() => { const l = getCurrencyForCountry(settings.country || 'VE'); return `${l?.symbol || '$'}100.00` })()}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span>I.V.A. ({(settings.ivaRate ?? 0).toFixed(2)}%):</span>
+                      <span className="text-blue-600 font-medium">{(() => { const l = getCurrencyForCountry(settings.country || 'VE'); return `${l?.symbol || '$'}` })()} {(100 * (settings.ivaRate ?? 0) / 100).toFixed(2)}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm font-bold border-t pt-2 mt-2">
+                      <span>Total con IVA:</span>
+                      <span className="text-primary">{(() => { const l = getCurrencyForCountry(settings.country || 'VE'); return `${l?.symbol || '$'}` })()} {(100 * (1 + (settings.ivaRate ?? 0) / 100)).toFixed(2)}</span>
+                    </div>
+                      </>
+                    )}
                   </div>
                 </>
               )}

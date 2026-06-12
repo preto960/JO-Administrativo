@@ -101,7 +101,7 @@ function fmtStock(n: number): string {
 export function ProductsTable() {
   const { permissions } = useAuth()
   const canManage = permissions.canManageProducts
-  const { multiEnabled } = useCurrency()
+  const { multiEnabled, sym: currencySym, fmt: fmtCurrency } = useCurrency()
   const selectedBranchId = useAppStore((s) => s.selectedBranchId)
   const branches = useAppStore((s) => s.branches)
   const [products, setProducts] = useState<Product[]>([])
@@ -568,7 +568,6 @@ export function ProductsTable() {
               </TableHeader>
               <TableBody>
                 {filteredProducts.map((product) => {
-                  const curr = product.currency
                   const { stock, minStock, label } = getBranchStock(product)
                   const effectivePrice = getEffectivePrice(product)
                   const isLowStock = product.active && minStock > 0 && stock <= minStock
@@ -588,10 +587,10 @@ export function ProductsTable() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
-                        {curr.symbol}{fmt(product.costAvg)}
+                        {product.currency?.symbol || currencySym}{fmt(product.costAvg)}
                       </TableCell>
                       <TableCell className="text-right font-semibold tabular-nums">
-                        {curr.symbol}{fmt(effectivePrice)}
+                        {product.currency?.symbol || currencySym}{fmt(effectivePrice)}
                         {hasBranchPrice && (
                           <span className="ml-1 text-[10px] text-amber-600">★</span>
                         )}
