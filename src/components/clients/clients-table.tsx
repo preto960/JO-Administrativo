@@ -112,6 +112,9 @@ export function ClientsTable() {
   const [loadingHistory, setLoadingHistory] = useState(false)
   const [showHistoryDialog, setShowHistoryDialog] = useState(false)
 
+  // Sale lines detail modal
+  const [detailSale, setDetailSale] = useState<SaleRecord | null>(null)
+
   // Statement email
   const [sendingStatement, setSendingStatement] = useState<string | null>(null)
 
@@ -865,7 +868,7 @@ export function ClientsTable() {
                             <TableHead className="text-right">Total</TableHead>
                             <TableHead className="hidden lg:table-cell">Método</TableHead>
                             <TableHead>Estado</TableHead>
-                            <TableHead className="w-10"></TableHead>
+                            <TableHead className="w-16"></TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -904,28 +907,40 @@ export function ClientsTable() {
                                   )}
                                 </TableCell>
                                 <TableCell>
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    title="Imprimir Factura"
-                                    onClick={async () => {
-                                      try {
-                                        const res = await fetch(`/api/sales/${sale.id}/invoice`)
-                                        if (!res.ok) throw new Error()
-                                        const blob = await res.blob()
-                                        const url = URL.createObjectURL(blob)
-                                        const a = document.createElement('a')
-                                        a.href = url
-                                        a.download = `factura_${sale.id.slice(0, 8)}.pdf`
-                                        a.click()
-                                        URL.revokeObjectURL(url)
-                                      } catch {
-                                        toast.error('Error al generar factura')
-                                      }
-                                    }}
-                                  >
-                                    <Printer className="h-3.5 w-3.5" />
-                                  </Button>
+                                  <div className="flex items-center gap-1">
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-7 w-7 p-0"
+                                      title="Ver productos"
+                                      onClick={() => setDetailSale(sale)}
+                                    >
+                                      <Eye className="h-3.5 w-3.5" />
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-7 w-7 p-0"
+                                      title="Imprimir Factura"
+                                      onClick={async () => {
+                                        try {
+                                          const res = await fetch(`/api/sales/${sale.id}/invoice`)
+                                          if (!res.ok) throw new Error()
+                                          const blob = await res.blob()
+                                          const url = URL.createObjectURL(blob)
+                                          const a = document.createElement('a')
+                                          a.href = url
+                                          a.download = `factura_${sale.id.slice(0, 8)}.pdf`
+                                          a.click()
+                                          URL.revokeObjectURL(url)
+                                        } catch {
+                                          toast.error('Error al generar factura')
+                                        }
+                                      }}
+                                    >
+                                      <Printer className="h-3.5 w-3.5" />
+                                    </Button>
+                                  </div>
                                 </TableCell>
                               </TableRow>
                             )
@@ -936,6 +951,61 @@ export function ClientsTable() {
                   )}
                 </CardContent>
               </Card>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Sale Lines Detail Modal */}
+      <Dialog open={!!detailSale} onOpenChange={(open) => { if (!open) setDetailSale(null) }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-base flex items-center gap-2">
+              <Receipt className="h-4 w-4" />
+              Productos — Factura {detailSale?.id.slice(0, 8)}
+            </DialogTitle>
+            <DialogDescription>
+              {detailSale ? new Date(detailSale.date).toLocaleDateString('es-VE', { day: '2-digit', month: 'long', year: 'numeric' }) : ''}
+            </DialogDescription>
+          </DialogHeader>
+          {detailSale && (
+            <div className="space-y-3">
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Producto</TableHead>
+                      <TableHead className="text-center">Cant.</TableHead>
+                      <TableHead className="text-right">Precio</TableHead>
+                      <TableHead className="text-right">Subtotal</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {detailSale.lines.map((line, i) => (
+                      <TableRow key={i}>
+                        <TableCell className="text-sm font-medium">{line.product.name}</TableCell>
+                        <TableCell className="text-sm text-center">{line.quantity}</TableCell>
+                        <TableCell className="text-sm text-right">{fmt(line.unitPrice)}</TableCell>
+                        <TableCell className="text-sm text-right font-medium">{fmt(line.lineTotal)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+              <div className="flex items-center justify-between px-1">
+                <span className="text-sm text-muted-foreground">
+                  {detailSale.lines.length} producto{detailSale.lines.length !== 1 ? 's' : ''}
+                </span>
+                <span className="text-base font-bold">
+                  Total: {fmt(detailSale.total)}
+                </span>
+              </div>
+              {detailSale.receivables.length > 0 && detailSale.receivables[0].pendingBalance > 0 && (
+                <div className="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-2 text-xs text-amber-700 dark:text-amber-400">
+                  Saldo pendiente: {fmt(detailSale.receivables[0].pendingBalance)}
+                  {detailSale.receivables[0].dueDate && ` — Vence: ${new Date(detailSale.receivables[0].dueDate).toLocaleDateString('es-VE')}`}
+                </div>
+              )}
             </div>
           )}
         </DialogContent>
