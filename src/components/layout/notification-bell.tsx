@@ -214,15 +214,7 @@ export function NotificationBell() {
                       'flex items-start gap-2.5 p-3 cursor-pointer',
                       !notification.read && 'bg-muted/50'
                     )}
-                    onClick={() => {
-                      if (notification.clientId) {
-                        if (!notification.read) markAsRead(notification.id!)
-                        navigateToClient(notification.clientId)
-                        setOpen(false)
-                      } else {
-                        handleOpenDetail(notification)
-                      }
-                    }}
+                    onClick={() => handleOpenDetail(notification)}
                   >
                     <div className="mt-0.5 shrink-0">
                       <span className={cn('inline-block h-2 w-2 rounded-full', config.dot)} />
@@ -235,7 +227,7 @@ export function NotificationBell() {
                         )}
                       </div>
                       <div className="text-xs text-muted-foreground line-clamp-1 mt-0.5">
-                        {renderMessage(notification)}
+                        {notification.message}
                       </div>
                     </div>
                     <span className="text-[10px] text-muted-foreground shrink-0 whitespace-nowrap mt-0.5">
