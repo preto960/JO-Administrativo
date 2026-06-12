@@ -168,12 +168,12 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
         if (enabled.length > 0) setMethod(enabled[0].code)
       } else {
         setDbMethods(FALLBACK_METHODS)
-        setMethod('divisas')
+        setMethod(FALLBACK_METHODS[0]?.code || 'divisas')
       }
     }).catch(() => {
       // Fallback to hardcoded
       setDbMethods(FALLBACK_METHODS)
-      setMethod('divisas')
+      setMethod(FALLBACK_METHODS[0]?.code || 'divisas')
     })
   }, [country])
 
@@ -283,7 +283,7 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
   // Calculate change in the displayed currency
   const changeAmount = useMemo(() => {
     const parsed = parseFloat(amount) || 0
-    if (selectedMethod?.isCash || method === 'divisas') {
+    if (selectedMethod?.isCash) {
       const limit = isLocalMethod ? totalBs : total
       if (parsed > limit) {
         return parsed - limit
@@ -516,7 +516,7 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
                 <Label htmlFor="reference">Referencia</Label>
                 <Input
                   id="reference"
-                  placeholder={method === 'pago_movil' ? 'Número de referencia / teléfono' : 'Número de referencia'}
+                  placeholder='Número de referencia'
                   value={reference}
                   onChange={(e) => setReference(e.target.value)}
                 />

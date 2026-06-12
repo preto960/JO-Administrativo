@@ -61,6 +61,7 @@ interface PaymentMethodItem {
   isCredit: boolean
   sortOrder: number
   countries: string
+  isDefault: boolean
 }
 
 const ICON_MAP: Record<string, React.ElementType> = {
@@ -293,7 +294,7 @@ export function PaymentMethodsTab({ country }: PaymentMethodsTabProps) {
                   {/* Actions */}
                   <div className="flex items-center gap-3 shrink-0">
                     {/* Only show delete for custom methods (not the 6 defaults) */}
-                    {!['divisas', 'efectivo', 'pago_movil', 'tarjeta', 'transferencia', 'credito'].includes(method.code) && (
+                    {!method.isDefault && (
                       <Button
                         variant="ghost"
                         size="sm"

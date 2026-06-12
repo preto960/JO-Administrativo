@@ -169,3 +169,31 @@ Stage Summary:
 - Client list is always visible with search, highlight selection, and single-select behavior
 - After creating a new client inline, the list reappears with the new client selected and visible
 - Files modified: src/components/pos/pos-payment-modal.tsx
+
+---
+Task ID: 1
+Agent: main
+Task: Reescribir métodos de pago a Prisma ORM y eliminar hardcodeados
+
+Work Log:
+- Reescrito src/app/api/payment-methods/route.ts: eliminado todo SQL crudo, ahora usa db.paymentMethod.findMany/create/update/delete de Prisma
+- Reescrito src/lib/payment-methods.ts: eliminado SQL crudo, ahora usa db.paymentMethod.findMany de Prisma
+- Agregado campo isDefault al modelo PaymentMethod en prisma/schema.prisma
+- Agregada migración automática (ensureIsDefaultColumn) que añade la columna isDefault si no existe en la tabla de producción
+- Eliminado array hardcodeado ['divisas','efectivo',...] en payment-methods-tab.tsx, ahora usa method.isDefault
+- Eliminado p.method === 'credito' hardcodeado en clients-table.tsx, ahora usa pm?.isCredit de la lista dinámica
+- Eliminado method === 'divisas' hardcodeado en pos-payment-modal.tsx (cálculo de cambio)
+- Eliminado method === 'pago_movil' hardcodeado en placeholder de referencia
+- Reemplazados useState('efectivo') y fallbacks 'divisas'/'efectivo' en clients-table y suppliers-view con lógica dinámica (primer método disponible)
+- Reemplazado SelectItem de fallback hardcodeado con "Cargando métodos..."
+- Eliminado default 'efectivo' en supplier payment API
+- Eliminado tipo any en PUT, ahora usa Prisma.PaymentMethodUpdateInput
+- Generado Prisma client con nuevo campo isDefault
+
+Stage Summary:
+- Todos los métodos de pago ahora se manejan 100% por la tabla PaymentMethod via Prisma ORM
+- Cero SQL crudo en payment-methods/route.ts y lib/payment-methods.ts
+- Cero referencias hardcodeadas a códigos de métodos de pago en lógica de negocio
+- El campo isDefault permite proteger métodos del sistema sin listar códigos
+- Migración automática para bases de datos existentes
+- FALLBACK_METHODS se mantiene solo como último recurso si la DB no responde

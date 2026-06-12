@@ -23,28 +23,24 @@ let _cache: PaymentMethodRecord[] | null = null
 let _cacheTs = 0
 const CACHE_TTL = 30_000 // 30 seconds
 
-function rowToPM(row: any): PaymentMethodRecord {
-  return {
-    code: row.code,
-    name: row.name,
-    icon: row.icon || 'Banknote',
-    enabled: row.enabled === true || row.enabled === 1,
-    needsReference: row.needsReference === true || row.needsReference === 1,
-    isLocalCurrency: row.isLocalCurrency === true || row.isLocalCurrency === 1,
-    isCash: row.isCash === true || row.isCash === 1,
-    isCredit: row.isCredit === true || row.isCredit === 1,
-    sortOrder: Number(row.sortOrder) || 0,
-    countries: row.countries || 'ALL',
-  }
-}
-
 export async function getPaymentMethodsFromDB(): Promise<PaymentMethodRecord[]> {
   const now = Date.now()
   if (_cache && now - _cacheTs < CACHE_TTL) return _cache
 
   try {
-    const rows: any[] = await db.$queryRawUnsafe(`SELECT * FROM "PaymentMethod" ORDER BY "sortOrder" ASC`)
-    _cache = rows.map(rowToPM)
+    const rows = await db.paymentMethod.findMany({ orderBy: { sortOrder: 'asc' } })
+    _cache = rows.map((r) => ({
+      code: r.code,
+      name: r.name,
+      icon: r.icon || 'Banknote',
+      enabled: r.enabled,
+      needsReference: r.needsReference,
+      isLocalCurrency: r.isLocalCurrency,
+      isCash: r.isCash,
+      isCredit: r.isCredit,
+      sortOrder: r.sortOrder,
+      countries: r.countries,
+    }))
     _cacheTs = now
     return _cache!
   } catch {
