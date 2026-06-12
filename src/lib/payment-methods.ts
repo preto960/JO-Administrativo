@@ -1,7 +1,6 @@
 /**
  * Shared helper to determine payment method behavior from DB.
- * Falls back to hardcoded values for backward compatibility with
- * existing sales that used the old string values.
+ * Falls back to hardcoded values for backward compatibility.
  */
 
 import { db } from './db'
@@ -29,12 +28,12 @@ function rowToPM(row: any): PaymentMethodRecord {
     code: row.code,
     name: row.name,
     icon: row.icon || 'Banknote',
-    enabled: !!row.enabled,
-    needsReference: !!row.needsReference,
-    isLocalCurrency: !!row.isLocalCurrency,
-    isCash: !!row.isCash,
-    isCredit: !!row.isCredit,
-    sortOrder: row.sortOrder || 0,
+    enabled: row.enabled === true || row.enabled === 1,
+    needsReference: row.needsReference === true || row.needsReference === 1,
+    isLocalCurrency: row.isLocalCurrency === true || row.isLocalCurrency === 1,
+    isCash: row.isCash === true || row.isCash === 1,
+    isCredit: row.isCredit === true || row.isCredit === 1,
+    sortOrder: Number(row.sortOrder) || 0,
     countries: row.countries || 'ALL',
   }
 }
