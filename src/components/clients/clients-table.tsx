@@ -689,23 +689,6 @@ export function ClientsTable() {
                     )}
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
-                    {/* Membership badge - always visible */}
-                    <Badge
-                      className={`text-[10px] px-1.5 py-0 ${
-                        memStatus === 'Activo'
-                          ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400'
-                          : memStatus === 'Vencido'
-                          ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400'
-                          : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
-                      }`}
-                    >
-                      {memStatus === 'Activo' ? 'Activo' : memStatus === 'Vencido' ? 'Vencido' : 'Sin membresia'}
-                    </Badge>
-                    {hasMembership && client.membership?.tarifa && (
-                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-muted-foreground">
-                        {cap(client.membership.tarifa)}
-                      </Badge>
-                    )}
                     {client.deletedAt && (
                       <Badge variant="outline" className="text-muted-foreground text-[10px] px-1.5 py-0">
                         Deshabilitado
@@ -744,18 +727,35 @@ export function ClientsTable() {
                   )}
                 </div>
 
-                {/* Membership details */}
-                {hasMembership && (
-                  <div className="flex items-center gap-3 text-[11px] text-muted-foreground bg-muted/50 rounded-md px-2 py-1.5">
-                    <span className="font-medium">{cap(client.membership!.tarifa)}</span>
-                    {client.membership!.endDate && (
-                      <span>Vence: {new Date(client.membership!.endDate).toLocaleDateString('es-VE')}</span>
-                    )}
-                    {memStatus === 'Activo' && client.membership!.daysRemaining > 0 && (
-                      <span className="text-emerald-600 dark:text-emerald-400 font-medium">{client.membership!.daysRemaining}d restantes</span>
-                    )}
-                  </div>
-                )}
+                {/* Membership info below contact */}
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <Badge
+                    className={`text-[10px] px-1.5 py-0 ${
+                      memStatus === 'Activo'
+                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400'
+                        : memStatus === 'Vencido'
+                        ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400'
+                        : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
+                    }`}
+                  >
+                    {memStatus === 'Activo' ? 'Activo' : memStatus === 'Vencido' ? 'Vencido' : 'Sin membresia'}
+                  </Badge>
+                  {hasMembership && client.membership?.tarifa && (
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-muted-foreground">
+                      {cap(client.membership.tarifa)}
+                    </Badge>
+                  )}
+                  {hasMembership && client.membership!.endDate && (
+                    <span className="text-[10px] text-muted-foreground">
+                      Vence: {new Date(client.membership!.endDate).toLocaleDateString('es-VE')}
+                    </span>
+                  )}
+                  {memStatus === 'Activo' && hasMembership && client.membership!.daysRemaining > 0 && (
+                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
+                      {client.membership!.daysRemaining}d restantes
+                    </span>
+                  )}
+                </div>
 
                 <div className="flex items-center gap-3 text-xs text-muted-foreground">
                   <div className="flex items-center gap-1">
