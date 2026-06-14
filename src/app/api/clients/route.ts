@@ -28,6 +28,8 @@ export async function GET(request: NextRequest) {
         { name: { contains: search } },
         { phone: { contains: search } },
         { email: { contains: search } },
+        { cedula: { contains: search } },
+        { lastName: { contains: search } },
       ]
     }
 
@@ -39,16 +41,28 @@ export async function GET(request: NextRequest) {
           where: { status: 'pendiente' },
           select: { pendingBalance: true },
         },
+        memberships: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        },
       },
       orderBy: { name: 'asc' },
     })
 
-    // Compute pending balance for each client
+    // Compute pending balance and membership for each client
     const clientsWithBalance = clients.map(client => {
       const pendingBalance = client.receivables.reduce((sum, r) => sum + r.pendingBalance, 0)
+      const membership = client.memberships[0] || null
       return {
         ...client,
         pendingBalance: Math.round(pendingBalance * 100) / 100,
+        membership: membership ? {
+          status: membership.status,
+          tarifa: membership.tarifa,
+          endDate: membership.endDate,
+          daysRemaining: membership.daysRemaining,
+          ticketsRemaining: membership.ticketsRemaining,
+        } : null,
       }
     })
 
@@ -97,10 +111,15 @@ export async function POST(request: NextRequest) {
     const client = await db.client.create({
       data: {
         name,
+        cedula: body.cedula ? body.cedula.trim() : null,
+        lastName: body.lastName ? body.lastName.trim() : null,
         phone,
         email,
         address,
         note,
+        gender: body.gender ? body.gender.trim() : null,
+        birthDate: body.birthDate ? new Date(body.birthDate) : null,
+        age: body.age ? parseInt(String(body.age)) : null,
       },
     })
     await logAction({ action: 'create', entity: 'client', entityId: client.id, details: { name }, request })
@@ -170,10 +189,15 @@ export async function PUT(request: NextRequest) {
       where: { id },
       data: {
         name,
+        cedula: body.cedula !== undefined ? (body.cedula ? body.cedula.trim() : null) : undefined,
+        lastName: body.lastName !== undefined ? (body.lastName ? body.lastName.trim() : null) : undefined,
         phone,
         email,
         address,
         note,
+        gender: body.gender !== undefined ? (body.gender ? body.gender.trim() : null) : undefined,
+        birthDate: body.birthDate ? new Date(body.birthDate) : undefined,
+        age: body.age !== undefined ? (body.age ? parseInt(String(body.age)) : null) : undefined,
       },
     })
     await logAction({ action: 'update', entity: 'client', entityId: id, details: { name }, request })

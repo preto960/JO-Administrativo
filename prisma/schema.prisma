@@ -32,19 +32,45 @@ model User {
 }
 
 model Client {
-  id        String    @id @default(cuid())
-  name      String
-  phone     String?
-  email     String?
-  address   String?
-  note      String?
-  deletedAt DateTime?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  id               String    @id @default(cuid())
+  cedula           String?   @unique
+  name             String
+  lastName         String?
+  phone            String?
+  email            String?
+  address          String?
+  birthDate        DateTime?
+  age              Int?
+  gender           String?   // Masculino, Femenino
+  note             String?
+  lastAttendance   DateTime?
+  deletedAt        DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
-  sales        Sale[]
-  receivables  AccountReceivable[]
-  notifications Notification[]
+  sales            Sale[]
+  receivables      AccountReceivable[]
+  notifications    Notification[]
+  memberships      ClientMembership[]
+}
+
+model ClientMembership {
+  id               String    @id @default(cuid())
+  clientId         String
+  status           String    @default("Sin membresia") // Activo, Vencido, Sin membresia
+  tarifa           String?   // tipo de tarifa: Mensual, Trimestral, etc.
+  paymentDate      DateTime? // fecha del último pago
+  startDate        DateTime? // inicio de la membresía
+  endDate          DateTime? // vencimiento de la membresía
+  daysRemaining    Int       @default(0)
+  ticketsRemaining Int       @default(0)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  client           Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@index([status])
 }
 
 model Supplier {

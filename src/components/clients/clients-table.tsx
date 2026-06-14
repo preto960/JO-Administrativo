@@ -43,7 +43,8 @@ import {
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Plus, Search, Users, DollarSign, Loader2, Receipt, Truck, X, Trash2, Printer, FileText, Mail, Pencil, Phone, MapPin, ShoppingCart, Eye, EyeOff, AlertTriangle } from 'lucide-react'
+import { Plus, Search, Users, DollarSign, Loader2, Receipt, Truck, X, Trash2, Printer, FileText, Mail, Pencil, Phone, MapPin, ShoppingCart, Eye, EyeOff, AlertTriangle, Upload } from 'lucide-react'
+import { ClientBulkImport } from './client-bulk-import'
 import { toast } from 'sonner'
 import { useSetting } from '@/stores/use-app-store'
 import { useCurrency } from '@/hooks/use-currency'
@@ -63,12 +64,22 @@ interface PaymentMethodOption {
 interface Client {
   id: string
   name: string
+  cedula: string | null
+  lastName: string | null
+  gender: string | null
   phone: string | null
   email: string | null
   address: string | null
   note: string | null
   deletedAt: string | null
   pendingBalance: number
+  membership: {
+    status: string | null
+    tarifa: string | null
+    endDate: string | null
+    daysRemaining: number
+    ticketsRemaining: number
+  } | null
   _count: { sales: number }
 }
 
@@ -108,6 +119,7 @@ export function ClientsTable() {
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [bulkImportOpen, setBulkImportOpen] = useState(false)
   const [saving, setSaving] = useState(false)
 
   const [formName, setFormName] = useState('')
@@ -568,9 +580,14 @@ export function ClientsTable() {
           </Label>
         </div>
         {canManage && (
-          <Button onClick={openCreate} className="bg-primary hover:bg-primary/90 text-white">
-            <Plus className="mr-2 h-4 w-4" /> Nuevo Cliente
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => setBulkImportOpen(true)} className="text-primary border-primary/30 hover:bg-primary/5">
+              <Upload className="mr-2 h-4 w-4" /> Carga Masiva
+            </Button>
+            <Button onClick={openCreate} className="bg-primary hover:bg-primary/90 text-white">
+              <Plus className="mr-2 h-4 w-4" /> Nuevo Cliente
+            </Button>
+          </div>
         )}
       </div>
 
@@ -593,9 +610,30 @@ export function ClientsTable() {
               <CardContent className="p-4 space-y-3">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
-                    <h3 className="font-semibold text-sm truncate">{client.name}</h3>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-semibold text-sm truncate">{client.name}{client.lastName ? ` ${client.lastName}` : ''}</h3>
+                    </div>
+                    {client.cedula && (
+                      <p className="text-[11px] text-muted-foreground font-mono">{client.cedula}</p>
+                    )}
                   </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
+                  <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
+                    {client.membership?.status && client.membership.status !== 'Sin membresia' && (
+                      <Badge
+                        className={`text-[10px] px-1.5 py-0 ${
+                          client.membership.status === 'Activo'
+                            ? 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400'
+                            : 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400'
+                        }`}
+                      >
+                        {client.membership.status}
+                      </Badge>
+                    )}
+                    {client.membership?.tarifa && (
+                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-muted-foreground">
+                        {client.membership.tarifa}
+                      </Badge>
+                    )}
                     {client.deletedAt && (
                       <Badge variant="outline" className="text-muted-foreground text-[10px] px-1.5 py-0">
                         Deshabilitado
@@ -1141,6 +1179,8 @@ export function ClientsTable() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <ClientBulkImport open={bulkImportOpen} onOpenChange={setBulkImportOpen} />
     </div>
   )
 }
