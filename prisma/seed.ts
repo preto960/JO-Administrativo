@@ -16,21 +16,29 @@ async function main() {
     "Sale",
     "CashMovement",
     "CashCut",
+    "CashAudit",
     "CashRegister",
     "Expense",
     "InventoryAdjustment",
     "PurchaseLine",
     "AccountPayable",
+    "SupplierPayment",
     "Purchase",
     "Inventory",
     "RecipeComponent",
     "Product",
+    "ClientMembership",
     "Client",
     "Supplier",
+    "Notification",
     "User",
+    "AuditLog",
     "ExchangeRate",
     "Category",
+    "PaymentMethod",
+    "Settings",
     "Currency",
+    "Branch",
   ] as const;
 
   for (const model of deleteOrder) {
@@ -296,10 +304,27 @@ async function main() {
   console.log(`   ✓ Combo Almuerzo → Arepa (1) + Jugo de naranja (1)`);
 
   // ─────────────────────────────────────────────
+  // 6c. BRANCH
+  // ─────────────────────────────────────────────
+  console.log("6c️⃣ Creating branch...");
+  const branchId = "sucursal-1";
+  await db.branch.create({
+    data: {
+      id: branchId,
+      name: "Sucursal Principal",
+      code: "sucursal-1",
+      address: "Av. Principal, Caracas",
+      phone: "+58 212-555-0000",
+      active: true,
+      isMain: true,
+    },
+  });
+  console.log(`   ✓ Sucursal Principal (${branchId})`);
+
+  // ─────────────────────────────────────────────
   // 7. INVENTORY
   // ─────────────────────────────────────────────
   console.log("7️⃣  Creating inventory entries...");
-  const branchId = "sucursal-1";
 
   const inventoryData = [
     { product: empanada, stock: 200, minStock: 20 },
@@ -386,6 +411,7 @@ async function main() {
     data: {
       userId: admin.id,
       branchId,
+      currencyId: usd.id,
       openingDate: new Date(),
       initialAmt: 200.0,
       currentAmt: 200.0,
@@ -407,6 +433,7 @@ async function main() {
       cashRegId: cashReg.id,
       userId: cajera.id,
       branchId,
+      currencyId: usd.id,
       date: new Date(),
       total: sale1Total,
       status: "completada",
@@ -454,6 +481,7 @@ async function main() {
       cashRegId: cashReg.id,
       userId: cajera.id,
       branchId,
+      currencyId: usd.id,
       date: new Date(),
       total: sale2Total,
       status: "completada",
@@ -513,6 +541,7 @@ async function main() {
       cashRegId: cashReg.id,
       userId: vendedor.id,
       branchId,
+      currencyId: usd.id,
       date: new Date(),
       total: sale3Total,
       status: "completada",

@@ -43,7 +43,7 @@ import {
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Plus, Search, Users, DollarSign, Loader2, Receipt, Truck, X, Trash2, Printer, FileText, Mail, Pencil, Phone, MapPin, ShoppingCart, Eye, EyeOff, AlertTriangle, Upload } from 'lucide-react'
+import { Plus, Search, Users, DollarSign, Loader2, Receipt, Truck, X, Trash2, Printer, FileText, Mail, Pencil, Phone, MapPin, ShoppingCart, Eye, EyeOff, AlertTriangle, Upload, ChevronLeft, ChevronRight, Filter, UserCheck, UserX, UsersRound } from 'lucide-react'
 import { ClientBulkImport } from './client-bulk-import'
 import { toast } from 'sonner'
 import { useSetting } from '@/stores/use-app-store'
@@ -189,6 +189,9 @@ export function ClientsTable() {
 
   // Show deleted clients toggle
   const [showInactive, setShowInactive] = useState(false)
+  const [membershipFilter, setMembershipFilter] = useState<'todos' | 'activo' | 'vencido' | 'sin'>('todos')
+  const [currentPage, setCurrentPage] = useState(1)
+  const PAGE_SIZE = 20
 
   const fetchClients = async () => {
     try {
@@ -238,11 +241,40 @@ export function ClientsTable() {
       })
   }, [country])
 
-  const inactiveCount = clients.filter((c) => c.deletedAt !== null).length
+  // Capitalize helper: "jUAN pEREZ" → "Juan Perez"
+  const cap = (str: string | null | undefined): string => {
+    if (!str) return ''
+    return str
+      .toLowerCase()
+      .replace(/\b\w/g, (c) => c.toUpperCase())
+  }
 
-  const filtered = clients.filter(
-    (c) => !search || c.name.toLowerCase().includes(search.toLowerCase()) || (c.phone && c.phone.includes(search)) || (c.email && c.email.toLowerCase().includes(search.toLowerCase()))
-  )
+  const inactiveCount = clients.filter((c) => c.deletedAt !== null).length
+  const activeCount = clients.filter((c) => !c.deletedAt && c.membership?.status === 'Activo').length
+  const expiredCount = clients.filter((c) => !c.deletedAt && c.membership?.status === 'Vencido').length
+  const noMembershipCount = clients.filter((c) => !c.deletedAt && (!c.membership?.status || c.membership?.status === 'Sin membresia')).length
+
+  const searchLower = search.toLowerCase().trim()
+  const filtered = clients.filter((c) => {
+    // Membership filter
+    if (membershipFilter === 'activo' && c.membership?.status !== 'Activo') return false
+    if (membershipFilter === 'vencido' && c.membership?.status !== 'Vencido') return false
+    if (membershipFilter === 'sin' && c.membership?.status && c.membership?.status !== 'Sin membresia') return false
+
+    // Search filter
+    if (!searchLower) return true
+    const fullName = `${c.name} ${c.lastName || ''}`.toLowerCase()
+    if (fullName.includes(searchLower)) return true
+    if (c.cedula && c.cedula.includes(search)) return true
+    if (c.phone && c.phone.includes(search)) return true
+    if (c.email && c.email.toLowerCase().includes(searchLower)) return true
+    return false
+  })
+
+  // Pagination
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  const paginatedClients = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
+  useEffect(() => { setCurrentPage(1) }, [search, membershipFilter, showInactive])
 
   const openCreate = () => {
     setEditingClient(null)
@@ -563,75 +595,115 @@ export function ClientsTable() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input placeholder="Buscar cliente..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" />
-        </div>
-        <div className="flex items-center gap-2 text-sm">
-          <Switch
-            id="show-inactive-clients"
-            checked={showInactive}
-            onCheckedChange={setShowInactive}
-          />
-          <Label htmlFor="show-inactive-clients" className="cursor-pointer select-none">
-            {showInactive ? <Eye className="inline h-4 w-4 mr-1" /> : <EyeOff className="inline h-4 w-4 mr-1" />}
-            Inactivos ({inactiveCount})
-          </Label>
-        </div>
-        {canManage && (
-          <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={() => setBulkImportOpen(true)} className="text-primary border-primary/30 hover:bg-primary/5">
-              <Upload className="mr-2 h-4 w-4" /> Carga Masiva
-            </Button>
-            <Button onClick={openCreate} className="bg-primary hover:bg-primary/90 text-white">
-              <Plus className="mr-2 h-4 w-4" /> Nuevo Cliente
-            </Button>
+      {/* Top bar: search + filters + actions */}
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input placeholder="Buscar por nombre, apellido, cédula o teléfono..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" />
           </div>
-        )}
+          <div className="flex items-center gap-2 text-sm">
+            <Switch
+              id="show-inactive-clients"
+              checked={showInactive}
+              onCheckedChange={setShowInactive}
+            />
+            <Label htmlFor="show-inactive-clients" className="cursor-pointer select-none">
+              {showInactive ? <Eye className="inline h-4 w-4 mr-1" /> : <EyeOff className="inline h-4 w-4 mr-1" />}
+              Inactivos ({inactiveCount})
+            </Label>
+          </div>
+          {canManage && (
+            <div className="flex items-center gap-2">
+              <Button variant="outline" onClick={() => setBulkImportOpen(true)} className="text-primary border-primary/30 hover:bg-primary/5">
+                <Upload className="mr-2 h-4 w-4" /> Carga Masiva
+              </Button>
+              <Button onClick={openCreate} className="bg-primary hover:bg-primary/90 text-white">
+                <Plus className="mr-2 h-4 w-4" /> Nuevo Cliente
+              </Button>
+            </div>
+          )}
+        </div>
+
+        {/* Membership filter bar */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <Filter className="h-4 w-4 text-muted-foreground" />
+          <span className="text-xs text-muted-foreground mr-1">Membresía:</span>
+          {([
+            { key: 'todos' as const, label: 'Todos', count: clients.filter(c => !c.deletedAt).length, icon: <UsersRound className="h-3.5 w-3.5" /> },
+            { key: 'activo' as const, label: 'Activos', count: activeCount, icon: <UserCheck className="h-3.5 w-3.5" /> },
+            { key: 'vencido' as const, label: 'Vencidos', count: expiredCount, icon: <UserX className="h-3.5 w-3.5" /> },
+            { key: 'sin' as const, label: 'Sin membresía', count: noMembershipCount, icon: <Users className="h-3.5 w-3.5" /> },
+          ]).map((opt) => (
+            <button
+              key={opt.key}
+              onClick={() => setMembershipFilter(opt.key)}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                membershipFilter === opt.key
+                  ? 'bg-primary text-white shadow-sm'
+                  : 'bg-muted text-muted-foreground hover:bg-muted/80'
+              }`}
+            >
+              {opt.icon}
+              {opt.label} ({opt.count})
+            </button>
+          ))}
+          <span className="ml-auto text-xs text-muted-foreground">
+            {filtered.length} resultado{filtered.length !== 1 ? 's' : ''}
+          </span>
+        </div>
       </div>
 
       {loading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <Card key={i} className="h-48 animate-pulse bg-muted" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <Card key={i} className="h-52 animate-pulse bg-muted" />
           ))}
         </div>
-      ) : filtered.length === 0 ? (
+      ) : paginatedClients.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
           <Users className="h-12 w-12 mb-3 opacity-40" />
           <p className="text-sm">No se encontraron clientes</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filtered.map((client) => (
+        <>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {paginatedClients.map((client) => {
+            const memStatus = client.membership?.status
+            const hasMembership = memStatus && memStatus !== 'Sin membresia'
+            return (
             <Card key={client.id} className={`relative overflow-hidden hover:shadow-md transition-shadow ${client.deletedAt ? 'opacity-60' : ''}`}>
-              <div className={`h-1 ${client.pendingBalance > 0 ? 'bg-red-500' : 'bg-green-500'}`} />
+              {/* Top color bar: membership-aware */}
+              <div className={`h-1 ${
+                client.deletedAt ? 'bg-gray-400' :
+                memStatus === 'Activo' ? 'bg-emerald-500' :
+                memStatus === 'Vencido' ? 'bg-red-500' :
+                'bg-gray-300 dark:bg-gray-600'
+              }`} />
               <CardContent className="p-4 space-y-3">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-semibold text-sm truncate">{client.name}{client.lastName ? ` ${client.lastName}` : ''}</h3>
-                    </div>
+                    <h3 className="font-semibold text-sm truncate">{cap(client.name)}{client.lastName ? ` ${cap(client.lastName)}` : ''}</h3>
                     {client.cedula && (
                       <p className="text-[11px] text-muted-foreground font-mono">{client.cedula}</p>
                     )}
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
-                    {client.membership?.status && client.membership.status !== 'Sin membresia' && (
-                      <Badge
-                        className={`text-[10px] px-1.5 py-0 ${
-                          client.membership.status === 'Activo'
-                            ? 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400'
-                            : 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400'
-                        }`}
-                      >
-                        {client.membership.status}
-                      </Badge>
-                    )}
-                    {client.membership?.tarifa && (
+                    {/* Membership badge - always visible */}
+                    <Badge
+                      className={`text-[10px] px-1.5 py-0 ${
+                        memStatus === 'Activo'
+                          ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400'
+                          : memStatus === 'Vencido'
+                          ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400'
+                          : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
+                      }`}
+                    >
+                      {memStatus === 'Activo' ? 'Activo' : memStatus === 'Vencido' ? 'Vencido' : 'Sin membresia'}
+                    </Badge>
+                    {hasMembership && client.membership?.tarifa && (
                       <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-muted-foreground">
-                        {client.membership.tarifa}
+                        {cap(client.membership.tarifa)}
                       </Badge>
                     )}
                     {client.deletedAt && (
@@ -661,16 +733,29 @@ export function ClientsTable() {
                   {client.email && (
                     <div className="flex items-center gap-1.5">
                       <Mail className="h-3 w-3 shrink-0" />
-                      <span className="truncate">{client.email}</span>
+                      <span className="truncate">{client.email.toLowerCase()}</span>
                     </div>
                   )}
                   {client.address && (
                     <div className="flex items-center gap-1.5">
                       <MapPin className="h-3 w-3 shrink-0" />
-                      <span className="truncate">{client.address}</span>
+                      <span className="truncate">{cap(client.address)}</span>
                     </div>
                   )}
                 </div>
+
+                {/* Membership details */}
+                {hasMembership && (
+                  <div className="flex items-center gap-3 text-[11px] text-muted-foreground bg-muted/50 rounded-md px-2 py-1.5">
+                    <span className="font-medium">{cap(client.membership!.tarifa)}</span>
+                    {client.membership!.endDate && (
+                      <span>Vence: {new Date(client.membership!.endDate).toLocaleDateString('es-VE')}</span>
+                    )}
+                    {memStatus === 'Activo' && client.membership!.daysRemaining > 0 && (
+                      <span className="text-emerald-600 dark:text-emerald-400 font-medium">{client.membership!.daysRemaining}d restantes</span>
+                    )}
+                  </div>
+                )}
 
                 <div className="flex items-center gap-3 text-xs text-muted-foreground">
                   <div className="flex items-center gap-1">
@@ -735,8 +820,59 @@ export function ClientsTable() {
                 </div>
               </CardContent>
             </Card>
-          ))}
+            )})}
         </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-muted-foreground">
+              Mostrando {(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, filtered.length)} de {filtered.length}
+            </p>
+            <div className="flex items-center gap-1">
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 w-8 p-0"
+                disabled={currentPage <= 1}
+                onClick={() => setCurrentPage(1)}
+              >
+                «
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 w-8 p-0"
+                disabled={currentPage <= 1}
+                onClick={() => setCurrentPage(p => p - 1)}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <span className="text-sm font-medium px-2">
+                {currentPage} / {totalPages}
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 w-8 p-0"
+                disabled={currentPage >= totalPages}
+                onClick={() => setCurrentPage(p => p + 1)}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 w-8 p-0"
+                disabled={currentPage >= totalPages}
+                onClick={() => setCurrentPage(totalPages)}
+              >
+                »
+              </Button>
+            </div>
+          </div>
+        )}
+        </>
       )}
 
       {/* Create Client Dialog */}
