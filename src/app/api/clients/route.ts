@@ -79,7 +79,9 @@ export async function GET(request: NextRequest) {
           status: membership.status,
           tarifa: membership.tarifa,
           endDate: membership.endDate,
-          daysRemaining: calcDaysRemaining(membership.endDate),
+          daysRemaining: membership.endDate
+            ? calcDaysRemaining(membership.endDate)
+            : membership.daysRemaining,
           ticketsRemaining: membership.ticketsRemaining,
         } : null,
       }

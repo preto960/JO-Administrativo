@@ -1566,7 +1566,7 @@ export function ClientsTable() {
                     <p className={`text-lg font-bold ${attData.stats.daysRemaining <= 0 ? 'text-red-600' : 'text-emerald-600'}`}>
                       {attData.stats.daysRemaining}
                     </p>
-                    <p className="text-[10px] text-muted-foreground">de {attData.stats.totalPlanDays || '?'}
+                    <p className="text-[10px] text-muted-foreground">de {attData.stats.totalPlanDays}
                     </p>
                   </CardContent>
                 </Card>

@@ -79,11 +79,11 @@ export async function GET(
     // Plan info — days remaining calculated dynamically
     const totalPlanDays = membership?.plan
       ? getPlanDays(membership.plan.durationType, membership.plan.durationDays)
-      : 0
+      : (membership?.daysRemaining || 0)
     const planName = membership?.plan?.name || membership?.tarifa || null
     const daysRemaining = membership?.endDate
       ? calcDaysRemaining(membership.endDate)
-      : 0
+      : (membership?.daysRemaining || 0)
 
     // Stats
     const totalAttendances = attendances.length
