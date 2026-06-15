@@ -60,20 +60,27 @@ export function AppHeader() {
     api.get<Array<{ id: string; name: string; code: string; address: string | null; phone: string | null; active: boolean; isMain: boolean }>>('/api/branches')
       .then((data) => {
         setBranches(data)
+
+        // Helper: pick the best branch (prefer main, then first active)
+        const pickBranch = () => {
+          const main = data.find(b => b.isMain && b.active)
+          return main || data.find(b => b.active) || null
+        }
+
         if (!isCashier) {
-          // For non-cashiers, auto-select the first active branch if none selected
           const currentBranchId = useAppStore.getState().selectedBranchId
-          if (!currentBranchId && data.length > 0) {
-            const firstActive = data.find(b => b.active)
-            if (firstActive) setSelectedBranchId(firstActive.id)
+          // Validate current selection still exists and is active
+          const stillValid = currentBranchId && data.some(b => b.id === currentBranchId && b.active)
+          if (!stillValid && data.length > 0) {
+            const branch = pickBranch()
+            if (branch) setSelectedBranchId(branch.id)
           }
         } else {
-          // For cashiers, force their assigned branch
           if (userBranchId) {
             setSelectedBranchId(userBranchId)
           } else if (data.length > 0) {
-            const firstActive = data.find(b => b.active)
-            if (firstActive) setSelectedBranchId(firstActive.id)
+            const branch = pickBranch()
+            if (branch) setSelectedBranchId(branch.id)
           }
         }
       })
