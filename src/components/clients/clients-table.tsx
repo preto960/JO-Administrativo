@@ -43,7 +43,7 @@ import {
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Plus, Search, Users, DollarSign, Loader2, Receipt, Truck, X, Trash2, Printer, FileText, Mail, Pencil, Phone, MapPin, ShoppingCart, Eye, EyeOff, AlertTriangle, Upload, ChevronLeft, ChevronRight, Filter, UserCheck, UserX, UsersRound } from 'lucide-react'
+import { Plus, Search, Users, DollarSign, Loader2, Receipt, Truck, X, Trash2, Printer, FileText, Mail, Pencil, Phone, MapPin, ShoppingCart, Eye, EyeOff, AlertTriangle, Upload, ChevronLeft, ChevronRight, Filter, UserCheck, UserX, UsersRound, RefreshCw, CalendarCheck, CalendarDays, CheckCircle2 } from 'lucide-react'
 import { ClientBulkImport } from './client-bulk-import'
 import { toast } from 'sonner'
 import { useSetting } from '@/stores/use-app-store'
@@ -74,6 +74,7 @@ interface Client {
   deletedAt: string | null
   pendingBalance: number
   membership: {
+    id: string
     status: string | null
     tarifa: string | null
     endDate: string | null
@@ -81,6 +82,15 @@ interface Client {
     ticketsRemaining: number
   } | null
   _count: { sales: number }
+}
+
+interface PlanOption {
+  id: string
+  name: string
+  durationType: string
+  durationDays: number | null
+  cost: number
+  active: boolean
 }
 
 interface SaleRecord {
@@ -189,7 +199,7 @@ export function ClientsTable() {
 
   // Show deleted clients toggle
   const [showInactive, setShowInactive] = useState(false)
-  const [membershipFilter, setMembershipFilter] = useState<'todos' | 'activo' | 'vencido' | 'sin'>('todos')
+  const [membershipFilter, setMembershipFilter] = useState<'todos' | 'activo' | 'vencido' | 'sin'>('activo')
   const [currentPage, setCurrentPage] = useState(1)
   const PAGE_SIZE = 20
 
@@ -276,6 +286,40 @@ export function ClientsTable() {
   const paginatedClients = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
   useEffect(() => { setCurrentPage(1) }, [search, membershipFilter, showInactive])
 
+  // Plans state
+  const [plans, setPlans] = useState<PlanOption[]>([])
+  const [formPlanId, setFormPlanId] = useState('')
+
+  // Renew dialog
+  const [renewClient, setRenewClient] = useState<Client | null>(null)
+  const [renewPlanId, setRenewPlanId] = useState('')
+  const [showRenewDialog, setShowRenewDialog] = useState(false)
+  const [renewing, setRenewing] = useState(false)
+
+  // Attendance dialog
+  const [attClient, setAttClient] = useState<Client | null>(null)
+  const [showAttDialog, setShowAttDialog] = useState(false)
+  const [loadingAtt, setLoadingAtt] = useState(false)
+  const [markingAtt, setMarkingAtt] = useState(false)
+  const [attData, setAttData] = useState<{
+    attendances: Array<{ id: string; date: string }>;
+    stats: {
+      totalPlanDays: number;
+      planName: string | null;
+      daysRemaining: number;
+      totalAttendances: number;
+      monthAttendanceCount: number;
+      monthName: string;
+    };
+  } | null>(null)
+
+  // Fetch plans for selectors
+  useEffect(() => {
+    api.get<PlanOption[]>('/api/plans')
+      .then(data => setPlans(Array.isArray(data) ? data.filter(p => p.active) : []))
+      .catch(() => {})
+  }, [])
+
   const openCreate = () => {
     setEditingClient(null)
     setFormName('')
@@ -283,6 +327,7 @@ export function ClientsTable() {
     setFormEmail('')
     setFormAddress('')
     setFormNote('')
+    setFormPlanId('')
     setDialogOpen(true)
   }
 
@@ -344,13 +389,21 @@ export function ClientsTable() {
         })
         toast.success('Cliente actualizado')
       } else {
-        await api.post('/api/clients', {
+        const newClient = await api.post<Client>('/api/clients', {
           name: trimmedName,
           phone: formPhone.trim() || null,
           email: formEmail.trim() || null,
           address: formAddress.trim() || null,
           note: formNote.trim() || null,
         })
+        // If plan selected, assign it via renew endpoint
+        if (formPlanId) {
+          try {
+            await api.post(`/api/clients/${newClient.id}/renew`, { planId: formPlanId })
+          } catch {
+            toast.warning('Cliente creado pero no se pudo asignar el plan')
+          }
+        }
         toast.success('Cliente creado')
       }
       setDialogOpen(false)
@@ -583,6 +636,63 @@ export function ClientsTable() {
     }
   }
 
+  const openRenew = (client: Client) => {
+    setRenewClient(client)
+    setRenewPlanId('')
+    setShowRenewDialog(true)
+  }
+
+  const handleRenew = async () => {
+    if (!renewClient || !renewPlanId) {
+      toast.error('Selecciona un plan')
+      return
+    }
+    setRenewing(true)
+    try {
+      const res = await api.post<{ message: string }>(`/api/clients/${renewClient.id}/renew`, { planId: renewPlanId })
+      toast.success(res.message || 'Suscripción renovada')
+      setShowRenewDialog(false)
+      fetchClients()
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Error al renovar'
+      toast.error(msg)
+    } finally {
+      setRenewing(false)
+    }
+  }
+
+  const openAttendance = async (client: Client) => {
+    setAttClient(client)
+    setAttData(null)
+    setShowAttDialog(true)
+    setLoadingAtt(true)
+    try {
+      const data = await api.get<typeof attData>(`/api/clients/${client.id}/attendance`)
+      setAttData(data)
+    } catch {
+      toast.error('Error al cargar asistencia')
+    } finally {
+      setLoadingAtt(false)
+    }
+  }
+
+  const markAttendance = async () => {
+    if (!attClient) return
+    setMarkingAtt(true)
+    try {
+      await api.post(`/api/clients/${attClient.id}/attendance`, {})
+      toast.success('Asistencia marcada correctamente')
+      // Refresh attendance data
+      openAttendance(attClient)
+      fetchClients()
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Error al marcar asistencia'
+      toast.error(msg)
+    } finally {
+      setMarkingAtt(false)
+    }
+  }
+
   const handleReactivate = async (client: Client) => {
     try {
       await api.put('/api/clients', { id: client.id, reactivate: true })
@@ -775,6 +885,16 @@ export function ClientsTable() {
                       <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Ver Historial" onClick={() => openHistory(client)}>
                         <Receipt className="h-3.5 w-3.5" />
                       </Button>
+                      {canManage && (
+                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-blue-500 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950/40" title="Marcar Asistencia" onClick={() => openAttendance(client)}>
+                          <CalendarCheck className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                      {canManage && (
+                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-emerald-500 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40" title="Renovar Suscripción" onClick={() => openRenew(client)}>
+                          <RefreshCw className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
                       <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Estado de Cuenta (PDF)" onClick={() => handleDownloadStatement(client)}>
                         <FileText className="h-3.5 w-3.5" />
                       </Button>
@@ -905,6 +1025,23 @@ export function ClientsTable() {
               <Label htmlFor="cnote">Notas</Label>
               <Input id="cnote" value={formNote} onChange={(e) => setFormNote(e.target.value)} placeholder="Notas internas" />
             </div>
+            {!editingClient && plans.length > 0 && (
+              <div className="space-y-2">
+                <Label>Asignar Plan (opcional)</Label>
+                <Select value={formPlanId} onValueChange={setFormPlanId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Sin plan — puedes asignarlo después" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {plans.map(p => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.name} — {fmt(p.cost)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <Button className="w-full bg-primary hover:bg-primary/90 text-white" onClick={handleSave} disabled={saving}>
               {saving ? 'Guardando...' : editingClient ? 'Actualizar Cliente' : 'Crear Cliente'}
             </Button>
@@ -1295,6 +1432,205 @@ export function ClientsTable() {
               {paying ? 'Procesando...' : 'Registrar Cobro'}
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Renew Subscription Dialog */}
+      <Dialog open={showRenewDialog} onOpenChange={setShowRenewDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <RefreshCw className="h-5 w-5 text-emerald-600" />
+              Renovar Suscripción
+            </DialogTitle>
+            <DialogDescription>
+              Selecciona un plan para {renewClient?.name}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {renewClient?.membership && (
+              <div className="rounded-md bg-muted p-3 space-y-1 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Estado actual:</span>
+                  <Badge className={`text-[10px] ${
+                    renewClient.membership.status === 'Activo'
+                      ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400'
+                      : 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400'
+                  }`}>
+                    {renewClient.membership.status === 'Activo' ? 'Activo' : 'Vencido'}
+                  </Badge>
+                </div>
+                {renewClient.membership.tarifa && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Plan actual:</span>
+                    <span className="font-medium">{renewClient.membership.tarifa}</span>
+                  </div>
+                )}
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Días restantes:</span>
+                  <span className="font-medium">{renewClient.membership.daysRemaining}</span>
+                </div>
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label>Seleccionar Plan *</Label>
+              <Select value={renewPlanId} onValueChange={setRenewPlanId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Elige un plan..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {plans.map(p => (
+                    <SelectItem key={p.id} value={p.id}>
+                      <div className="flex items-center justify-between gap-4">
+                        <span>{p.name}</span>
+                        <span className="text-muted-foreground font-mono">{fmt(p.cost)}</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                  {plans.length === 0 && (
+                    <SelectItem value="" disabled>No hay planes activos configurados</SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
+              onClick={handleRenew}
+              disabled={renewing || !renewPlanId}
+            >
+              {renewing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+              {renewing ? 'Renovando...' : 'Renovar Suscripción'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Attendance Dialog */}
+      <Dialog open={showAttDialog} onOpenChange={setShowAttDialog}>
+        <DialogContent className="sm:max-w-lg max-h-[85vh]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CalendarCheck className="h-5 w-5 text-blue-600" />
+              Asistencia de {attClient?.name}
+            </DialogTitle>
+            <DialogDescription>
+              Historial de asistencias y estadísticas
+            </DialogDescription>
+          </DialogHeader>
+          {loadingAtt ? (
+            <div className="h-48 rounded-lg bg-muted animate-pulse" />
+          ) : attData ? (
+            <div className="space-y-4 max-h-[65vh] overflow-y-auto">
+              {/* Stats cards */}
+              <div className="grid grid-cols-3 gap-3">
+                <Card>
+                  <CardContent className="p-3 text-center">
+                    <p className="text-xs text-muted-foreground">Plan</p>
+                    <p className="text-lg font-bold">{attData.stats.totalPlanDays || '—'}</p>
+                    <p className="text-[10px] text-muted-foreground">días total</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-3 text-center">
+                    <p className="text-xs text-muted-foreground">Restantes</p>
+                    <p className={`text-lg font-bold ${attData.stats.daysRemaining <= 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                      {attData.stats.daysRemaining}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">de {attData.stats.totalPlanDays || '?'}
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-3 text-center">
+                    <p className="text-xs text-muted-foreground">{attData.stats.monthName}</p>
+                    <p className="text-lg font-bold text-blue-600">{attData.stats.monthAttendanceCount}</p>
+                    <p className="text-[10px] text-muted-foreground">asistencias</p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Plan name */}
+              {attData.stats.planName && (
+                <div className="flex items-center gap-2 rounded-md bg-muted p-2 text-sm">
+                  <CalendarDays className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-muted-foreground">Plan:</span>
+                  <span className="font-medium">{attData.stats.planName}</span>
+                  <span className="text-xs text-muted-foreground ml-auto">
+                    Total asistencias: {attData.stats.totalAttendances}
+                  </span>
+                </div>
+              )}
+
+              {/* Mark attendance button */}
+              {canManage && attClient?.membership?.status === 'Activo' && attData.stats.daysRemaining > 0 && (
+                <Button
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                  onClick={markAttendance}
+                  disabled={markingAtt}
+                >
+                  {markingAtt ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
+                  {markingAtt ? 'Marcando...' : 'Marcar Asistencia de Hoy'}
+                </Button>
+              )}
+
+              {canManage && attClient?.membership?.status !== 'Activo' && (
+                <div className="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-3 text-sm text-amber-700 dark:text-amber-400 flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 shrink-0" />
+                  {attClient?.membership?.status === 'Vencido'
+                    ? 'La membresía está vencida. Renueva el plan para poder marcar asistencia.'
+                    : 'Este cliente no tiene una membresía activa. Asigna un plan primero.'}
+                </div>
+              )}
+
+              {/* Attendance list */}
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm">Registro de Asistencias</CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  {attData.attendances.length === 0 ? (
+                    <p className="text-sm text-muted-foreground p-4 text-center">Sin asistencias registradas</p>
+                  ) : (
+                    <ScrollArea className="max-h-[250px]">
+                      <div className="divide-y">
+                        {attData.attendances.map((att) => {
+                          const attDate = new Date(att.date)
+                          const isToday = attDate.toDateString() === new Date().toDateString()
+                          return (
+                            <div key={att.id} className="flex items-center gap-3 px-4 py-2.5">
+                              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
+                                isToday
+                                  ? 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
+                                  : 'bg-muted text-muted-foreground'
+                              }`}>
+                                {attDate.getDate()}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium">
+                                  {attDate.toLocaleDateString('es-VE', { weekday: 'long', day: 'numeric', month: 'short' })}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  {attDate.toLocaleDateString('es-VE', { year: 'numeric' })}
+                                </p>
+                              </div>
+                              {isToday && (
+                                <Badge className="text-[10px] bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+                                  Hoy
+                                </Badge>
+                              )}
+                              <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </ScrollArea>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground text-center py-8">No se pudo cargar la información</p>
+          )}
         </DialogContent>
       </Dialog>
 

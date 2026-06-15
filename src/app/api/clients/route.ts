@@ -57,6 +57,7 @@ export async function GET(request: NextRequest) {
         ...client,
         pendingBalance: Math.round(pendingBalance * 100) / 100,
         membership: membership ? {
+          id: membership.id,
           status: membership.status,
           tarifa: membership.tarifa,
           endDate: membership.endDate,

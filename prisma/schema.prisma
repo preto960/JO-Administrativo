@@ -52,12 +52,14 @@ model Client {
   receivables      AccountReceivable[]
   notifications    Notification[]
   memberships      ClientMembership[]
+  attendances      Attendance[]
 }
 
 model ClientMembership {
   id               String    @id @default(cuid())
   clientId         String
   status           String    @default("Sin membresia") // Activo, Vencido, Sin membresia
+  planId           String?
   tarifa           String?   // tipo de tarifa: Mensual, Trimestral, etc.
   paymentDate      DateTime? // fecha del último pago
   startDate        DateTime? // inicio de la membresía
@@ -68,9 +70,11 @@ model ClientMembership {
   updatedAt        DateTime  @updatedAt
 
   client           Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  plan             Plan?     @relation(fields: [planId], references: [id])
 
   @@index([clientId])
   @@index([status])
+  @@index([planId])
 }
 
 model Supplier {
@@ -532,4 +536,19 @@ model Plan {
   active        Boolean  @default(true)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+
+  memberships   ClientMembership[]
+}
+
+model Attendance {
+  id        String   @id @default(cuid())
+  clientId  String
+  date      DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, date])
+  @@index([clientId])
+  @@index([date])
 }
