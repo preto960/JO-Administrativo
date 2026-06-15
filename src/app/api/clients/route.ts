@@ -110,6 +110,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'El nombre debe tener al menos 2 caracteres' }, { status: 400 })
     }
 
+    const lastName = (body.lastName || '').trim()
+    if (!lastName) {
+      return NextResponse.json({ error: 'El apellido es obligatorio' }, { status: 400 })
+    }
+
     const phone = body.phone ? body.phone.trim() : null
     if (phone && !isValidPhone(phone)) {
       return NextResponse.json({ error: 'El teléfono debe tener al menos 7 dígitos' }, { status: 400 })
@@ -130,8 +135,8 @@ export async function POST(request: NextRequest) {
     const client = await db.client.create({
       data: {
         name,
+        lastName,
         cedula: body.cedula ? body.cedula.trim() : null,
-        lastName: body.lastName ? body.lastName.trim() : null,
         phone,
         email,
         address,
@@ -143,8 +148,16 @@ export async function POST(request: NextRequest) {
     })
     await logAction({ action: 'create', entity: 'client', entityId: client.id, details: { name }, request })
     return NextResponse.json(client, { status: 201 })
-  } catch (error) {
-    return NextResponse.json({ error: 'Error al crear cliente' }, { status: 500 })
+  } catch (error: unknown) {
+    console.error('Error al crear cliente:', error)
+    const prismaErr = error as { code?: string; meta?: { target?: string[] } }
+    if (prismaErr.code === 'P2002') {
+      const field = prismaErr.meta?.target?.[0] || 'campo'
+      const fieldLabel = field === 'cedula' ? 'cédula' : field
+      return NextResponse.json({ error: `Ya existe un cliente con esa ${fieldLabel}` }, { status: 409 })
+    }
+    const msg = error instanceof Error ? error.message : 'Error al crear cliente'
+    return NextResponse.json({ error: msg }, { status: 500 })
   }
 }
 
