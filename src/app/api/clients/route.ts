@@ -13,6 +13,24 @@ function isValidPhone(phone: string): boolean {
   return /^\+?\d{7,}$/.test(phone.replace(/[\s\-()]/g, ''))
 }
 
+/** Get today at midnight in Colombia timezone */
+function getTodayBogota(): Date {
+  const now = new Date()
+  const bogota = new Date(now.toLocaleString('en-US', { timeZone: 'America/Bogota' }))
+  bogota.setHours(0, 0, 0, 0)
+  return bogota
+}
+
+/** Calculate dynamic days remaining based on endDate vs today (Bogota) */
+function calcDaysRemaining(endDate: Date | null): number {
+  if (!endDate) return 0
+  const today = getTodayBogota()
+  const end = new Date(endDate)
+  const diff = end.getTime() - today.getTime()
+  const days = diff / (1000 * 60 * 60 * 24)
+  return Math.max(0, Math.round(days))
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
@@ -28,6 +46,8 @@ export async function GET(request: NextRequest) {
         { name: { contains: search } },
         { phone: { contains: search } },
         { email: { contains: search } },
+        { cedula: { contains: search } },
+        { lastName: { contains: search } },
       ]
     }
 
@@ -39,16 +59,31 @@ export async function GET(request: NextRequest) {
           where: { status: 'pendiente' },
           select: { pendingBalance: true },
         },
+        memberships: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        },
       },
       orderBy: { name: 'asc' },
     })
 
-    // Compute pending balance for each client
+    // Compute pending balance and membership for each client
     const clientsWithBalance = clients.map(client => {
       const pendingBalance = client.receivables.reduce((sum, r) => sum + r.pendingBalance, 0)
+      const membership = client.memberships[0] || null
       return {
         ...client,
         pendingBalance: Math.round(pendingBalance * 100) / 100,
+        membership: membership ? {
+          id: membership.id,
+          status: membership.status,
+          tarifa: membership.tarifa,
+          endDate: membership.endDate,
+          daysRemaining: membership.endDate
+            ? calcDaysRemaining(membership.endDate)
+            : membership.daysRemaining,
+          ticketsRemaining: membership.ticketsRemaining,
+        } : null,
       }
     })
 
@@ -77,6 +112,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'El nombre debe tener al menos 2 caracteres' }, { status: 400 })
     }
 
+    const lastName = (body.lastName || '').trim()
+    if (!lastName) {
+      return NextResponse.json({ error: 'El apellido es obligatorio' }, { status: 400 })
+    }
+
     const phone = body.phone ? body.phone.trim() : null
     if (phone && !isValidPhone(phone)) {
       return NextResponse.json({ error: 'El teléfono debe tener al menos 7 dígitos' }, { status: 400 })
@@ -97,16 +137,29 @@ export async function POST(request: NextRequest) {
     const client = await db.client.create({
       data: {
         name,
+        lastName,
+        cedula: body.cedula ? body.cedula.trim() : null,
         phone,
         email,
         address,
         note,
+        gender: body.gender ? body.gender.trim() : null,
+        birthDate: body.birthDate ? new Date(body.birthDate) : null,
+        age: body.age ? parseInt(String(body.age)) : null,
       },
     })
     await logAction({ action: 'create', entity: 'client', entityId: client.id, details: { name }, request })
     return NextResponse.json(client, { status: 201 })
-  } catch (error) {
-    return NextResponse.json({ error: 'Error al crear cliente' }, { status: 500 })
+  } catch (error: unknown) {
+    console.error('Error al crear cliente:', error)
+    const prismaErr = error as { code?: string; meta?: { target?: string[] } }
+    if (prismaErr.code === 'P2002') {
+      const field = prismaErr.meta?.target?.[0] || 'campo'
+      const fieldLabel = field === 'cedula' ? 'cédula' : field
+      return NextResponse.json({ error: `Ya existe un cliente con esa ${fieldLabel}` }, { status: 409 })
+    }
+    const msg = error instanceof Error ? error.message : 'Error al crear cliente'
+    return NextResponse.json({ error: msg }, { status: 500 })
   }
 }
 
@@ -170,10 +223,15 @@ export async function PUT(request: NextRequest) {
       where: { id },
       data: {
         name,
+        cedula: body.cedula !== undefined ? (body.cedula ? body.cedula.trim() : null) : undefined,
+        lastName: body.lastName !== undefined ? (body.lastName ? body.lastName.trim() : null) : undefined,
         phone,
         email,
         address,
         note,
+        gender: body.gender !== undefined ? (body.gender ? body.gender.trim() : null) : undefined,
+        birthDate: body.birthDate ? new Date(body.birthDate) : undefined,
+        age: body.age !== undefined ? (body.age ? parseInt(String(body.age)) : null) : undefined,
       },
     })
     await logAction({ action: 'update', entity: 'client', entityId: id, details: { name }, request })

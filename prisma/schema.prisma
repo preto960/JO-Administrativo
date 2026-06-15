@@ -32,19 +32,49 @@ model User {
 }
 
 model Client {
-  id        String    @id @default(cuid())
-  name      String
-  phone     String?
-  email     String?
-  address   String?
-  note      String?
-  deletedAt DateTime?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  id               String    @id @default(cuid())
+  cedula           String?   @unique
+  name             String
+  lastName         String?
+  phone            String?
+  email            String?
+  address          String?
+  birthDate        DateTime?
+  age              Int?
+  gender           String?   // Masculino, Femenino
+  note             String?
+  lastAttendance   DateTime?
+  deletedAt        DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
-  sales        Sale[]
-  receivables  AccountReceivable[]
-  notifications Notification[]
+  sales            Sale[]
+  receivables      AccountReceivable[]
+  notifications    Notification[]
+  memberships      ClientMembership[]
+  attendances      Attendance[]
+}
+
+model ClientMembership {
+  id               String    @id @default(cuid())
+  clientId         String
+  status           String    @default("Sin membresia") // Activo, Vencido, Sin membresia
+  planId           String?
+  tarifa           String?   // tipo de tarifa: Mensual, Trimestral, etc.
+  paymentDate      DateTime? // fecha del último pago
+  startDate        DateTime? // inicio de la membresía
+  endDate          DateTime? // vencimiento de la membresía
+  daysRemaining    Int       @default(0)
+  ticketsRemaining Int       @default(0)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  client           Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  plan             Plan?     @relation(fields: [planId], references: [id])
+
+  @@index([clientId])
+  @@index([status])
+  @@index([planId])
 }
 
 model Supplier {
@@ -494,4 +524,31 @@ model AuditLog {
   @@index([entity])
   @@index([action])
   @@index([createdAt])
+}
+
+model Plan {
+  id            String   @id @default(cuid())
+  name          String   @unique
+  durationType  String   @default("1_mes") // "1_mes" | "bimestral" | "anual" | "dia" | "otro"
+  durationDays  Int?     // solo cuando durationType = "otro"
+  cost          Float    @default(0)
+  description   String?
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  memberships   ClientMembership[]
+}
+
+model Attendance {
+  id        String   @id @default(cuid())
+  clientId  String
+  date      DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, date])
+  @@index([clientId])
+  @@index([date])
 }

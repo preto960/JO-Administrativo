@@ -43,7 +43,8 @@ import {
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Plus, Search, Users, DollarSign, Loader2, Receipt, Truck, X, Trash2, Printer, FileText, Mail, Pencil, Phone, MapPin, ShoppingCart, Eye, EyeOff, AlertTriangle } from 'lucide-react'
+import { Plus, Search, Users, DollarSign, Loader2, Receipt, Truck, X, Trash2, Printer, FileText, Mail, Pencil, Phone, MapPin, ShoppingCart, Eye, EyeOff, AlertTriangle, Upload, ChevronLeft, ChevronRight, Filter, UserCheck, UserX, UsersRound, RefreshCw, CalendarCheck, CalendarDays, CheckCircle2 } from 'lucide-react'
+import { ClientBulkImport } from './client-bulk-import'
 import { toast } from 'sonner'
 import { useSetting } from '@/stores/use-app-store'
 import { useCurrency } from '@/hooks/use-currency'
@@ -63,13 +64,33 @@ interface PaymentMethodOption {
 interface Client {
   id: string
   name: string
+  cedula: string | null
+  lastName: string | null
+  gender: string | null
   phone: string | null
   email: string | null
   address: string | null
   note: string | null
   deletedAt: string | null
   pendingBalance: number
+  membership: {
+    id: string
+    status: string | null
+    tarifa: string | null
+    endDate: string | null
+    daysRemaining: number
+    ticketsRemaining: number
+  } | null
   _count: { sales: number }
+}
+
+interface PlanOption {
+  id: string
+  name: string
+  durationType: string
+  durationDays: number | null
+  cost: number
+  active: boolean
 }
 
 interface SaleRecord {
@@ -108,9 +129,12 @@ export function ClientsTable() {
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [bulkImportOpen, setBulkImportOpen] = useState(false)
   const [saving, setSaving] = useState(false)
 
   const [formName, setFormName] = useState('')
+  const [formLastName, setFormLastName] = useState('')
+  const [formCedula, setFormCedula] = useState('')
   const [formPhone, setFormPhone] = useState('')
   const [formEmail, setFormEmail] = useState('')
   const [formAddress, setFormAddress] = useState('')
@@ -177,9 +201,15 @@ export function ClientsTable() {
 
   // Show deleted clients toggle
   const [showInactive, setShowInactive] = useState(false)
+  const [membershipFilter, setMembershipFilter] = useState<'todos' | 'activo' | 'vencido' | 'sin'>('activo')
+  const [currentPage, setCurrentPage] = useState(1)
+  const PAGE_SIZE = 20
 
   const fetchClients = async () => {
     try {
+      // Check expirations in background (updates Vencido + sends notifications)
+      api.get('/api/clients/check-expirations').catch(() => {})
+
       const params = showInactive ? '?includeDeleted=true' : ''
       const data = await api.get<Client[]>(`/api/clients${params}`)
       setClients(data)
@@ -226,25 +256,93 @@ export function ClientsTable() {
       })
   }, [country])
 
-  const inactiveCount = clients.filter((c) => c.deletedAt !== null).length
+  // Capitalize helper: "jUAN pEREZ" → "Juan Perez"
+  const cap = (str: string | null | undefined): string => {
+    if (!str) return ''
+    return str
+      .toLowerCase()
+      .replace(/\b\w/g, (c) => c.toUpperCase())
+  }
 
-  const filtered = clients.filter(
-    (c) => !search || c.name.toLowerCase().includes(search.toLowerCase()) || (c.phone && c.phone.includes(search)) || (c.email && c.email.toLowerCase().includes(search.toLowerCase()))
-  )
+  const inactiveCount = clients.filter((c) => c.deletedAt !== null).length
+  const activeCount = clients.filter((c) => !c.deletedAt && c.membership?.status === 'Activo').length
+  const expiredCount = clients.filter((c) => !c.deletedAt && c.membership?.status === 'Vencido').length
+  const noMembershipCount = clients.filter((c) => !c.deletedAt && (!c.membership?.status || c.membership?.status === 'Sin membresia')).length
+
+  const searchLower = search.toLowerCase().trim()
+  const filtered = clients.filter((c) => {
+    // Membership filter
+    if (membershipFilter === 'activo' && c.membership?.status !== 'Activo') return false
+    if (membershipFilter === 'vencido' && c.membership?.status !== 'Vencido') return false
+    if (membershipFilter === 'sin' && c.membership?.status && c.membership?.status !== 'Sin membresia') return false
+
+    // Search filter
+    if (!searchLower) return true
+    const fullName = `${c.name} ${c.lastName || ''}`.toLowerCase()
+    if (fullName.includes(searchLower)) return true
+    if (c.cedula && c.cedula.includes(search)) return true
+    if (c.phone && c.phone.includes(search)) return true
+    if (c.email && c.email.toLowerCase().includes(searchLower)) return true
+    return false
+  })
+
+  // Pagination
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  const paginatedClients = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
+  useEffect(() => { setCurrentPage(1) }, [search, membershipFilter, showInactive])
+
+  // Plans state
+  const [plans, setPlans] = useState<PlanOption[]>([])
+  const [formPlanId, setFormPlanId] = useState('')
+
+  // Renew dialog
+  const [renewClient, setRenewClient] = useState<Client | null>(null)
+  const [renewPlanId, setRenewPlanId] = useState('')
+  const [showRenewDialog, setShowRenewDialog] = useState(false)
+  const [renewing, setRenewing] = useState(false)
+
+  // Attendance dialog
+  const [attClient, setAttClient] = useState<Client | null>(null)
+  const [showAttDialog, setShowAttDialog] = useState(false)
+  const [loadingAtt, setLoadingAtt] = useState(false)
+  const [markingAtt, setMarkingAtt] = useState(false)
+  const [attData, setAttData] = useState<{
+    attendances: Array<{ id: string; date: string }>;
+    stats: {
+      totalPlanDays: number;
+      planName: string | null;
+      daysRemaining: number;
+      totalAttendances: number;
+      monthAttendanceCount: number;
+      monthName: string;
+    };
+  } | null>(null)
+
+  // Fetch plans for selectors
+  useEffect(() => {
+    api.get<PlanOption[]>('/api/plans')
+      .then(data => setPlans(Array.isArray(data) ? data.filter(p => p.active) : []))
+      .catch(() => {})
+  }, [])
 
   const openCreate = () => {
     setEditingClient(null)
     setFormName('')
+    setFormLastName('')
+    setFormCedula('')
     setFormPhone('')
     setFormEmail('')
     setFormAddress('')
     setFormNote('')
+    setFormPlanId('')
     setDialogOpen(true)
   }
 
   const openEdit = (client: Client) => {
     setEditingClient(client)
     setFormName(client.name)
+    setFormLastName(client.lastName || '')
+    setFormCedula(client.cedula || '')
     setFormPhone(client.phone || '')
     setFormEmail(client.email || '')
     setFormAddress(client.address || '')
@@ -261,6 +359,13 @@ export function ClientsTable() {
     }
     if (trimmedName.length < 2) {
       toast.error('El nombre debe tener al menos 2 caracteres')
+      return
+    }
+
+    // Last name validation
+    const trimmedLastName = formLastName.trim()
+    if (!trimmedLastName) {
+      toast.error('El apellido es obligatorio')
       return
     }
 
@@ -293,6 +398,8 @@ export function ClientsTable() {
         await api.put('/api/clients', {
           id: editingClient.id,
           name: trimmedName,
+          lastName: trimmedLastName,
+          cedula: formCedula.trim() || null,
           phone: formPhone.trim() || null,
           email: formEmail.trim() || null,
           address: formAddress.trim() || null,
@@ -300,13 +407,23 @@ export function ClientsTable() {
         })
         toast.success('Cliente actualizado')
       } else {
-        await api.post('/api/clients', {
+        const newClient = await api.post<Client>('/api/clients', {
           name: trimmedName,
+          lastName: trimmedLastName,
+          cedula: formCedula.trim() || null,
           phone: formPhone.trim() || null,
           email: formEmail.trim() || null,
           address: formAddress.trim() || null,
           note: formNote.trim() || null,
         })
+        // If plan selected, assign it via renew endpoint
+        if (formPlanId) {
+          try {
+            await api.post(`/api/clients/${newClient.id}/renew`, { planId: formPlanId })
+          } catch {
+            toast.warning('Cliente creado pero no se pudo asignar el plan')
+          }
+        }
         toast.success('Cliente creado')
       }
       setDialogOpen(false)
@@ -539,6 +656,63 @@ export function ClientsTable() {
     }
   }
 
+  const openRenew = (client: Client) => {
+    setRenewClient(client)
+    setRenewPlanId('')
+    setShowRenewDialog(true)
+  }
+
+  const handleRenew = async () => {
+    if (!renewClient || !renewPlanId) {
+      toast.error('Selecciona un plan')
+      return
+    }
+    setRenewing(true)
+    try {
+      const res = await api.post<{ message: string }>(`/api/clients/${renewClient.id}/renew`, { planId: renewPlanId })
+      toast.success(res.message || 'Suscripción renovada')
+      setShowRenewDialog(false)
+      fetchClients()
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Error al renovar'
+      toast.error(msg)
+    } finally {
+      setRenewing(false)
+    }
+  }
+
+  const openAttendance = async (client: Client) => {
+    setAttClient(client)
+    setAttData(null)
+    setShowAttDialog(true)
+    setLoadingAtt(true)
+    try {
+      const data = await api.get<typeof attData>(`/api/clients/${client.id}/attendance`)
+      setAttData(data)
+    } catch {
+      toast.error('Error al cargar asistencia')
+    } finally {
+      setLoadingAtt(false)
+    }
+  }
+
+  const markAttendance = async () => {
+    if (!attClient) return
+    setMarkingAtt(true)
+    try {
+      await api.post(`/api/clients/${attClient.id}/attendance`, {})
+      toast.success('Asistencia marcada correctamente')
+      // Refresh attendance data
+      openAttendance(attClient)
+      fetchClients()
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Error al marcar asistencia'
+      toast.error(msg)
+    } finally {
+      setMarkingAtt(false)
+    }
+  }
+
   const handleReactivate = async (client: Client) => {
     try {
       await api.put('/api/clients', { id: client.id, reactivate: true })
@@ -551,51 +725,100 @@ export function ClientsTable() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input placeholder="Buscar cliente..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" />
+      {/* Top bar: search + filters + actions */}
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input placeholder="Buscar por nombre, apellido, cédula o teléfono..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" />
+          </div>
+          <div className="flex items-center gap-2 text-sm">
+            <Switch
+              id="show-inactive-clients"
+              checked={showInactive}
+              onCheckedChange={setShowInactive}
+            />
+            <Label htmlFor="show-inactive-clients" className="cursor-pointer select-none">
+              {showInactive ? <Eye className="inline h-4 w-4 mr-1" /> : <EyeOff className="inline h-4 w-4 mr-1" />}
+              Inactivos ({inactiveCount})
+            </Label>
+          </div>
+          {canManage && (
+            <div className="flex items-center gap-2">
+              <Button variant="outline" onClick={() => setBulkImportOpen(true)} className="text-primary border-primary/30 hover:bg-primary/5">
+                <Upload className="mr-2 h-4 w-4" /> Carga Masiva
+              </Button>
+              <Button onClick={openCreate} className="bg-primary hover:bg-primary/90 text-white">
+                <Plus className="mr-2 h-4 w-4" /> Nuevo Cliente
+              </Button>
+            </div>
+          )}
         </div>
-        <div className="flex items-center gap-2 text-sm">
-          <Switch
-            id="show-inactive-clients"
-            checked={showInactive}
-            onCheckedChange={setShowInactive}
-          />
-          <Label htmlFor="show-inactive-clients" className="cursor-pointer select-none">
-            {showInactive ? <Eye className="inline h-4 w-4 mr-1" /> : <EyeOff className="inline h-4 w-4 mr-1" />}
-            Inactivos ({inactiveCount})
-          </Label>
+
+        {/* Membership filter bar */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <Filter className="h-4 w-4 text-muted-foreground" />
+          <span className="text-xs text-muted-foreground mr-1">Membresía:</span>
+          {([
+            { key: 'todos' as const, label: 'Todos', count: clients.filter(c => !c.deletedAt).length, icon: <UsersRound className="h-3.5 w-3.5" /> },
+            { key: 'activo' as const, label: 'Activos', count: activeCount, icon: <UserCheck className="h-3.5 w-3.5" /> },
+            { key: 'vencido' as const, label: 'Vencidos', count: expiredCount, icon: <UserX className="h-3.5 w-3.5" /> },
+            { key: 'sin' as const, label: 'Sin membresía', count: noMembershipCount, icon: <Users className="h-3.5 w-3.5" /> },
+          ]).map((opt) => (
+            <button
+              key={opt.key}
+              onClick={() => setMembershipFilter(opt.key)}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                membershipFilter === opt.key
+                  ? 'bg-primary text-white shadow-sm'
+                  : 'bg-muted text-muted-foreground hover:bg-muted/80'
+              }`}
+            >
+              {opt.icon}
+              {opt.label} ({opt.count})
+            </button>
+          ))}
+          <span className="ml-auto text-xs text-muted-foreground">
+            {filtered.length} resultado{filtered.length !== 1 ? 's' : ''}
+          </span>
         </div>
-        {canManage && (
-          <Button onClick={openCreate} className="bg-primary hover:bg-primary/90 text-white">
-            <Plus className="mr-2 h-4 w-4" /> Nuevo Cliente
-          </Button>
-        )}
       </div>
 
       {loading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <Card key={i} className="h-48 animate-pulse bg-muted" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <Card key={i} className="h-52 animate-pulse bg-muted" />
           ))}
         </div>
-      ) : filtered.length === 0 ? (
+      ) : paginatedClients.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
           <Users className="h-12 w-12 mb-3 opacity-40" />
           <p className="text-sm">No se encontraron clientes</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filtered.map((client) => (
+        <>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {paginatedClients.map((client) => {
+            const memStatus = client.membership?.status
+            const hasMembership = memStatus && memStatus !== 'Sin membresia'
+            return (
             <Card key={client.id} className={`relative overflow-hidden hover:shadow-md transition-shadow ${client.deletedAt ? 'opacity-60' : ''}`}>
-              <div className={`h-1 ${client.pendingBalance > 0 ? 'bg-red-500' : 'bg-green-500'}`} />
+              {/* Top color bar: membership-aware */}
+              <div className={`h-1 ${
+                client.deletedAt ? 'bg-gray-400' :
+                memStatus === 'Activo' ? 'bg-emerald-500' :
+                memStatus === 'Vencido' ? 'bg-red-500' :
+                'bg-gray-300 dark:bg-gray-600'
+              }`} />
               <CardContent className="p-4 space-y-3">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
-                    <h3 className="font-semibold text-sm truncate">{client.name}</h3>
+                    <h3 className="font-semibold text-sm truncate">{cap(client.name)}{client.lastName ? ` ${cap(client.lastName)}` : ''}</h3>
+                    {client.cedula && (
+                      <p className="text-[11px] text-muted-foreground font-mono">{client.cedula}</p>
+                    )}
                   </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
+                  <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
                     {client.deletedAt && (
                       <Badge variant="outline" className="text-muted-foreground text-[10px] px-1.5 py-0">
                         Deshabilitado
@@ -623,14 +846,44 @@ export function ClientsTable() {
                   {client.email && (
                     <div className="flex items-center gap-1.5">
                       <Mail className="h-3 w-3 shrink-0" />
-                      <span className="truncate">{client.email}</span>
+                      <span className="truncate">{client.email.toLowerCase()}</span>
                     </div>
                   )}
                   {client.address && (
                     <div className="flex items-center gap-1.5">
                       <MapPin className="h-3 w-3 shrink-0" />
-                      <span className="truncate">{client.address}</span>
+                      <span className="truncate">{cap(client.address)}</span>
                     </div>
+                  )}
+                </div>
+
+                {/* Membership info below contact */}
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <Badge
+                    className={`text-[10px] px-1.5 py-0 ${
+                      memStatus === 'Activo'
+                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400'
+                        : memStatus === 'Vencido'
+                        ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400'
+                        : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
+                    }`}
+                  >
+                    {memStatus === 'Activo' ? 'Activo' : memStatus === 'Vencido' ? 'Vencido' : 'Sin membresia'}
+                  </Badge>
+                  {hasMembership && client.membership?.tarifa && (
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-muted-foreground">
+                      {cap(client.membership.tarifa)}
+                    </Badge>
+                  )}
+                  {hasMembership && client.membership!.endDate && (
+                    <span className="text-[10px] text-muted-foreground">
+                      Vence: {new Date(client.membership!.endDate).toLocaleDateString('es-VE')}
+                    </span>
+                  )}
+                  {memStatus === 'Activo' && hasMembership && client.membership!.daysRemaining > 0 && (
+                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
+                      {client.membership!.daysRemaining}d restantes
+                    </span>
                   )}
                 </div>
 
@@ -652,6 +905,16 @@ export function ClientsTable() {
                       <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Ver Historial" onClick={() => openHistory(client)}>
                         <Receipt className="h-3.5 w-3.5" />
                       </Button>
+                      {canManage && (
+                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-blue-500 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950/40" title="Marcar Asistencia" onClick={() => openAttendance(client)}>
+                          <CalendarCheck className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                      {canManage && (
+                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-emerald-500 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40" title="Renovar Suscripción" onClick={() => openRenew(client)}>
+                          <RefreshCw className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
                       <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Estado de Cuenta (PDF)" onClick={() => handleDownloadStatement(client)}>
                         <FileText className="h-3.5 w-3.5" />
                       </Button>
@@ -697,8 +960,59 @@ export function ClientsTable() {
                 </div>
               </CardContent>
             </Card>
-          ))}
+            )})}
         </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-muted-foreground">
+              Mostrando {(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, filtered.length)} de {filtered.length}
+            </p>
+            <div className="flex items-center gap-1">
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 w-8 p-0"
+                disabled={currentPage <= 1}
+                onClick={() => setCurrentPage(1)}
+              >
+                «
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 w-8 p-0"
+                disabled={currentPage <= 1}
+                onClick={() => setCurrentPage(p => p - 1)}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <span className="text-sm font-medium px-2">
+                {currentPage} / {totalPages}
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 w-8 p-0"
+                disabled={currentPage >= totalPages}
+                onClick={() => setCurrentPage(p => p + 1)}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 w-8 p-0"
+                disabled={currentPage >= totalPages}
+                onClick={() => setCurrentPage(totalPages)}
+              >
+                »
+              </Button>
+            </div>
+          </div>
+        )}
+        </>
       )}
 
       {/* Create Client Dialog */}
@@ -709,9 +1023,19 @@ export function ClientsTable() {
             <DialogDescription>{editingClient ? 'Modifica los datos del cliente' : 'Registra un nuevo cliente en el sistema'}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="cname">Nombre *</Label>
+                <Input id="cname" value={formName} onChange={(e) => setFormName(e.target.value)} placeholder="Nombre" />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="clastname">Apellido *</Label>
+                <Input id="clastname" value={formLastName} onChange={(e) => setFormLastName(e.target.value)} placeholder="Apellido" />
+              </div>
+            </div>
             <div className="space-y-2">
-              <Label htmlFor="cname">Nombre *</Label>
-              <Input id="cname" value={formName} onChange={(e) => setFormName(e.target.value)} placeholder="Nombre completo" />
+              <Label htmlFor="ccedula">Cédula</Label>
+              <Input id="ccedula" value={formCedula} onChange={(e) => setFormCedula(e.target.value)} placeholder="V-00000000" />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -731,6 +1055,23 @@ export function ClientsTable() {
               <Label htmlFor="cnote">Notas</Label>
               <Input id="cnote" value={formNote} onChange={(e) => setFormNote(e.target.value)} placeholder="Notas internas" />
             </div>
+            {!editingClient && plans.length > 0 && (
+              <div className="space-y-2">
+                <Label>Asignar Plan (opcional)</Label>
+                <Select value={formPlanId} onValueChange={setFormPlanId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Sin plan — puedes asignarlo después" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {plans.map(p => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.name} — {fmt(p.cost)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <Button className="w-full bg-primary hover:bg-primary/90 text-white" onClick={handleSave} disabled={saving}>
               {saving ? 'Guardando...' : editingClient ? 'Actualizar Cliente' : 'Crear Cliente'}
             </Button>
@@ -1124,6 +1465,203 @@ export function ClientsTable() {
         </DialogContent>
       </Dialog>
 
+      {/* Renew Subscription Dialog */}
+      <Dialog open={showRenewDialog} onOpenChange={setShowRenewDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <RefreshCw className="h-5 w-5 text-emerald-600" />
+              Renovar Suscripción
+            </DialogTitle>
+            <DialogDescription>
+              Selecciona un plan para {renewClient?.name}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {renewClient?.membership && (
+              <div className="rounded-md bg-muted p-3 space-y-1 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Estado actual:</span>
+                  <Badge className={`text-[10px] ${
+                    renewClient.membership.status === 'Activo'
+                      ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400'
+                      : 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400'
+                  }`}>
+                    {renewClient.membership.status === 'Activo' ? 'Activo' : 'Vencido'}
+                  </Badge>
+                </div>
+                {renewClient.membership.tarifa && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Plan actual:</span>
+                    <span className="font-medium">{renewClient.membership.tarifa}</span>
+                  </div>
+                )}
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Días restantes:</span>
+                  <span className="font-medium">{renewClient.membership.daysRemaining}</span>
+                </div>
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label>Seleccionar Plan *</Label>
+              <Select value={renewPlanId} onValueChange={setRenewPlanId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Elige un plan..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {plans.map(p => (
+                    <SelectItem key={p.id} value={p.id}>
+                      <div className="flex items-center justify-between gap-4">
+                        <span>{p.name}</span>
+                        <span className="text-muted-foreground font-mono">{fmt(p.cost)}</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                  {plans.length === 0 && (
+                    <SelectItem value="" disabled>No hay planes activos configurados</SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
+              onClick={handleRenew}
+              disabled={renewing || !renewPlanId}
+            >
+              {renewing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+              {renewing ? 'Renovando...' : 'Renovar Suscripción'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Attendance Dialog */}
+      <Dialog open={showAttDialog} onOpenChange={setShowAttDialog}>
+        <DialogContent className="sm:max-w-lg max-h-[85vh]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CalendarCheck className="h-5 w-5 text-blue-600" />
+              Asistencia de {attClient?.name}
+            </DialogTitle>
+            <DialogDescription>
+              Historial de asistencias y estadísticas
+            </DialogDescription>
+          </DialogHeader>
+          {loadingAtt ? (
+            <div className="h-48 rounded-lg bg-muted animate-pulse" />
+          ) : attData ? (
+            <div className="space-y-4 max-h-[65vh] overflow-y-auto">
+              {/* Stats cards */}
+              <div className="grid grid-cols-3 gap-3">
+                <Card>
+                  <CardContent className="p-3 text-center">
+                    <p className="text-xs text-muted-foreground">Plan</p>
+                    <p className="text-lg font-bold">{attData.stats.totalPlanDays || '—'}</p>
+                    <p className="text-[10px] text-muted-foreground">días total</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-3 text-center">
+                    <p className="text-xs text-muted-foreground">Restantes</p>
+                    <p className={`text-lg font-bold ${attData.stats.daysRemaining <= 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                      {attData.stats.daysRemaining}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">de {attData.stats.totalPlanDays}
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-3 text-center">
+                    <p className="text-xs text-muted-foreground">{attData.stats.monthName}</p>
+                    <p className="text-lg font-bold text-blue-600">{attData.stats.monthAttendanceCount}</p>
+                    <p className="text-[10px] text-muted-foreground">asistencias</p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Plan name */}
+              {attData.stats.planName && (
+                <div className="flex items-center gap-2 rounded-md bg-muted p-2 text-sm">
+                  <CalendarDays className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-muted-foreground">Plan:</span>
+                  <span className="font-medium">{attData.stats.planName}</span>
+                  <span className="text-xs text-muted-foreground ml-auto">
+                    Total asistencias: {attData.stats.totalAttendances}
+                  </span>
+                </div>
+              )}
+
+              {/* Mark attendance button — always available, attendance is just tracking */}
+              {canManage && (
+                <Button
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                  onClick={markAttendance}
+                  disabled={markingAtt}
+                >
+                  {markingAtt ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
+                  {markingAtt ? 'Marcando...' : 'Marcar Asistencia de Hoy'}
+                </Button>
+              )}
+
+              {!canManage && (
+                <div className="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-3 text-sm text-amber-700 dark:text-amber-400 flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 shrink-0" />
+                  Solo usuarios con permisos pueden marcar asistencia.
+                </div>
+              )}
+
+              {/* Attendance list */}
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm">Registro de Asistencias</CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  {attData.attendances.length === 0 ? (
+                    <p className="text-sm text-muted-foreground p-4 text-center">Sin asistencias registradas</p>
+                  ) : (
+                    <ScrollArea className="max-h-[250px]">
+                      <div className="divide-y">
+                        {attData.attendances.map((att) => {
+                          const attDate = new Date(att.date)
+                          const isToday = attDate.toDateString() === new Date().toDateString()
+                          return (
+                            <div key={att.id} className="flex items-center gap-3 px-4 py-2.5">
+                              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
+                                isToday
+                                  ? 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
+                                  : 'bg-muted text-muted-foreground'
+                              }`}>
+                                {attDate.getDate()}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium">
+                                  {attDate.toLocaleDateString('es-VE', { weekday: 'long', day: 'numeric', month: 'short' })}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  {attDate.toLocaleDateString('es-VE', { year: 'numeric' })}
+                                </p>
+                              </div>
+                              {isToday && (
+                                <Badge className="text-[10px] bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+                                  Hoy
+                                </Badge>
+                              )}
+                              <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </ScrollArea>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground text-center py-8">No se pudo cargar la información</p>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}>
         <AlertDialogContent size="sm">
@@ -1141,6 +1679,8 @@ export function ClientsTable() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <ClientBulkImport open={bulkImportOpen} onOpenChange={setBulkImportOpen} />
     </div>
   )
 }

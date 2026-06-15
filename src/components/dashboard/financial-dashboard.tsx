@@ -126,6 +126,9 @@ export function FinancialDashboard() {
   }, [customFrom, customTo])
 
   useEffect(() => {
+    // Check membership expirations in background
+    api.get('/api/clients/check-expirations').catch(() => {})
+
     // Don't fetch if custom period is selected but dates are invalid/empty
     if (period === 'custom' && !isCustomValid) return
 

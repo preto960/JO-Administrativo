@@ -76,6 +76,7 @@ import { RolePermissionsEditor } from './role-permissions-editor'
 import { AuditLogView } from '@/components/audit/audit-log-view'
 import { TutorialTextsEditor } from './tutorial-texts-editor'
 import { PaymentMethodsTab } from './payment-methods-tab'
+import { PlansTab } from './plans-tab'
 import { getPermissions, canAccessView } from '@/lib/permissions'
 
 interface Branch {
@@ -428,6 +429,10 @@ export function SettingsView() {
               <span>Categorías</span>
             </TabsTrigger>
           )}
+          <TabsTrigger data-tutorial="settings-tab-planes" value="planes" className="gap-1.5">
+            <Wallet className="h-3.5 w-3.5 hidden sm:block" />
+            <span>Planes</span>
+          </TabsTrigger>
           {userPerms?.canAccessTabApariencia && (
             <TabsTrigger data-tutorial="settings-tab-apariencia" value="apariencia" className="gap-1.5">
               <Palette className="h-3.5 w-3.5 hidden sm:block" />
@@ -1432,6 +1437,11 @@ export function SettingsView() {
               </Button>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* ── Plans Tab ────────────────────────────── */}
+        <TabsContent value="planes">
+          <PlansTab />
         </TabsContent>
       </Tabs>
 
