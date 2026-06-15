@@ -133,6 +133,8 @@ export function ClientsTable() {
   const [saving, setSaving] = useState(false)
 
   const [formName, setFormName] = useState('')
+  const [formLastName, setFormLastName] = useState('')
+  const [formCedula, setFormCedula] = useState('')
   const [formPhone, setFormPhone] = useState('')
   const [formEmail, setFormEmail] = useState('')
   const [formAddress, setFormAddress] = useState('')
@@ -323,6 +325,8 @@ export function ClientsTable() {
   const openCreate = () => {
     setEditingClient(null)
     setFormName('')
+    setFormLastName('')
+    setFormCedula('')
     setFormPhone('')
     setFormEmail('')
     setFormAddress('')
@@ -334,6 +338,8 @@ export function ClientsTable() {
   const openEdit = (client: Client) => {
     setEditingClient(client)
     setFormName(client.name)
+    setFormLastName(client.lastName || '')
+    setFormCedula(client.cedula || '')
     setFormPhone(client.phone || '')
     setFormEmail(client.email || '')
     setFormAddress(client.address || '')
@@ -350,6 +356,13 @@ export function ClientsTable() {
     }
     if (trimmedName.length < 2) {
       toast.error('El nombre debe tener al menos 2 caracteres')
+      return
+    }
+
+    // Last name validation
+    const trimmedLastName = formLastName.trim()
+    if (!trimmedLastName) {
+      toast.error('El apellido es obligatorio')
       return
     }
 
@@ -382,6 +395,8 @@ export function ClientsTable() {
         await api.put('/api/clients', {
           id: editingClient.id,
           name: trimmedName,
+          lastName: trimmedLastName,
+          cedula: formCedula.trim() || null,
           phone: formPhone.trim() || null,
           email: formEmail.trim() || null,
           address: formAddress.trim() || null,
@@ -391,6 +406,8 @@ export function ClientsTable() {
       } else {
         const newClient = await api.post<Client>('/api/clients', {
           name: trimmedName,
+          lastName: trimmedLastName,
+          cedula: formCedula.trim() || null,
           phone: formPhone.trim() || null,
           email: formEmail.trim() || null,
           address: formAddress.trim() || null,
@@ -1003,9 +1020,19 @@ export function ClientsTable() {
             <DialogDescription>{editingClient ? 'Modifica los datos del cliente' : 'Registra un nuevo cliente en el sistema'}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="cname">Nombre *</Label>
+                <Input id="cname" value={formName} onChange={(e) => setFormName(e.target.value)} placeholder="Nombre" />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="clastname">Apellido *</Label>
+                <Input id="clastname" value={formLastName} onChange={(e) => setFormLastName(e.target.value)} placeholder="Apellido" />
+              </div>
+            </div>
             <div className="space-y-2">
-              <Label htmlFor="cname">Nombre *</Label>
-              <Input id="cname" value={formName} onChange={(e) => setFormName(e.target.value)} placeholder="Nombre completo" />
+              <Label htmlFor="ccedula">Cédula</Label>
+              <Input id="ccedula" value={formCedula} onChange={(e) => setFormCedula(e.target.value)} placeholder="V-00000000" />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
