@@ -26,9 +26,9 @@ function getTodayBogota(): Date {
 function calcDaysRemaining(endDate: Date): number {
   const today = getTodayBogota()
   const end = new Date(endDate)
-  end.setHours(23, 59, 59, 999)
   const diff = end.getTime() - today.getTime()
-  return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)))
+  const days = diff / (1000 * 60 * 60 * 24)
+  return Math.max(0, Math.round(days))
 }
 
 // GET /api/clients/[id]/attendance — get attendance history + stats
