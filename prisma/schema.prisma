@@ -486,6 +486,8 @@ model Settings {
   multiCurrencyEnabled  Boolean  @default(false)
   country               String   @default("VE")
   tutorialTexts         Json     @default("{}")
+  businessType          String   @default("")      // "gym" | "pyme" — empty = all features visible
+  clientCode            String   @default("")      // unique per installation, e.g. "GYM1", "PYME3"
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 }

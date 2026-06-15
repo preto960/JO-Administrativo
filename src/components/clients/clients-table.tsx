@@ -125,6 +125,7 @@ export function ClientsTable() {
   const { user, permissions } = useAuth()
   const canManage = permissions.canManageClients
   const selectedBranchId = useAppStore((s) => s.selectedBranchId)
+  const isGym = useSetting('businessType') === 'gym'
   const [clients, setClients] = useState<Client[]>([])
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
@@ -207,8 +208,8 @@ export function ClientsTable() {
 
   const fetchClients = async () => {
     try {
-      // Check expirations in background (updates Vencido + sends notifications)
-      api.get('/api/clients/check-expirations').catch(() => {})
+      // Check expirations in background (gym only)
+      if (isGym) api.get('/api/clients/check-expirations').catch(() => {})
 
       const params = showInactive ? '?includeDeleted=true' : ''
       const data = await api.get<Client[]>(`/api/clients${params}`)
@@ -271,16 +272,18 @@ export function ClientsTable() {
 
   const searchLower = search.toLowerCase().trim()
   const filtered = clients.filter((c) => {
-    // Membership filter
-    if (membershipFilter === 'activo' && c.membership?.status !== 'Activo') return false
-    if (membershipFilter === 'vencido' && c.membership?.status !== 'Vencido') return false
-    if (membershipFilter === 'sin' && c.membership?.status && c.membership?.status !== 'Sin membresia') return false
+    // Membership filter (gym only)
+    if (isGym) {
+      if (membershipFilter === 'activo' && c.membership?.status !== 'Activo') return false
+      if (membershipFilter === 'vencido' && c.membership?.status !== 'Vencido') return false
+      if (membershipFilter === 'sin' && c.membership?.status && c.membership?.status !== 'Sin membresia') return false
+    }
 
     // Search filter
     if (!searchLower) return true
     const fullName = `${c.name} ${c.lastName || ''}`.toLowerCase()
     if (fullName.includes(searchLower)) return true
-    if (c.cedula && c.cedula.includes(search)) return true
+    if (isGym && c.cedula && c.cedula.includes(search)) return true
     if (c.phone && c.phone.includes(search)) return true
     if (c.email && c.email.toLowerCase().includes(searchLower)) return true
     return false
@@ -362,9 +365,9 @@ export function ClientsTable() {
       return
     }
 
-    // Last name validation
+    // Last name validation (gym only)
     const trimmedLastName = formLastName.trim()
-    if (!trimmedLastName) {
+    if (isGym && !trimmedLastName) {
       toast.error('El apellido es obligatorio')
       return
     }
@@ -745,9 +748,11 @@ export function ClientsTable() {
           </div>
           {canManage && (
             <div className="flex items-center gap-2">
+              {isGym && (
               <Button variant="outline" onClick={() => setBulkImportOpen(true)} className="text-primary border-primary/30 hover:bg-primary/5">
                 <Upload className="mr-2 h-4 w-4" /> Carga Masiva
               </Button>
+              )}
               <Button onClick={openCreate} className="bg-primary hover:bg-primary/90 text-white">
                 <Plus className="mr-2 h-4 w-4" /> Nuevo Cliente
               </Button>
@@ -755,7 +760,8 @@ export function ClientsTable() {
           )}
         </div>
 
-        {/* Membership filter bar */}
+        {/* Membership filter bar (gym only) */}
+        {isGym && (
         <div className="flex items-center gap-2 flex-wrap">
           <Filter className="h-4 w-4 text-muted-foreground" />
           <span className="text-xs text-muted-foreground mr-1">Membresía:</span>
@@ -782,6 +788,7 @@ export function ClientsTable() {
             {filtered.length} resultado{filtered.length !== 1 ? 's' : ''}
           </span>
         </div>
+        )}
       </div>
 
       {loading ? (
@@ -803,18 +810,18 @@ export function ClientsTable() {
             const hasMembership = memStatus && memStatus !== 'Sin membresia'
             return (
             <Card key={client.id} className={`relative overflow-hidden hover:shadow-md transition-shadow ${client.deletedAt ? 'opacity-60' : ''}`}>
-              {/* Top color bar: membership-aware */}
+              {/* Top color bar */}
               <div className={`h-1 ${
                 client.deletedAt ? 'bg-gray-400' :
-                memStatus === 'Activo' ? 'bg-emerald-500' :
-                memStatus === 'Vencido' ? 'bg-red-500' :
+                isGym && memStatus === 'Activo' ? 'bg-emerald-500' :
+                isGym && memStatus === 'Vencido' ? 'bg-red-500' :
                 'bg-gray-300 dark:bg-gray-600'
               }`} />
               <CardContent className="p-4 space-y-3">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
-                    <h3 className="font-semibold text-sm truncate">{cap(client.name)}{client.lastName ? ` ${cap(client.lastName)}` : ''}</h3>
-                    {client.cedula && (
+                    <h3 className="font-semibold text-sm truncate">{cap(client.name)}{isGym && client.lastName ? ` ${cap(client.lastName)}` : ''}</h3>
+                    {isGym && client.cedula && (
                       <p className="text-[11px] text-muted-foreground font-mono">{client.cedula}</p>
                     )}
                   </div>
@@ -857,7 +864,8 @@ export function ClientsTable() {
                   )}
                 </div>
 
-                {/* Membership info below contact */}
+                {/* Membership info below contact (gym only) */}
+                {isGym && (
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <Badge
                     className={`text-[10px] px-1.5 py-0 ${
@@ -886,6 +894,7 @@ export function ClientsTable() {
                     </span>
                   )}
                 </div>
+                )}
 
                 <div className="flex items-center gap-3 text-xs text-muted-foreground">
                   <div className="flex items-center gap-1">
@@ -905,12 +914,12 @@ export function ClientsTable() {
                       <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Ver Historial" onClick={() => openHistory(client)}>
                         <Receipt className="h-3.5 w-3.5" />
                       </Button>
-                      {canManage && (
+                      {canManage && isGym && (
                         <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-blue-500 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950/40" title="Marcar Asistencia" onClick={() => openAttendance(client)}>
                           <CalendarCheck className="h-3.5 w-3.5" />
                         </Button>
                       )}
-                      {canManage && (
+                      {canManage && isGym && (
                         <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-emerald-500 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40" title="Renovar Suscripción" onClick={() => openRenew(client)}>
                           <RefreshCw className="h-3.5 w-3.5" />
                         </Button>
@@ -1028,15 +1037,19 @@ export function ClientsTable() {
                 <Label htmlFor="cname">Nombre *</Label>
                 <Input id="cname" value={formName} onChange={(e) => setFormName(e.target.value)} placeholder="Nombre" />
               </div>
+              {isGym && (
               <div className="space-y-2">
                 <Label htmlFor="clastname">Apellido *</Label>
                 <Input id="clastname" value={formLastName} onChange={(e) => setFormLastName(e.target.value)} placeholder="Apellido" />
               </div>
+              )}
             </div>
+            {isGym && (
             <div className="space-y-2">
               <Label htmlFor="ccedula">Cédula</Label>
               <Input id="ccedula" value={formCedula} onChange={(e) => setFormCedula(e.target.value)} placeholder="V-00000000" />
             </div>
+            )}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="cphone">Teléfono</Label>
@@ -1055,7 +1068,7 @@ export function ClientsTable() {
               <Label htmlFor="cnote">Notas</Label>
               <Input id="cnote" value={formNote} onChange={(e) => setFormNote(e.target.value)} placeholder="Notas internas" />
             </div>
-            {!editingClient && plans.length > 0 && (
+            {isGym && !editingClient && plans.length > 0 && (
               <div className="space-y-2">
                 <Label>Asignar Plan (opcional)</Label>
                 <Select value={formPlanId} onValueChange={setFormPlanId}>
@@ -1680,7 +1693,7 @@ export function ClientsTable() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <ClientBulkImport open={bulkImportOpen} onOpenChange={setBulkImportOpen} />
+      {isGym && <ClientBulkImport open={bulkImportOpen} onOpenChange={setBulkImportOpen} />}
     </div>
   )
 }

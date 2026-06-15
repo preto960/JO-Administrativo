@@ -122,6 +122,8 @@ interface Settings {
   theme: string
   country: string
   tutorialTexts: Record<string, unknown>
+  businessType: string
+  clientCode: string
 }
 
 interface UserItem {
@@ -156,6 +158,13 @@ export function SettingsView() {
   const [fetchingRate, setFetchingRate] = useState(false)
   const [activeTab, setActiveTab] = useState('empresa')
   const { user } = useAuth()
+
+  // If gym tab is active but businessType is not gym, fallback to empresa
+  useEffect(() => {
+    if (settings && activeTab === 'planes' && settings.businessType !== 'gym') {
+      setActiveTab('empresa')
+    }
+  }, [settings?.businessType, activeTab])
 
   // Listen for tutorial tab switching via custom event
   useEffect(() => {
@@ -429,10 +438,12 @@ export function SettingsView() {
               <span>Categorías</span>
             </TabsTrigger>
           )}
+          {settings.businessType === 'gym' && (
           <TabsTrigger data-tutorial="settings-tab-planes" value="planes" className="gap-1.5">
             <Wallet className="h-3.5 w-3.5 hidden sm:block" />
             <span>Planes</span>
           </TabsTrigger>
+          )}
           {userPerms?.canAccessTabApariencia && (
             <TabsTrigger data-tutorial="settings-tab-apariencia" value="apariencia" className="gap-1.5">
               <Palette className="h-3.5 w-3.5 hidden sm:block" />
@@ -523,6 +534,25 @@ export function SettingsView() {
                 </p>
               </div>
               <div className="space-y-2">
+                <Label>Tipo de Empresa</Label>
+                <Select
+                  value={settings.businessType || ''}
+                  onValueChange={(v) => setSettings({ ...settings, businessType: v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar tipo..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">Sin definir</SelectItem>
+                    <SelectItem value="gym">Gimnasio</SelectItem>
+                    <SelectItem value="pyme">PYME / Tienda</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Define el tipo de negocio. Esto ajusta los módulos y campos visibles en el sistema.
+                </p>
+              </div>
+              <div className="space-y-2">
                 <Label>Dirección</Label>
                 <Input
                   value={settings.address}
@@ -605,6 +635,7 @@ export function SettingsView() {
                   address: settings.address,
                   logoUrl: settings.logoUrl,
                   country: settings.country || 'VE',
+                  businessType: settings.businessType || '',
                 })}
                 disabled={saving}
               >
@@ -1439,10 +1470,12 @@ export function SettingsView() {
           </Card>
         </TabsContent>
 
-        {/* ── Plans Tab ────────────────────────────── */}
+        {/* ── Plans Tab (solo gym) ────────────────────── */}
+        {settings.businessType === 'gym' && (
         <TabsContent value="planes">
           <PlansTab />
         </TabsContent>
+        )}
       </Tabs>
 
       {/* ── Category Dialog ─────────────────────────────── */}

@@ -113,8 +113,9 @@ export async function POST(request: NextRequest) {
     }
 
     const lastName = (body.lastName || '').trim()
-    if (!lastName) {
-      return NextResponse.json({ error: 'El apellido es obligatorio' }, { status: 400 })
+    // lastName is optional (required only for gym, enforced on frontend)
+    if (lastName.length > 0 && lastName.length < 2) {
+      return NextResponse.json({ error: 'El apellido debe tener al menos 2 caracteres' }, { status: 400 })
     }
 
     const phone = body.phone ? body.phone.trim() : null
