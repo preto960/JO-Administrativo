@@ -15,6 +15,14 @@ function getPlanDays(durationType: string, durationDays: number | null): number 
   }
 }
 
+/** Get today at midnight in Colombia timezone */
+function getTodayBogota(): Date {
+  const now = new Date()
+  const bogota = new Date(now.toLocaleString('en-US', { timeZone: 'America/Bogota' }))
+  bogota.setHours(0, 0, 0, 0)
+  return bogota
+}
+
 // POST /api/clients/[id]/renew — assign/renew a plan for a client
 export async function POST(
   request: NextRequest,
@@ -51,8 +59,7 @@ export async function POST(
     }
 
     const totalDays = getPlanDays(plan.durationType, plan.durationDays)
-    const now = new Date()
-    const startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    const startDate = getTodayBogota()
     const endDate = new Date(startDate)
     endDate.setDate(endDate.getDate() + totalDays)
 
@@ -70,7 +77,7 @@ export async function POST(
           status: 'Activo',
           planId: plan.id,
           tarifa: plan.name,
-          paymentDate: now,
+          paymentDate: new Date(),
           startDate,
           endDate,
           daysRemaining: totalDays,
@@ -84,7 +91,7 @@ export async function POST(
           status: 'Activo',
           planId: plan.id,
           tarifa: plan.name,
-          paymentDate: now,
+          paymentDate: new Date(),
           startDate,
           endDate,
           daysRemaining: totalDays,
