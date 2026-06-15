@@ -536,14 +536,14 @@ export function SettingsView() {
               <div className="space-y-2">
                 <Label>Tipo de Empresa</Label>
                 <Select
-                  value={settings.businessType || ''}
+                  value={settings.businessType && settings.businessType !== '' ? settings.businessType : 'none'}
                   onValueChange={(v) => setSettings({ ...settings, businessType: v })}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Seleccionar tipo..." />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Sin definir</SelectItem>
+                    <SelectItem value="none">Sin definir</SelectItem>
                     <SelectItem value="gym">Gimnasio</SelectItem>
                     <SelectItem value="pyme">PYME / Tienda</SelectItem>
                   </SelectContent>
@@ -635,7 +635,7 @@ export function SettingsView() {
                   address: settings.address,
                   logoUrl: settings.logoUrl,
                   country: settings.country || 'VE',
-                  businessType: settings.businessType || '',
+                  businessType: settings.businessType && settings.businessType !== 'none' ? settings.businessType : '',
                 })}
                 disabled={saving}
               >
