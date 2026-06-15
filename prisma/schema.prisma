@@ -521,3 +521,13 @@ model AuditLog {
   @@index([action])
   @@index([createdAt])
 }
+
+model Plan {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  duration    String   // ej: "30 dias", "3 meses", "6 meses", "1 año"
+  description String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
