@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { api } from '@/lib/api'
+import { useCurrency } from '@/hooks/use-currency'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -33,13 +34,36 @@ import {
   AlertDialogAction,
   AlertDialogCancel,
 } from '@/components/ui/alert-dialog'
-import { Plus, Pencil, Trash2, Loader2, Clock, Tag } from 'lucide-react'
+import { Plus, Pencil, Trash2, Loader2, DollarSign, CalendarDays, Tag } from 'lucide-react'
 import { toast } from 'sonner'
+
+type DurationType = '1_mes' | 'bimestral' | 'anual' | 'dia' | 'otro'
+
+const DURATION_OPTIONS: { value: DurationType; label: string; icon: string }[] = [
+  { value: '1_mes', label: '1 Mes', icon: '30' },
+  { value: 'bimestral', label: 'Bimestral', icon: '2M' },
+  { value: 'anual', label: 'Anual', icon: '1A' },
+  { value: 'dia', label: 'Día', icon: '1D' },
+  { value: 'otro', label: 'Otro', icon: '?' },
+]
+
+function getDurationLabel(type: DurationType, days?: number | null): string {
+  switch (type) {
+    case '1_mes': return '1 Mes (30 días)'
+    case 'bimestral': return 'Bimestral (60 días)'
+    case 'anual': return 'Anual (365 días)'
+    case 'dia': return '1 Día'
+    case 'otro': return `${days || 0} días`
+    default: return type
+  }
+}
 
 interface Plan {
   id: string
   name: string
-  duration: string
+  durationType: string
+  durationDays: number | null
+  cost: number
   description: string | null
   active: boolean
   createdAt: string
@@ -47,6 +71,7 @@ interface Plan {
 }
 
 export function PlansTab() {
+  const { fmt } = useCurrency()
   const [plans, setPlans] = useState<Plan[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -55,8 +80,11 @@ export function PlansTab() {
   const [deleteTarget, setDeleteTarget] = useState<Plan | null>(null)
   const [deleting, setDeleting] = useState(false)
 
+  // Form state
   const [formName, setFormName] = useState('')
-  const [formDuration, setFormDuration] = useState('')
+  const [formDurationType, setFormDurationType] = useState<DurationType>('1_mes')
+  const [formCustomDays, setFormCustomDays] = useState('')
+  const [formCost, setFormCost] = useState('')
   const [formDescription, setFormDescription] = useState('')
   const [formActive, setFormActive] = useState(true)
 
@@ -73,19 +101,27 @@ export function PlansTab() {
 
   useEffect(() => { fetchPlans() }, [])
 
-  const openCreate = () => {
-    setEditingPlan(null)
+  const resetForm = () => {
     setFormName('')
-    setFormDuration('')
+    setFormDurationType('1_mes')
+    setFormCustomDays('')
+    setFormCost('')
     setFormDescription('')
     setFormActive(true)
+  }
+
+  const openCreate = () => {
+    setEditingPlan(null)
+    resetForm()
     setShowDialog(true)
   }
 
   const openEdit = (plan: Plan) => {
     setEditingPlan(plan)
     setFormName(plan.name)
-    setFormDuration(plan.duration)
+    setFormDurationType(plan.durationType as DurationType)
+    setFormCustomDays(plan.durationDays ? String(plan.durationDays) : '')
+    setFormCost(plan.cost ? String(plan.cost) : '')
     setFormDescription(plan.description || '')
     setFormActive(plan.active)
     setShowDialog(true)
@@ -96,28 +132,26 @@ export function PlansTab() {
       toast.error('El nombre es obligatorio')
       return
     }
-    if (!formDuration.trim()) {
-      toast.error('La duración es obligatoria')
+    if (formDurationType === 'otro' && (!formCustomDays || Number(formCustomDays) <= 0)) {
+      toast.error('Especifica la cantidad de días')
       return
     }
 
     setSaving(true)
     try {
+      const payload: Record<string, unknown> = {
+        name: formName.trim(),
+        durationType: formDurationType,
+        durationDays: formDurationType === 'otro' ? Number(formCustomDays) : null,
+        cost: Number(formCost) || 0,
+        description: formDescription.trim() || null,
+      }
+
       if (editingPlan) {
-        await api.put('/api/plans', {
-          id: editingPlan.id,
-          name: formName.trim(),
-          duration: formDuration.trim(),
-          description: formDescription.trim() || null,
-          active: formActive,
-        })
+        await api.put('/api/plans', { ...payload, id: editingPlan.id, active: formActive })
         toast.success('Plan actualizado')
       } else {
-        await api.post('/api/plans', {
-          name: formName.trim(),
-          duration: formDuration.trim(),
-          description: formDescription.trim() || null,
-        })
+        await api.post('/api/plans', payload)
         toast.success('Plan creado')
       }
       setShowDialog(false)
@@ -150,7 +184,9 @@ export function PlansTab() {
       await api.put('/api/plans', {
         id: plan.id,
         name: plan.name,
-        duration: plan.duration,
+        durationType: plan.durationType,
+        durationDays: plan.durationDays,
+        cost: plan.cost,
         description: plan.description,
         active: !plan.active,
       })
@@ -190,6 +226,7 @@ export function PlansTab() {
                   <TableRow>
                     <TableHead>Nombre</TableHead>
                     <TableHead>Duración</TableHead>
+                    <TableHead>Costo</TableHead>
                     <TableHead className="hidden md:table-cell">Descripción</TableHead>
                     <TableHead>Estado</TableHead>
                     <TableHead className="w-[100px]">Acciones</TableHead>
@@ -201,8 +238,14 @@ export function PlansTab() {
                       <TableCell className="font-medium">{plan.name}</TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1.5 text-sm">
-                          <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-                          {plan.duration}
+                          <CalendarDays className="h-3.5 w-3.5 text-muted-foreground" />
+                          {getDurationLabel(plan.durationType as DurationType, plan.durationDays)}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1.5 text-sm font-semibold">
+                          <DollarSign className="h-3.5 w-3.5 text-emerald-600" />
+                          {fmt(plan.cost)}
                         </div>
                       </TableCell>
                       <TableCell className="hidden md:table-cell text-sm text-muted-foreground max-w-[250px] truncate">
@@ -263,24 +306,87 @@ export function PlansTab() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
+            {/* Nombre */}
             <div className="space-y-2">
               <Label htmlFor="plan-name">Nombre del Plan *</Label>
               <Input
                 id="plan-name"
                 value={formName}
                 onChange={(e) => setFormName(e.target.value)}
-                placeholder="Ej: Mensual, Trimestral, Semestral..."
+                placeholder="Ej: Mensual, Trimestral, Premium..."
               />
             </div>
+
+            {/* Duración - Quick Select */}
             <div className="space-y-2">
-              <Label htmlFor="plan-duration">Duración *</Label>
-              <Input
-                id="plan-duration"
-                value={formDuration}
-                onChange={(e) => setFormDuration(e.target.value)}
-                placeholder="Ej: 30 días, 3 meses, 1 año..."
-              />
+              <Label>Duración *</Label>
+              <div className="flex flex-wrap gap-2">
+                {DURATION_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setFormDurationType(opt.value)}
+                    className={`
+                      flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium
+                      border-2 transition-all duration-150
+                      ${formDurationType === opt.value
+                        ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
+                        : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-400 dark:hover:border-gray-500'
+                      }
+                    `}
+                  >
+                    <span className={`
+                      flex items-center justify-center w-5 h-5 rounded text-[10px] font-bold
+                      ${formDurationType === opt.value
+                        ? 'bg-blue-500 text-white'
+                        : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
+                      }
+                    `}>
+                      {opt.icon}
+                    </span>
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
             </div>
+
+            {/* Custom days (only when "Otro" selected) */}
+            {formDurationType === 'otro' && (
+              <div className="space-y-2 animate-in fade-in slide-in-from-top-2 duration-200">
+                <Label htmlFor="plan-custom-days">Cantidad de días *</Label>
+                <Input
+                  id="plan-custom-days"
+                  type="number"
+                  min={1}
+                  value={formCustomDays}
+                  onChange={(e) => setFormCustomDays(e.target.value)}
+                  placeholder="Ej: 45, 90, 120..."
+                />
+                <p className="text-xs text-muted-foreground">
+                  Ingresa la cantidad de días que durará el plan
+                </p>
+              </div>
+            )}
+
+            {/* Costo */}
+            <div className="space-y-2">
+              <Label htmlFor="plan-cost">Costo del Plan *</Label>
+              <div className="relative">
+                <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  id="plan-cost"
+                  type="number"
+                  min={0}
+                  step={0.01}
+                  value={formCost}
+                  onChange={(e) => setFormCost(e.target.value)}
+                  placeholder="0.00"
+                  className="pl-9"
+                />
+              </div>
+            </div>
+
+            {/* Descripción */}
             <div className="space-y-2">
               <Label htmlFor="plan-desc">Descripción</Label>
               <Input
@@ -290,6 +396,8 @@ export function PlansTab() {
                 placeholder="Descripción opcional del plan..."
               />
             </div>
+
+            {/* Active toggle (only on edit) */}
             {editingPlan && (
               <div className="flex items-center gap-3">
                 <Switch
@@ -300,6 +408,7 @@ export function PlansTab() {
                 <Label htmlFor="plan-active" className="cursor-pointer">Plan activo</Label>
               </div>
             )}
+
             <Button className="w-full" onClick={handleSave} disabled={saving}>
               {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               {saving ? 'Guardando...' : editingPlan ? 'Actualizar Plan' : 'Crear Plan'}

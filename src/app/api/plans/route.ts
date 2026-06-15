@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/require-auth'
 import { getPermissions } from '@/lib/permissions'
 
+const VALID_DURATION_TYPES = ['1_mes', 'bimestral', 'anual', 'dia', 'otro'] as const
+
 export async function GET() {
   const auth = await requireAuth()
   if ('status' in auth) return auth
@@ -32,19 +34,24 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { name, duration, description } = body
+    const { name, durationType, durationDays, cost, description } = body
 
     if (!name?.trim()) {
       return NextResponse.json({ error: 'El nombre es obligatorio' }, { status: 400 })
     }
-    if (!duration?.trim()) {
-      return NextResponse.json({ error: 'La duración es obligatoria' }, { status: 400 })
+    if (!durationType || !VALID_DURATION_TYPES.includes(durationType)) {
+      return NextResponse.json({ error: 'Tipo de duración inválido' }, { status: 400 })
+    }
+    if (durationType === 'otro' && (!durationDays || durationDays <= 0)) {
+      return NextResponse.json({ error: 'Debes especificar los días para duración personalizada' }, { status: 400 })
     }
 
     const plan = await db.plan.create({
       data: {
         name: name.trim(),
-        duration: duration.trim(),
+        durationType,
+        durationDays: durationType === 'otro' ? Number(durationDays) : null,
+        cost: Number(cost) || 0,
         description: description?.trim() || null,
       },
     })
@@ -69,7 +76,7 @@ export async function PUT(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { id, name, duration, description, active } = body
+    const { id, name, durationType, durationDays, cost, description, active } = body
 
     if (!id) {
       return NextResponse.json({ error: 'ID requerido' }, { status: 400 })
@@ -77,16 +84,21 @@ export async function PUT(request: NextRequest) {
     if (!name?.trim()) {
       return NextResponse.json({ error: 'El nombre es obligatorio' }, { status: 400 })
     }
-    if (!duration?.trim()) {
-      return NextResponse.json({ error: 'La duración es obligatoria' }, { status: 400 })
+    if (durationType && !VALID_DURATION_TYPES.includes(durationType)) {
+      return NextResponse.json({ error: 'Tipo de duración inválido' }, { status: 400 })
+    }
+    if (durationType === 'otro' && (!durationDays || durationDays <= 0)) {
+      return NextResponse.json({ error: 'Debes especificar los días para duración personalizada' }, { status: 400 })
     }
 
     const plan = await db.plan.update({
       where: { id },
       data: {
         name: name.trim(),
-        duration: duration.trim(),
-        description: description?.trim() || null,
+        durationType: durationType || undefined,
+        durationDays: durationType === 'otro' ? Number(durationDays) : null,
+        cost: cost !== undefined ? Number(cost) : undefined,
+        description: description !== undefined ? (description?.trim() || null) : undefined,
         active: active !== undefined ? active : undefined,
       },
     })
