@@ -207,6 +207,9 @@ export function ClientsTable() {
 
   const fetchClients = async () => {
     try {
+      // Check expirations in background (updates Vencido + sends notifications)
+      api.get('/api/clients/check-expirations').catch(() => {})
+
       const params = showInactive ? '?includeDeleted=true' : ''
       const data = await api.get<Client[]>(`/api/clients${params}`)
       setClients(data)
@@ -1588,8 +1591,8 @@ export function ClientsTable() {
                 </div>
               )}
 
-              {/* Mark attendance button */}
-              {canManage && attClient?.membership?.status === 'Activo' && attData.stats.daysRemaining > 0 && (
+              {/* Mark attendance button — always available, attendance is just tracking */}
+              {canManage && (
                 <Button
                   className="w-full bg-blue-600 hover:bg-blue-700 text-white"
                   onClick={markAttendance}
@@ -1600,12 +1603,10 @@ export function ClientsTable() {
                 </Button>
               )}
 
-              {canManage && attClient?.membership?.status !== 'Activo' && (
+              {!canManage && (
                 <div className="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-3 text-sm text-amber-700 dark:text-amber-400 flex items-center gap-2">
                   <AlertTriangle className="h-4 w-4 shrink-0" />
-                  {attClient?.membership?.status === 'Vencido'
-                    ? 'La membresía está vencida. Renueva el plan para poder marcar asistencia.'
-                    : 'Este cliente no tiene una membresía activa. Asigna un plan primero.'}
+                  Solo usuarios con permisos pueden marcar asistencia.
                 </div>
               )}
 

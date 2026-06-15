@@ -14,6 +14,23 @@ function getPlanDays(durationType: string, durationDays: number | null): number 
   }
 }
 
+/** Get today's date in Colombia timezone (America/Bogota) */
+function getTodayBogota(): Date {
+  const now = new Date()
+  const bogota = new Date(now.toLocaleString('en-US', { timeZone: 'America/Bogota' }))
+  bogota.setHours(0, 0, 0, 0)
+  return bogota
+}
+
+/** Get days remaining between now (Bogota) and endDate */
+function calcDaysRemaining(endDate: Date): number {
+  const today = getTodayBogota()
+  const end = new Date(endDate)
+  end.setHours(23, 59, 59, 999)
+  const diff = end.getTime() - today.getTime()
+  return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)))
+}
+
 // GET /api/clients/[id]/attendance — get attendance history + stats
 export async function GET(
   request: NextRequest,
@@ -51,20 +68,22 @@ export async function GET(
       orderBy: { date: 'desc' },
     })
 
-    // Current month attendance
-    const now = new Date()
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
-    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1)
+    // Current month attendance (Bogota timezone)
+    const bogotaNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Bogota' }))
+    const monthStart = new Date(bogotaNow.getFullYear(), bogotaNow.getMonth(), 1)
+    const monthEnd = new Date(bogotaNow.getFullYear(), bogotaNow.getMonth() + 1, 1)
     const monthAttendances = attendances.filter(
       (a) => a.date >= monthStart && a.date < monthEnd
     )
 
-    // Plan info
+    // Plan info — days remaining calculated dynamically
     const totalPlanDays = membership?.plan
       ? getPlanDays(membership.plan.durationType, membership.plan.durationDays)
       : 0
     const planName = membership?.plan?.name || membership?.tarifa || null
-    const daysRemaining = membership?.daysRemaining || 0
+    const daysRemaining = membership?.endDate
+      ? calcDaysRemaining(membership.endDate)
+      : 0
 
     // Stats
     const totalAttendances = attendances.length
@@ -78,7 +97,7 @@ export async function GET(
         daysRemaining,
         totalAttendances,
         monthAttendanceCount,
-        monthName: now.toLocaleDateString('es-VE', { month: 'long', year: 'numeric' }),
+        monthName: bogotaNow.toLocaleDateString('es-CO', { month: 'long', year: 'numeric' }),
       },
     })
   } catch (error) {
@@ -87,7 +106,8 @@ export async function GET(
   }
 }
 
-// POST /api/clients/[id]/attendance — mark today's attendance
+// POST /api/clients/[id]/attendance — mark today's attendance (Bogota timezone)
+// Attendance is purely for tracking — it does NOT deduct days
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -102,45 +122,13 @@ export async function POST(
   const { id } = await params
 
   try {
-    const client = await db.client.findUnique({
-      where: { id },
-      include: {
-        memberships: {
-          orderBy: { createdAt: 'desc' },
-          take: 1,
-        },
-      },
-    })
+    const client = await db.client.findUnique({ where: { id } })
     if (!client) {
       return NextResponse.json({ error: 'Cliente no encontrado' }, { status: 404 })
     }
 
-    const membership = client.memberships[0]
-
-    // Check membership status — allow marking even for expired (admin override)
-    if (membership && membership.status === 'Vencido') {
-      return NextResponse.json(
-        { error: 'La membresía está vencida. Renueve el plan antes de marcar asistencia.' },
-        { status: 400 }
-      )
-    }
-
-    // Check days remaining
-    if (membership && membership.daysRemaining <= 0 && membership.status === 'Activo') {
-      // Auto-expire
-      await db.clientMembership.update({
-        where: { id: membership.id },
-        data: { status: 'Vencido', daysRemaining: 0 },
-      })
-      return NextResponse.json(
-        { error: 'Los días de la membresía se agotaron. Renueve el plan.' },
-        { status: 400 }
-      )
-    }
-
-    // Today's date (start of day for unique constraint)
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
+    // Today in Bogota timezone (start of day)
+    const today = getTodayBogota()
 
     // Check if already marked today
     const existing = await db.attendance.findUnique({
@@ -155,7 +143,7 @@ export async function POST(
       return NextResponse.json({ error: 'Ya se marcó la asistencia de hoy para este cliente' }, { status: 409 })
     }
 
-    // Create attendance
+    // Create attendance record only
     const attendance = await db.attendance.create({
       data: {
         clientId: id,
@@ -168,19 +156,6 @@ export async function POST(
       where: { id },
       data: { lastAttendance: new Date() },
     })
-
-    // If membership is active, decrement daysRemaining
-    if (membership && membership.status === 'Activo' && membership.daysRemaining > 0) {
-      const newDaysRemaining = membership.daysRemaining - 1
-      const newStatus = newDaysRemaining <= 0 ? 'Vencido' : 'Activo'
-      await db.clientMembership.update({
-        where: { id: membership.id },
-        data: {
-          daysRemaining: Math.max(0, newDaysRemaining),
-          status: newStatus,
-        },
-      })
-    }
 
     return NextResponse.json(attendance, { status: 201 })
   } catch (error) {

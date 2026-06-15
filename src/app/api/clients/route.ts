@@ -13,6 +13,24 @@ function isValidPhone(phone: string): boolean {
   return /^\+?\d{7,}$/.test(phone.replace(/[\s\-()]/g, ''))
 }
 
+/** Get today at midnight in Colombia timezone */
+function getTodayBogota(): Date {
+  const now = new Date()
+  const bogota = new Date(now.toLocaleString('en-US', { timeZone: 'America/Bogota' }))
+  bogota.setHours(0, 0, 0, 0)
+  return bogota
+}
+
+/** Calculate dynamic days remaining based on endDate vs today (Bogota) */
+function calcDaysRemaining(endDate: Date | null): number {
+  if (!endDate) return 0
+  const today = getTodayBogota()
+  const end = new Date(endDate)
+  end.setHours(23, 59, 59, 999)
+  const diff = end.getTime() - today.getTime()
+  return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)))
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
@@ -61,7 +79,7 @@ export async function GET(request: NextRequest) {
           status: membership.status,
           tarifa: membership.tarifa,
           endDate: membership.endDate,
-          daysRemaining: membership.daysRemaining,
+          daysRemaining: calcDaysRemaining(membership.endDate),
           ticketsRemaining: membership.ticketsRemaining,
         } : null,
       }
