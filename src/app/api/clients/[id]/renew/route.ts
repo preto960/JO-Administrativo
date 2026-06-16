@@ -142,63 +142,61 @@ export async function POST(
 
     // ── Create CashMovement (for ALL payment methods, not just cash) ──
     let movementId: string | null = null
+    let movementError: string | null = null
+
     if (paymentMethod && cashRegId) {
-      try {
-        const register = await db.cashRegister.findUnique({ where: { id: cashRegId } })
-        console.log('[Renew] cashRegId:', cashRegId, 'register:', register ? `${register.id} status=${register.status}` : 'NOT FOUND')
+      const register = await db.cashRegister.findUnique({ where: { id: cashRegId } })
 
-        if (register && register.status === 'abierta') {
-          // Resolve currency from settings (same pattern as settings route)
-          const settings = await db.settings.findFirst()
-          let currencyId = settings?.baseCurrencyId || ''
-          console.log('[Renew] settings.baseCurrencyId:', currencyId || '(empty)', 'country:', settings?.country || '(none)')
+      if (!register) {
+        movementError = `Caja ${cashRegId} no encontrada`
+      } else if (register.status !== 'abierta') {
+        movementError = `Caja está cerrada (status: ${register.status})`
+      } else {
+        // Resolve currency from settings
+        const settings = await db.settings.findFirst()
+        let currencyId = settings?.baseCurrencyId || ''
 
-          if (!currencyId) {
-            const { getCurrencyForCountry } = await import('@/lib/country-currency')
-            const localCurrency = getCurrencyForCountry(settings?.country || 'CO')
-            console.log('[Renew] localCurrency from country:', localCurrency?.code)
-            if (localCurrency) {
-              const currency = await db.currency.upsert({
-                where: { code: localCurrency.code },
-                create: { code: localCurrency.code, name: localCurrency.name, symbol: localCurrency.symbol, isBase: true },
-                update: {},
-              })
-              currencyId = currency.id
-              console.log('[Renew] created/found currency:', currency.id)
-              if (settings) {
-                await db.settings.update({ where: { id: settings.id }, data: { baseCurrencyId: currency.id } })
-              }
+        if (!currencyId) {
+          const { getCurrencyForCountry } = await import('@/lib/country-currency')
+          const localCurrency = getCurrencyForCountry(settings?.country || 'CO')
+          if (localCurrency) {
+            const currency = await db.currency.upsert({
+              where: { code: localCurrency.code },
+              create: { code: localCurrency.code, name: localCurrency.name, symbol: localCurrency.symbol, isBase: true },
+              update: {},
+            })
+            currencyId = currency.id
+            if (settings) {
+              await db.settings.update({ where: { id: settings.id }, data: { baseCurrencyId: currency.id } })
             }
           }
+        }
 
-          if (currencyId) {
-            const clientName = `${client.name}${client.lastName ? ' ' + client.lastName : ''}`
-            const refPart = paymentReference?.trim() ? ` (${paymentMethod}: ${paymentReference.trim()})` : ` (${paymentMethod})`
-            const concept = `Renovación plan: ${plan.name} - ${clientName}${refPart}`
+        if (!currencyId) {
+          movementError = 'No se pudo resolver la moneda'
+        } else {
+          const clientName = `${client.name}${client.lastName ? ' ' + client.lastName : ''}`
+          const refPart = paymentReference?.trim() ? ` (${paymentMethod}: ${paymentReference.trim()})` : ` (${paymentMethod})`
+          const concept = `Renovación plan: ${plan.name} - ${clientName}${refPart}`
 
+          try {
             const movement = await db.cashMovement.create({
               data: { cashRegId, userId: auth.id, type: 'entrada', amount: cost, concept, currencyId },
             })
             movementId = movement.id
-            console.log('[Renew] CashMovement created:', movement.id, 'amount:', cost)
-          } else {
-            console.error('[Renew] Could not resolve currencyId — CashMovement skipped')
+          } catch (err) {
+            movementError = err instanceof Error ? err.message : String(err)
           }
 
-          // Update cash register current amount
-          await db.cashRegister.update({
-            where: { id: cashRegId },
-            data: { currentAmt: Math.round((register.currentAmt + cost) * 100) / 100 },
-          })
-        } else if (register) {
-          console.error('[Renew] Cash register is not open, status:', register.status)
+          // Always update register balance if movement was created
+          if (movementId) {
+            await db.cashRegister.update({
+              where: { id: cashRegId },
+              data: { currentAmt: Math.round((register.currentAmt + cost) * 100) / 100 },
+            })
+          }
         }
-      } catch (movError) {
-        console.error('[Renew] CashMovement error:', movError instanceof Error ? movError.message : movError)
-        // Don't fail the whole renew — membership was already updated
       }
-    } else {
-      console.log('[Renew] Skipped CashMovement — paymentMethod:', paymentMethod, 'cashRegId:', cashRegId)
     }
 
     await logAction({
@@ -220,6 +218,7 @@ export async function POST(
     return NextResponse.json({
       membership,
       movementId,
+      movementError,
       message: `Plan "${plan.name}" asignado (+${totalDays} días)`,
     }, { status: 201 })
   } catch (error) {
