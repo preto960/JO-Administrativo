@@ -146,12 +146,13 @@ export async function POST(
       const register = await db.cashRegister.findUnique({ where: { id: cashRegId } })
 
       if (register && register.status === 'abierta') {
-        const settings = await db.settings.findFirst()
-        const refCurrency = await db.currency.findFirst({
-          where: { code: settings?.referenceCurrency || 'USD' },
-        })
-        // Fallback: try to find any base currency, or any currency
-        const effectiveCurrency = refCurrency || await db.currency.findFirst({ where: { isBase: true } }) || await db.currency.findFirst()
+        // Resolve currency — create default if none exists
+        let effectiveCurrency = await db.currency.findFirst()
+        if (!effectiveCurrency) {
+          effectiveCurrency = await db.currency.create({
+            data: { code: 'COP', name: 'Peso Colombiano', symbol: '$', isBase: true },
+          })
+        }
 
         const clientName = `${client.name}${client.lastName ? ' ' + client.lastName : ''}`
         const refPart = paymentReference?.trim() ? ` (${paymentMethod}: ${paymentReference.trim()})` : ` (${paymentMethod})`
@@ -164,7 +165,7 @@ export async function POST(
             type: 'entrada',
             amount: cost,
             concept,
-            currencyId: effectiveCurrency?.id || '',
+            currencyId: effectiveCurrency.id,
           },
         })
 
