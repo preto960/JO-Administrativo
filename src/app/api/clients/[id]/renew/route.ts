@@ -146,32 +146,51 @@ export async function POST(
       const register = await db.cashRegister.findUnique({ where: { id: cashRegId } })
 
       if (register && register.status === 'abierta') {
-        // Use the currency configured in Settings
+        // Resolve currency from settings (same pattern as settings route)
         const settings = await db.settings.findFirst()
-        const currencyId = settings?.baseCurrencyId || register.currencyId
+        let currencyId = settings?.baseCurrencyId || ''
+
+        if (!currencyId) {
+          // No currency configured yet — create it from the country setting
+          const { getCurrencyForCountry } = await import('@/lib/country-currency')
+          const localCurrency = getCurrencyForCountry(settings?.country || 'CO')
+          if (localCurrency) {
+            const currency = await db.currency.upsert({
+              where: { code: localCurrency.code },
+              create: { code: localCurrency.code, name: localCurrency.name, symbol: localCurrency.symbol, isBase: true },
+              update: {},
+            })
+            currencyId = currency.id
+            // Also update settings.baseCurrencyId so this doesn't happen again
+            if (settings) {
+              await db.settings.update({ where: { id: settings.id }, data: { baseCurrencyId: currency.id } })
+            }
+          }
+        }
 
         const clientName = `${client.name}${client.lastName ? ' ' + client.lastName : ''}`
         const refPart = paymentReference?.trim() ? ` (${paymentMethod}: ${paymentReference.trim()})` : ` (${paymentMethod})`
         const concept = `Renovación plan: ${plan.name} - ${clientName}${refPart}`
 
-        const movement = await db.cashMovement.create({
-          data: {
-            cashRegId,
-            userId: auth.id,
-            type: 'entrada',
-            amount: cost,
-            concept,
-            currencyId,
-          },
-        })
+        if (currencyId) {
+          const movement = await db.cashMovement.create({
+            data: {
+              cashRegId,
+              userId: auth.id,
+              type: 'entrada',
+              amount: cost,
+              concept,
+              currencyId,
+            },
+          })
+          movementId = movement.id
+        }
 
         // Update cash register current amount
         await db.cashRegister.update({
           where: { id: cashRegId },
           data: { currentAmt: Math.round((register.currentAmt + cost) * 100) / 100 },
         })
-
-        movementId = movement.id
       }
     }
 
