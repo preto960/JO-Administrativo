@@ -306,7 +306,6 @@ export function ClientsTable() {
   const [renewPaymentMethod, setRenewPaymentMethod] = useState('')
   const [renewPaymentReference, setRenewPaymentReference] = useState('')
   const [renewMethods, setRenewMethods] = useState<PaymentMethodOption[]>([])
-  const [openCashRegId, setOpenCashRegId] = useState<string | null>(null)
 
   // Attendance dialog
   const [attClient, setAttClient] = useState<Client | null>(null)
