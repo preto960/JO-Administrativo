@@ -72,7 +72,7 @@ export async function PUT(request: NextRequest) {
 
     return NextResponse.json({ message: 'Metas actualizadas', results })
   } catch (error) {
-    console.error('[SalesTargets PUT]', error)
+    console.error('[SalesTargets PUT]', error instanceof Error ? error.message : error)
     return NextResponse.json({ error: 'Error al guardar metas' }, { status: 500 })
   }
 }

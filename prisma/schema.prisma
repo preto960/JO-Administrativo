@@ -566,6 +566,6 @@ model SalesTarget {
 
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, yearMonth])
+  @@unique([userId, yearMonth], name: "userId_yearMonth")
   @@index([yearMonth])
 }
