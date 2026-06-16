@@ -146,13 +146,9 @@ export async function POST(
       const register = await db.cashRegister.findUnique({ where: { id: cashRegId } })
 
       if (register && register.status === 'abierta') {
-        // Resolve currency — create default if none exists
-        let effectiveCurrency = await db.currency.findFirst()
-        if (!effectiveCurrency) {
-          effectiveCurrency = await db.currency.create({
-            data: { code: 'COP', name: 'Peso Colombiano', symbol: '$', isBase: true },
-          })
-        }
+        // Use the currency configured in Settings
+        const settings = await db.settings.findFirst()
+        const currencyId = settings?.baseCurrencyId || register.currencyId
 
         const clientName = `${client.name}${client.lastName ? ' ' + client.lastName : ''}`
         const refPart = paymentReference?.trim() ? ` (${paymentMethod}: ${paymentReference.trim()})` : ` (${paymentMethod})`
@@ -165,7 +161,7 @@ export async function POST(
             type: 'entrada',
             amount: cost,
             concept,
-            currencyId: effectiveCurrency.id,
+            currencyId,
           },
         })
 
