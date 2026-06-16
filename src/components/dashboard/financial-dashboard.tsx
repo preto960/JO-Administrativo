@@ -7,7 +7,7 @@ import { useAppStore } from '@/stores/use-app-store'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { TrendingUp, TrendingDown, DollarSign, ShoppingCart, Target, PiggyBank, Package, Users, Receipt, Filter, CalendarDays } from 'lucide-react'
+import { TrendingUp, TrendingDown, DollarSign, ShoppingCart, Target, PiggyBank, Package, Users, Receipt, Filter, CalendarDays, CheckCircle2, XCircle, Settings2, Loader2 } from 'lucide-react'
 import {
   AreaChart,
   Area,
@@ -18,7 +18,11 @@ import {
   ResponsiveContainer,
   BarChart,
   Bar,
+  Cell,
 } from 'recharts'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 
 interface DashboardData {
   ingresosHoy: number
@@ -47,6 +51,27 @@ interface DashboardData {
 }
 
 type PeriodOption = 'today' | 'week' | 'month' | 'year' | 'custom'
+
+interface VendorPerformance {
+  userId: string
+  userName: string
+  role: string
+  productSales: number
+  renewalSales: number
+  totalSales: number
+  target: number
+  achieved: boolean
+  remaining: number
+  percent: number
+  overTarget: number
+}
+
+interface SalesPerformanceData {
+  month: string
+  performance: VendorPerformance[]
+  totalMonthSales: number
+  totalMonthTarget: number
+}
 
 const periodOptions: { value: PeriodOption; label: string }[] = [
   { value: 'today', label: 'Hoy' },
@@ -109,6 +134,17 @@ export function FinancialDashboard() {
   const [customFrom, setCustomFrom] = useState('')
   const [customTo, setCustomTo] = useState('')
 
+  // Sales Performance / Targets
+  const now = new Date()
+  const bogotaOffset = now.toLocaleString('en-US', { timeZone: 'America/Bogota' })
+  const bogotaNow = new Date(bogotaOffset)
+  const [perfMonth, setPerfMonth] = useState(`${bogotaNow.getFullYear()}-${String(bogotaNow.getMonth() + 1).padStart(2, '0')}`)
+  const [perfData, setPerfData] = useState<SalesPerformanceData | null>(null)
+  const [perfLoading, setPerfLoading] = useState(false)
+  const [showTargetDialog, setShowTargetDialog] = useState(false)
+  const [targetInputs, setTargetInputs] = useState<Record<string, string>>({})
+  const [savingTargets, setSavingTargets] = useState(false)
+
   // Validate custom date range (derived value, no setState)
   const { dateError, isCustomValid } = useMemo(() => {
     if (!customFrom || !customTo) return { dateError: '', isCustomValid: false }
@@ -147,6 +183,58 @@ export function FinancialDashboard() {
 
   const totalProducts = data?.topProducts.length || 0
   const totalClients = new Set(data?.recentSales.map(s => s.client?.name).filter(Boolean)).size || 0
+
+  // Fetch sales performance data
+  useEffect(() => {
+    setPerfLoading(true)
+    api.get<SalesPerformanceData>(`/api/dashboard/sales-performance?month=${perfMonth}`)
+      .then(setPerfData)
+      .catch(() => {})
+      .finally(() => setPerfLoading(false))
+  }, [perfMonth])
+
+  // Open target dialog and load current targets
+  const handleOpenTargetDialog = async () => {
+    setShowTargetDialog(true)
+    api.get<{ users: { id: string; name: string }[]; targets: { userId: string; yearMonth: string; targetAmount: number }[] }>(`/api/sales-targets?month=${perfMonth}`)
+      .then(({ users, targets }) => {
+        const inputs: Record<string, string> = {}
+        users.forEach(u => {
+          const t = targets.find(t => t.userId === u.id && t.yearMonth === perfMonth)
+          inputs[u.id] = t ? String(t.targetAmount) : ''
+        })
+        setTargetInputs(inputs)
+      })
+      .catch(() => {})
+  }
+
+  const handleSaveTargets = async () => {
+    setSavingTargets(true)
+    const targets = Object.entries(targetInputs)
+      .filter(([, v]) => v && Number(v) > 0)
+      .map(([userId, v]) => ({ userId, yearMonth: perfMonth, targetAmount: Number(v) }))
+
+    await api.put('/api/sales-targets', { targets })
+    setShowTargetDialog(false)
+    // Refresh performance data
+    api.get<SalesPerformanceData>(`/api/dashboard/sales-performance?month=${perfMonth}`)
+      .then(setPerfData)
+      .catch(() => {})
+    setSavingTargets(false)
+  }
+
+  // Chart data for recharts
+  const chartData = useMemo(() => {
+    if (!perfData) return []
+    return perfData.performance.map(p => ({
+      name: p.userName.split(' ')[0], // first name
+      fullName: p.userName,
+      ventas: p.totalSales,
+      meta: p.target,
+      achieved: p.achieved,
+      percent: p.percent,
+    }))
+  }, [perfData])
 
   if (loading) {
     return (
@@ -434,6 +522,185 @@ export function FinancialDashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Sales Performance & Targets */}
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Target className="h-4 w-4" />
+              Metas de Vendedores
+            </CardTitle>
+            <div className="flex items-center gap-2">
+              <input
+                type="month"
+                value={perfMonth}
+                onChange={(e) => setPerfMonth(e.target.value)}
+                className="rounded-md border bg-background px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+              />
+              <Button size="sm" variant="outline" onClick={handleOpenTargetDialog}>
+                <Settings2 className="h-3.5 w-3.5 mr-1" />
+                Configurar Metas
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {perfLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : perfData && perfData.performance.length > 0 ? (
+            <div className="space-y-6">
+              {/* Summary KPIs */}
+              <div className="grid grid-cols-3 gap-3 text-center">
+                <div className="rounded-lg bg-muted/50 p-2">
+                  <p className="text-[10px] text-muted-foreground uppercase">Total Ventas</p>
+                  <p className="text-sm font-bold">{fmt(perfData.totalMonthSales)}</p>
+                </div>
+                <div className="rounded-lg bg-muted/50 p-2">
+                  <p className="text-[10px] text-muted-foreground uppercase">Meta Total</p>
+                  <p className="text-sm font-bold">{fmt(perfData.totalMonthTarget)}</p>
+                </div>
+                <div className="rounded-lg bg-muted/50 p-2">
+                  <p className="text-[10px] text-muted-foreground uppercase">% General</p>
+                  <p className={`text-sm font-bold ${perfData.totalMonthTarget > 0 && perfData.totalMonthSales >= perfData.totalMonthTarget ? 'text-green-600' : ''}`}>
+                    {perfData.totalMonthTarget > 0 ? `${Math.round((perfData.totalMonthSales / perfData.totalMonthTarget) * 100)}%` : '—'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Bar Chart */}
+              {chartData.length > 0 && (
+                <div className="h-56">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={chartData} barGap={4}>
+                      <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                      <XAxis dataKey="name" className="text-xs" tick={{ fontSize: 11 }} />
+                      <YAxis className="text-xs" tick={{ fontSize: 11 }} />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: 'var(--card)',
+                          border: '1px solid var(--border)',
+                          borderRadius: '8px',
+                          fontSize: '12px',
+                        }}
+                        formatter={(value: number, name: string) => [fmt(value), name === 'ventas' ? 'Ventas' : 'Meta']}
+                        labelFormatter={(_, payload) => payload?.[0]?.payload?.fullName || ''}
+                      />
+                      <Bar dataKey="meta" fill="var(--muted-foreground)" opacity={0.25} radius={[4, 4, 0, 0]} name="meta" />
+                      <Bar dataKey="ventas" radius={[4, 4, 0, 0]} name="ventas">
+                        {chartData.map((entry, index) => (
+                          <Cell
+                            key={index}
+                            fill={entry.achieved ? '#22c55e' : entry.percent >= 70 ? '#f59e0b' : 'var(--primary)'}
+                          />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+
+              {/* Vendor Breakdown */}
+              <div className="space-y-3">
+                {perfData.performance.map((p) => (
+                  <div key={p.userId} className="rounded-lg border p-3">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">{p.userName}</span>
+                        {p.target > 0 && (
+                          p.achieved ? (
+                            <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-green-200 dark:border-green-800 text-[10px]">
+                              <CheckCircle2 className="h-3 w-3 mr-0.5" /> Cumplido
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-[10px]">
+                              <XCircle className="h-3 w-3 mr-0.5 text-amber-500" />
+                              Faltan {fmt(p.remaining)}
+                            </Badge>
+                          )
+                        )}
+                      </div>
+                      <span className="text-sm font-bold">{fmt(p.totalSales)}</span>
+                    </div>
+                    {p.target > 0 && (
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                          <span>Productos: {fmt(p.productSales)}</span>
+                          <span>Renovaciones: {fmt(p.renewalSales)}</span>
+                          <span>Meta: {fmt(p.target)} — {p.percent}%</span>
+                        </div>
+                        <div className="h-2 rounded-full bg-muted overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all duration-500 ${
+                              p.achieved ? 'bg-green-500' : p.percent >= 70 ? 'bg-amber-500' : 'bg-primary'
+                            }`}
+                            style={{ width: `${Math.min(p.percent, 100)}%` }}
+                          />
+                        </div>
+                        {p.overTarget > 0 && (
+                          <p className="text-[10px] text-green-600 font-medium">
+                            <TrendingUp className="h-3 w-3 inline mr-0.5" />
+                            Supera la meta por {fmt(p.overTarget)}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground text-center py-6">
+              {perfData ? 'Sin datos de ventas para este mes' : 'Sin vendedores activos'}
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Target Configuration Dialog */}
+      <Dialog open={showTargetDialog} onOpenChange={setShowTargetDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Configurar Metas de Vendedores</DialogTitle>
+            <DialogDescription>
+              Establece la meta de ventas para cada vendedor en el mes {perfMonth}. Deja vacio si no tiene meta.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 max-h-80 overflow-y-auto">
+            {Object.entries(targetInputs).map(([userId, value]) => {
+              const perf = perfData?.performance.find(p => p.userId === userId)
+              return (
+                <div key={userId} className="flex items-center gap-3">
+                  <div className="flex-1 min-w-0">
+                    <Label className="text-sm">{perf?.userName || userId}</Label>
+                    {perf && perf.totalSales > 0 && (
+                      <p className="text-[10px] text-muted-foreground">Ventas actuales: {fmt(perf.totalSales)}</p>
+                    )}
+                  </div>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="1000"
+                    placeholder="0"
+                    value={value}
+                    onChange={(e) => setTargetInputs(prev => ({ ...prev, [userId]: e.target.value }))}
+                    className="w-32 text-right"
+                  />
+                </div>
+              )
+            })}
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => setShowTargetDialog(false)}>Cancelar</Button>
+            <Button onClick={handleSaveTargets} disabled={savingTargets}>
+              {savingTargets && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+              Guardar Metas
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
