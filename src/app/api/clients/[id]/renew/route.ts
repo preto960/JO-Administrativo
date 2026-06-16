@@ -181,7 +181,7 @@ export async function POST(
 
           try {
             const movement = await db.cashMovement.create({
-              data: { cashRegId, userId: auth.id, type: 'entrada', amount: cost, concept, currencyId },
+              data: { cashRegId, userId: auth.userId, type: 'entrada', amount: cost, concept, currencyId },
             })
             movementId = movement.id
           } catch (err) {
