@@ -140,57 +140,41 @@ export async function POST(
       }
     }
 
-    // ── Create Sale + CashMovement (only when payment method provided) ──
-    let saleId: string | null = null
-    if (pmInfo && paymentMethod) {
-      const settings = await db.settings.findFirst()
-      const refCurrency = await db.currency.findFirst({
-        where: { code: settings?.referenceCurrency || 'USD' },
-      })
-      const currencyId = refCurrency?.id || ''
-      const resolvedBranchId = branchId || undefined
+    // ── Create CashMovement (for ALL payment methods, not just cash) ──
+    let movementId: string | null = null
+    if (paymentMethod && cashRegId) {
+      const register = await db.cashRegister.findUnique({ where: { id: cashRegId } })
 
-      const sale = await db.sale.create({
-        data: {
-          clientId: id,
-          cashRegId: cashRegId || null,
-          userId: auth.id,
-          branchId: resolvedBranchId || '',
-          total: cost,
-          status: 'completada',
-          syncStatus: 'synced',
-          currencyId,
-          payments: {
-            create: {
-              method: paymentMethod,
-              amount: cost,
-              currencyId,
-              reference: paymentReference?.trim() || null,
-            },
+      if (register && register.status === 'abierta') {
+        const settings = await db.settings.findFirst()
+        const refCurrency = await db.currency.findFirst({
+          where: { code: settings?.referenceCurrency || 'USD' },
+        })
+        // Fallback: try to find any base currency, or any currency
+        const effectiveCurrency = refCurrency || await db.currency.findFirst({ where: { isBase: true } }) || await db.currency.findFirst()
+
+        const clientName = `${client.name}${client.lastName ? ' ' + client.lastName : ''}`
+        const refPart = paymentReference?.trim() ? ` (${paymentMethod}: ${paymentReference.trim()})` : ` (${paymentMethod})`
+        const concept = `Renovación plan: ${plan.name} - ${clientName}${refPart}`
+
+        const movement = await db.cashMovement.create({
+          data: {
+            cashRegId,
+            userId: auth.id,
+            type: 'entrada',
+            amount: cost,
+            concept,
+            currencyId: effectiveCurrency?.id || '',
           },
-        },
-      })
-      saleId = sale.id
+        })
 
-      // Update cash register + create movement if cash payment
-      if (pmInfo.isCash && cashRegId) {
-        const reg = await db.cashRegister.findUnique({ where: { id: cashRegId } })
-        if (reg && reg.status === 'abierta') {
-          await db.cashRegister.update({
-            where: { id: cashRegId },
-            data: { currentAmt: Math.round((reg.currentAmt + cost) * 100) / 100 },
-          })
-          await db.cashMovement.create({
-            data: {
-              cashRegId,
-              userId: auth.id,
-              type: 'entrada',
-              amount: cost,
-              concept: `Renovación plan: ${plan.name} - ${client.name}${client.lastName ? ' ' + client.lastName : ''}`,
-              currencyId,
-            },
-          })
-        }
+        // Update cash register current amount
+        await db.cashRegister.update({
+          where: { id: cashRegId },
+          data: { currentAmt: Math.round((register.currentAmt + cost) * 100) / 100 },
+        })
+
+        movementId = movement.id
       }
     }
 
@@ -205,18 +189,18 @@ export async function POST(
         totalDays,
         cost,
         paymentMethod: paymentMethod || null,
-        saleId,
+        movementId,
       },
       request,
     })
 
     return NextResponse.json({
       membership,
-      saleId,
+      movementId,
       message: `Plan "${plan.name}" asignado (+${totalDays} días)`,
     }, { status: 201 })
   } catch (error) {
-    console.error('[Renew POST]', error)
+    console.error('[Renew POST]', error instanceof Error ? error.message : error)
     return NextResponse.json({ error: 'Error al renovar suscripción' }, { status: 500 })
   }
 }
