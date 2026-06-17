@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
 
     // Fix 1: Validate max initial amount
     if (initialAmt !== undefined && initialAmt !== null && initialAmt > MAX_INITIAL_AMOUNT) {
-      return NextResponse.json({ error: `El monto inicial no puede superar $${MAX_INITIAL_AMOUNT.toLocaleString('es-VE')}` }, { status: 400 })
+      return NextResponse.json({ error: `El monto inicial no puede superar ${MAX_INITIAL_AMOUNT.toLocaleString()}` }, { status: 400 })
     }
 
     const effectiveBranchId = body.branchId || await resolveBranchId()

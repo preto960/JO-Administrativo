@@ -385,7 +385,7 @@ export function CashRegisterView() {
       const amt = parseFloat(initialAmt) || 0
       // Fix 1: Cap initial amount at MAX_INITIAL
       if (amt > MAX_INITIAL) {
-        toast.error(`El monto inicial no puede exceder Bs ${MAX_INITIAL.toLocaleString('es-VE', { minimumFractionDigits: 2 })}`)
+        toast.error(`El monto inicial no puede exceder ${fmtBase(MAX_INITIAL)}`)
         setSaving(false)
         return
       }
@@ -1051,7 +1051,7 @@ export function CashRegisterView() {
                 onChange={(e) => setInitialAmt(numericFilter(e.target.value))}
                 placeholder="0.00"
               />
-              <p className={`text-xs ${parseFloat(initialAmt.replace(/,/g, '')) >= MAX_INITIAL ? 'text-amber-500 font-semibold' : 'text-muted-foreground'}`}>Máximo permitido: Bs 500.000,00</p>
+              <p className={`text-xs ${parseFloat(initialAmt.replace(/,/g, '')) >= MAX_INITIAL ? 'text-amber-500 font-semibold' : 'text-muted-foreground'}`}>Máximo permitido: {fmtBase(MAX_INITIAL)}</p>
             </div>
             <Button className="w-full bg-primary hover:bg-primary/90 text-white" onClick={openRegister} disabled={saving || !selectedUserId}>
               {saving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Abriendo...</> : 'Abrir Caja'}
