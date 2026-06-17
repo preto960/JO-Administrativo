@@ -16,7 +16,8 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
-import { Save, Loader2, RotateCcw, BookOpen, MessageSquare } from 'lucide-react'
+import { Switch } from '@/components/ui/switch'
+import { Save, Loader2, RotateCcw, BookOpen, MessageSquare, PlayCircle } from 'lucide-react'
 import { toast } from 'sonner'
 
 // ── Default tutorial steps per role ──────────────────────────
@@ -96,13 +97,18 @@ export function TutorialTextsEditor() {
   const [editDescription, setEditDescription] = useState('')
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [autoStart, setAutoStart] = useState(true)
+  const [savingAutoStart, setSavingAutoStart] = useState(false)
 
   useEffect(() => {
-    const loadTexts = async () => {
+    const loadSettings = async () => {
       try {
-        const settings = await api.get<{ tutorialTexts: Record<string, unknown> }>('/api/settings')
+        const settings = await api.get<{ tutorialTexts: Record<string, unknown>; tutorialAutoStart: boolean }>('/api/settings')
         if (settings?.tutorialTexts && typeof settings.tutorialTexts === 'object') {
           setCustomTexts(settings.tutorialTexts as Record<string, Record<string, { title: string; description: string }>>)
+        }
+        if (typeof settings?.tutorialAutoStart === 'boolean') {
+          setAutoStart(settings.tutorialAutoStart)
         }
       } catch {
         // Use defaults
@@ -110,7 +116,7 @@ export function TutorialTextsEditor() {
         setLoading(false)
       }
     }
-    loadTexts()
+    loadSettings()
   }, [])
 
   const currentRoleSteps = DEFAULT_STEPS.find(r => r.role === selectedRole)
@@ -167,6 +173,20 @@ export function TutorialTextsEditor() {
     }
   }
 
+  const handleAutoStartChange = async (checked: boolean) => {
+    setAutoStart(checked)
+    setSavingAutoStart(true)
+    try {
+      await api.put('/api/settings', { tutorialAutoStart: checked })
+      toast.success(checked ? 'Tutorial automático activado' : 'Tutorial automático desactivado')
+    } catch {
+      setAutoStart(!checked)
+      toast.error('Error al guardar la configuración')
+    } finally {
+      setSavingAutoStart(false)
+    }
+  }
+
   const resetAllTexts = () => {
     setCustomTexts({})
     api.put('/api/settings', { tutorialTexts: {} }).catch(() => {})
@@ -188,6 +208,29 @@ export function TutorialTextsEditor() {
 
   return (
     <div className="space-y-4">
+      {/* Auto-start toggle */}
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-2">
+                <PlayCircle className="h-4 w-4 text-primary" />
+                <Label className="text-sm font-medium">Inicio automático del tutorial</Label>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Cuando está activado, el tutorial se inicia automáticamente la primera vez que un usuario nuevo entra al sistema.
+                Si se desactiva, los usuarios nuevos deberán iniciarlo manualmente desde el menú de perfil.
+              </p>
+            </div>
+            <Switch
+              checked={autoStart}
+              onCheckedChange={handleAutoStartChange}
+              disabled={savingAutoStart}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">

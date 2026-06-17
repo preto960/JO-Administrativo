@@ -896,13 +896,35 @@ export function OnboardingTutorial() {
   useEffect(() => {
     const completed = localStorage.getItem('jo-admin-tutorial-completed')
     if (!completed) {
+      let cancelled = false
+      let timer: ReturnType<typeof setTimeout> | null = null
       const savedStep = parseInt(localStorage.getItem('jo-admin-tutorial-step') || '0', 10)
-      const timer = setTimeout(() => {
-        stepsRef.current = buildSteps(role)
-        setStepIndex(isNaN(savedStep) ? 0 : Math.min(savedStep, stepsRef.current.length - 1))
-        setIsOpen(true)
-      }, 2000)
-      return () => clearTimeout(timer)
+      const scheduleStart = () => {
+        timer = setTimeout(() => {
+          if (cancelled) return
+          stepsRef.current = buildSteps(role)
+          setStepIndex(isNaN(savedStep) ? 0 : Math.min(savedStep, stepsRef.current.length - 1))
+          setIsOpen(true)
+        }, 2000)
+      }
+      // Check if auto-start is enabled in settings
+      api.get<{ tutorialAutoStart: boolean }>('/api/settings')
+        .then((settings) => {
+          if (cancelled) return
+          // Only auto-start if setting is true (or missing, for backward compat)
+          if (settings?.tutorialAutoStart !== false) {
+            scheduleStart()
+          }
+        })
+        .catch(() => {
+          // On error, default to auto-start (existing behavior)
+          if (cancelled) return
+          scheduleStart()
+        })
+      return () => {
+        cancelled = true
+        if (timer) clearTimeout(timer)
+      }
     }
   }, [role])
 

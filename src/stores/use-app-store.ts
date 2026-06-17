@@ -33,6 +33,7 @@ export interface AppSettings {
   secondaryColor: string
   theme: string
   country: string
+  tutorialAutoStart: boolean
   [key: string]: unknown
 }
 
@@ -86,6 +87,7 @@ const defaultSettings: AppSettings = {
   secondaryColor: 'slate',
   theme: 'light',
   country: 'VE',
+  tutorialAutoStart: true,
 }
 
 export const useAppStore = create<AppState>()(
