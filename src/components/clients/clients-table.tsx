@@ -42,8 +42,10 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import { Separator } from '@/components/ui/separator'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Plus, Search, Users, DollarSign, Loader2, Receipt, Truck, X, Trash2, Printer, FileText, Mail, Pencil, Phone, MapPin, ShoppingCart, Eye, EyeOff, AlertTriangle, Upload, ChevronLeft, ChevronRight, Filter, UserCheck, UserX, UsersRound, RefreshCw, CalendarCheck, CalendarDays, CheckCircle2, CreditCard } from 'lucide-react'
+import { Plus, Search, Users, DollarSign, Loader2, Receipt, Truck, X, Trash2, Printer, FileText, Mail, Pencil, Phone, MapPin, ShoppingCart, Eye, EyeOff, AlertTriangle, Upload, ChevronLeft, ChevronRight, Filter, UserCheck, UserX, UsersRound, RefreshCw, CalendarCheck, CalendarDays, CheckCircle2, CreditCard, Banknote, ArrowLeftRight, Clock, Smartphone, CircleDollarSign, type LucideIcon } from 'lucide-react'
 import { ClientBulkImport } from './client-bulk-import'
 import { FALLBACK_METHODS } from '@/lib/payment-methods'
 import { toast } from 'sonner'
@@ -59,6 +61,19 @@ interface PaymentMethodOption {
   isLocalCurrency: boolean
   isCash: boolean
   isCredit: boolean
+}
+
+const RENEW_ICON_MAP: Record<string, LucideIcon> = {
+  Banknote,
+  CreditCard,
+  ArrowLeftRight,
+  Clock,
+  Smartphone,
+  CircleDollarSign,
+}
+
+function getRenewIcon(iconName: string): LucideIcon {
+  return RENEW_ICON_MAP[iconName] || CircleDollarSign
 }
 
 interface Client {
@@ -306,6 +321,8 @@ export function ClientsTable() {
   const [renewPaymentMethod, setRenewPaymentMethod] = useState('')
   const [renewPaymentReference, setRenewPaymentReference] = useState('')
   const [renewMethods, setRenewMethods] = useState<PaymentMethodOption[]>([])
+  const [renewCurrencies, setRenewCurrencies] = useState<{ id: string; code: string; symbol: string; isBase: boolean }[]>([])
+  const [renewSuccess, setRenewSuccess] = useState(false)
 
   // Attendance dialog
   const [attClient, setAttClient] = useState<Client | null>(null)
@@ -668,17 +685,19 @@ export function ClientsTable() {
     setRenewPaymentMethod('')
     setRenewPaymentReference('')
     setShowRenewDialog(true)
-    // Load payment methods and open cash register
+    // Load subscription-specific payment methods and open cash register
     const countryVal = country
     Promise.all([
-      api.get<PaymentMethodOption[]>(`/api/payment-methods?country=${countryVal}`),
+      api.get<PaymentMethodOption[]>(`/api/payment-methods?country=${countryVal}&context=subscription`),
       api.get<Array<{ id: string; status: string }>>('/api/cash-register'),
-    ]).then(([methods, registers]) => {
-      const list = Array.isArray(methods) && methods.length > 0 ? methods.filter(m => m.enabled) : FALLBACK_METHODS.filter(m => m.enabled)
+      api.get<{ id: string; code: string; symbol: string; isBase: boolean }[]>('/api/currencies'),
+    ]).then(([methods, registers, currencies]) => {
+      const list = Array.isArray(methods) && methods.length > 0 ? methods : FALLBACK_METHODS.filter(m => m.enabled)
       setRenewMethods(list)
       if (list.length > 0) setRenewPaymentMethod(list[0].code)
       const openReg = registers?.find((r: { status: string }) => r.status === 'abierta')
       if (openReg) setOpenCashRegId(openReg.id)
+      if (Array.isArray(currencies)) setRenewCurrencies(currencies)
     }).catch(() => {
       const fallback = FALLBACK_METHODS.filter(m => m.enabled)
       setRenewMethods(fallback)
@@ -702,16 +721,22 @@ export function ClientsTable() {
     }
     setRenewing(true)
     try {
+      const baseCurr = renewCurrencies.find(c => c.isBase)
       const res = await api.post<{ message: string }>(`/api/clients/${renewClient.id}/renew`, {
         planId: renewPlanId,
         paymentMethod: renewPaymentMethod,
         paymentReference: renewPaymentReference.trim() || undefined,
         cashRegId: openCashRegId || undefined,
         branchId: selectedBranchId || undefined,
+        currencyId: baseCurr?.id || baseCurrencyId || '',
       })
+      setRenewSuccess(true)
       toast.success(res.message || 'Suscripción renovada')
-      setShowRenewDialog(false)
-      fetchClients()
+      setTimeout(() => {
+        setShowRenewDialog(false)
+        setRenewSuccess(false)
+        fetchClients()
+      }, 1500)
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Error al renovar'
       toast.error(msg)
@@ -1514,140 +1539,180 @@ export function ClientsTable() {
         </DialogContent>
       </Dialog>
 
-      {/* Renew Subscription Dialog */}
-      <Dialog open={showRenewDialog} onOpenChange={setShowRenewDialog}>
-        <DialogContent className="sm:max-w-md">
+      {/* Renew Subscription Dialog — POS-style payment */}
+      <Dialog open={showRenewDialog} onOpenChange={(open) => { if (!open) { setShowRenewDialog(false); setRenewSuccess(false) } }}>
+        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <RefreshCw className="h-5 w-5 text-emerald-600" />
               Renovar Suscripción
             </DialogTitle>
             <DialogDescription>
-              Selecciona un plan para {renewClient?.name}{renewClient?.lastName ? ` ${renewClient.lastName}` : ''}
+              {renewClient?.name}{renewClient?.lastName ? ` ${renewClient.lastName}` : ''}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
-            {/* Current membership info */}
-            {renewClient?.membership && (
-              <div className="rounded-md bg-muted p-3 space-y-1 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Estado actual:</span>
-                  <Badge className={`text-[10px] ${
-                    renewClient.membership.status === 'Activo'
-                      ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400'
-                      : 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400'
-                  }`}>
-                    {renewClient.membership.status === 'Activo' ? 'Activo' : 'Vencido'}
-                  </Badge>
-                </div>
-                {renewClient.membership.tarifa && (
+
+          {renewSuccess ? (
+            <div className="flex flex-col items-center justify-center gap-4 py-8">
+              <div className="rounded-full bg-emerald-100 dark:bg-emerald-950/30 p-4">
+                <CheckCircle2 className="h-12 w-12 text-emerald-600" />
+              </div>
+              <h3 className="text-xl font-bold text-emerald-700 dark:text-emerald-400">¡Suscripción Renovada!</h3>
+              <p className="text-sm text-muted-foreground">Cerrando automáticamente...</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {/* Current membership info */}
+              {renewClient?.membership && (
+                <div className="rounded-md bg-muted p-3 space-y-1 text-sm">
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Plan actual:</span>
-                    <span className="font-medium">{renewClient.membership.tarifa}</span>
+                    <span className="text-muted-foreground">Estado actual:</span>
+                    <Badge className={`text-[10px] ${
+                      renewClient.membership.status === 'Activo'
+                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400'
+                        : 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400'
+                    }`}>
+                      {renewClient.membership.status === 'Activo' ? 'Activo' : 'Vencido'}
+                    </Badge>
                   </div>
-                )}
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Días restantes:</span>
-                  <span className="font-medium">{renewClient.membership.daysRemaining}</span>
-                </div>
-              </div>
-            )}
-
-            {/* Plan selector */}
-            <div className="space-y-2">
-              <Label>Seleccionar Plan *</Label>
-              <Select value={renewPlanId} onValueChange={setRenewPlanId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Elige un plan..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {plans.map(p => (
-                    <SelectItem key={p.id} value={p.id}>
-                      <div className="flex items-center justify-between gap-4">
-                        <span>{p.name}</span>
-                        <span className="text-muted-foreground font-mono">{fmt(p.cost)}</span>
-                      </div>
-                    </SelectItem>
-                  ))}
-                  {plans.length === 0 && (
-                    <SelectItem value="" disabled>No hay planes activos configurados</SelectItem>
+                  {renewClient.membership.tarifa && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Plan actual:</span>
+                      <span className="font-medium">{renewClient.membership.tarifa}</span>
+                    </div>
                   )}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Cost display */}
-            {renewPlanId && (() => {
-              const selectedPlan = plans.find(p => p.id === renewPlanId)
-              if (!selectedPlan) return null
-              return (
-                <div className="rounded-md bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 p-3 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <DollarSign className="h-4 w-4 text-emerald-600" />
-                    <span className="text-sm font-medium">Costo del plan:</span>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Días restantes:</span>
+                    <span className="font-medium">{renewClient.membership.daysRemaining}</span>
                   </div>
-                  <span className="text-lg font-bold text-emerald-700 dark:text-emerald-400">{fmt(selectedPlan.cost)}</span>
                 </div>
-              )
-            })()}
+              )}
 
-            {/* Payment method selector */}
-            <div className="space-y-2">
-              <Label className="flex items-center gap-1.5">
-                <CreditCard className="h-3.5 w-3.5" />
-                Método de Pago *
-              </Label>
-              <div className="grid grid-cols-3 gap-2">
-                {renewMethods.map(pm => (
-                  <button
-                    key={pm.code}
-                    type="button"
-                    onClick={() => { setRenewPaymentMethod(pm.code); setRenewPaymentReference('') }}
-                    className={`
-                      flex flex-col items-center gap-1 px-2 py-2.5 rounded-lg text-xs font-medium
-                      border-2 transition-all duration-150
-                      ${renewPaymentMethod === pm.code
-                        ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
-                        : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-400'
-                      }
-                    `}
+              {/* Plan selector */}
+              <div className="space-y-2">
+                <Label>Seleccionar Plan *</Label>
+                <Select value={renewPlanId} onValueChange={setRenewPlanId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Elige un plan..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {plans.map(p => (
+                      <SelectItem key={p.id} value={p.id}>
+                        <div className="flex items-center justify-between gap-4">
+                          <span>{p.name}</span>
+                          <span className="text-muted-foreground font-mono">{fmt(p.cost)}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                    {plans.length === 0 && (
+                      <SelectItem value="none" disabled>No hay planes activos configurados</SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Cost display */}
+              {renewPlanId && (() => {
+                const selectedPlan = plans.find(p => p.id === renewPlanId)
+                if (!selectedPlan) return null
+                return (
+                  <div className="rounded-md bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 p-3 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <DollarSign className="h-4 w-4 text-emerald-600" />
+                      <span className="text-sm font-medium">Costo del plan:</span>
+                    </div>
+                    <span className="text-lg font-bold text-emerald-700 dark:text-emerald-400">{fmt(selectedPlan.cost)}</span>
+                  </div>
+                )
+              })()}
+
+              <Separator />
+
+              {/* Payment method selector — POS-style RadioGroup with icons */}
+              <div className="space-y-2">
+                <Label className="flex items-center gap-1.5">
+                  <CreditCard className="h-3.5 w-3.5" />
+                  Método de Pago *
+                </Label>
+                {renewMethods.length > 0 ? (
+                  <RadioGroup
+                    value={renewPaymentMethod}
+                    onValueChange={(v) => { setRenewPaymentMethod(v); setRenewPaymentReference('') }}
+                    className="grid grid-cols-2 gap-3"
                   >
-                    <span className="text-[11px] leading-tight text-center">{pm.name}</span>
-                  </button>
-                ))}
+                    {renewMethods.map((pm) => {
+                      const Icon = getRenewIcon(pm.icon)
+                      return (
+                        <label
+                          key={pm.code}
+                          className={`flex cursor-pointer flex-col items-center gap-2 rounded-lg border-2 p-3 transition-colors ${
+                            renewPaymentMethod === pm.code
+                              ? 'border-primary bg-primary/5 dark:bg-primary/10'
+                              : 'border-muted hover:border-muted-foreground/30'
+                          }`}
+                        >
+                          <RadioGroupItem value={pm.code} className="sr-only" />
+                          <Icon className={`h-5 w-5 ${renewPaymentMethod === pm.code ? 'text-primary' : 'text-muted-foreground'}`} />
+                          <span className={`text-xs font-medium ${renewPaymentMethod === pm.code ? 'text-primary dark:text-primary' : ''}`}>
+                            {pm.name}
+                          </span>
+                          {pm.isCredit && (
+                            <span className="text-[9px] text-amber-600 dark:text-amber-400 font-medium">Genera deuda</span>
+                          )}
+                        </label>
+                      )
+                    })}
+                  </RadioGroup>
+                ) : (
+                  <p className="text-xs text-center text-muted-foreground py-2">
+                    No hay métodos de pago activos para suscripciones
+                  </p>
+                )}
               </div>
+
+              {/* Reference input */}
+              {renewMethods.find(m => m.code === renewPaymentMethod)?.needsReference && (
+                <div className="space-y-2 animate-in fade-in slide-in-from-top-2 duration-200">
+                  <Label htmlFor="renew-reference">Referencia *</Label>
+                  <Input
+                    id="renew-reference"
+                    value={renewPaymentReference}
+                    onChange={(e) => setRenewPaymentReference(e.target.value)}
+                    placeholder="Número de referencia..."
+                  />
+                </div>
+              )}
+
+              {/* No cash register warning */}
+              {!openCashRegId && renewMethods.find(m => m.code === renewPaymentMethod)?.isCash && (
+                <div className="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-2.5 text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                  <span>No hay caja abierta. El pago en efectivo no se registrará en caja.</span>
+                </div>
+              )}
+
+              {/* Credit info */}
+              {renewMethods.find(m => m.code === renewPaymentMethod)?.isCredit && (
+                <div className="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-2.5 text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                  <span>El pago a crédito generará una cuenta por cobrar para el cliente. No se sumará al saldo de caja.</span>
+                </div>
+              )}
+
+              <Button
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
+                size="lg"
+                onClick={handleRenew}
+                disabled={renewing || !renewPlanId || !renewPaymentMethod}
+              >
+                {renewing ? (
+                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Renovando...</>
+                ) : (
+                  <><RefreshCw className="mr-2 h-4 w-4" /> Renovar Suscripción</>
+                )}
+              </Button>
             </div>
-
-            {/* Reference (if needed) */}
-            {renewMethods.find(m => m.code === renewPaymentMethod)?.needsReference && (
-              <div className="space-y-2 animate-in fade-in slide-in-from-top-2 duration-200">
-                <Label htmlFor="renew-reference">Referencia *</Label>
-                <Input
-                  id="renew-reference"
-                  value={renewPaymentReference}
-                  onChange={(e) => setRenewPaymentReference(e.target.value)}
-                  placeholder="Número de referencia..."
-                />
-              </div>
-            )}
-
-            {/* No cash register warning */}
-            {!openCashRegId && renewMethods.find(m => m.code === renewPaymentMethod)?.isCash && (
-              <div className="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-2.5 text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2">
-                <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                <span>No hay caja abierta. El pago en efectivo no se registrará en caja.</span>
-              </div>
-            )}
-
-            <Button
-              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
-              onClick={handleRenew}
-              disabled={renewing || !renewPlanId || !renewPaymentMethod}
-            >
-              {renewing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-              {renewing ? 'Renovando...' : 'Renovar Suscripción'}
-            </Button>
-          </div>
+          )}
         </DialogContent>
       </Dialog>
 

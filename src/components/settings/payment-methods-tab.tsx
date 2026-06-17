@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { api } from '@/lib/api'
-import { useAppStore } from '@/stores/use-app-store'
+import { useAppStore, useSetting } from '@/stores/use-app-store'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
@@ -45,6 +45,8 @@ import {
   Loader2,
   GripVertical,
   Info,
+  ShoppingCart,
+  RefreshCw,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { getCurrencyForCountry } from '@/lib/country-currency'
@@ -55,6 +57,8 @@ interface PaymentMethodItem {
   name: string
   icon: string
   enabled: boolean
+  enabledInPos: boolean
+  enabledInSubscription: boolean
   needsReference: boolean
   isLocalCurrency: boolean
   isCash: boolean
@@ -90,6 +94,7 @@ export function PaymentMethodsTab({ country }: PaymentMethodsTabProps) {
   const [methods, setMethods] = useState<PaymentMethodItem[]>([])
   const [loading, setLoading] = useState(true)
   const [togglingId, setTogglingId] = useState<string | null>(null)
+  const businessType = useSetting('businessType')
 
   // Custom method dialog
   const [showCreateDialog, setShowCreateDialog] = useState(false)
@@ -108,6 +113,7 @@ export function PaymentMethodsTab({ country }: PaymentMethodsTabProps) {
 
   const localCurrency = getCurrencyForCountry(country)
   const localLabel = localCurrency ? `${localCurrency.code} (${localCurrency.symbol})` : 'moneda local'
+  const isGym = businessType === 'gym'
 
   const fetchMethods = useCallback(async () => {
     try {
@@ -122,7 +128,39 @@ export function PaymentMethodsTab({ country }: PaymentMethodsTabProps) {
 
   useEffect(() => { fetchMethods() }, [fetchMethods])
 
-  const handleToggle = async (method: PaymentMethodItem) => {
+  const handleTogglePos = async (method: PaymentMethodItem) => {
+    setTogglingId(method.id)
+    try {
+      const updated = await api.put<PaymentMethodItem>('/api/payment-methods', {
+        id: method.id,
+        enabledInPos: !method.enabledInPos,
+      })
+      setMethods(prev => prev.map(m => m.id === updated.id ? updated : m))
+      toast.success(`${updated.name} ${updated.enabledInPos ? 'activado en Punto de Venta' : 'desactivado en Punto de Venta'}`)
+    } catch {
+      toast.error('Error al actualizar método')
+    } finally {
+      setTogglingId(null)
+    }
+  }
+
+  const handleToggleSubscription = async (method: PaymentMethodItem) => {
+    setTogglingId(method.id)
+    try {
+      const updated = await api.put<PaymentMethodItem>('/api/payment-methods', {
+        id: method.id,
+        enabledInSubscription: !method.enabledInSubscription,
+      })
+      setMethods(prev => prev.map(m => m.id === updated.id ? updated : m))
+      toast.success(`${updated.name} ${updated.enabledInSubscription ? 'activado en Suscripciones' : 'desactivado en Suscripciones'}`)
+    } catch {
+      toast.error('Error al actualizar método')
+    } finally {
+      setTogglingId(null)
+    }
+  }
+
+  const handleToggleGeneral = async (method: PaymentMethodItem) => {
     setTogglingId(method.id)
     try {
       const updated = await api.put<PaymentMethodItem>('/api/payment-methods', {
@@ -214,7 +252,8 @@ export function PaymentMethodsTab({ country }: PaymentMethodsTabProps) {
           <Info className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
           <div className="text-sm space-y-1">
             <p>
-              Activa o desactiva los métodos de pago disponibles en el Punto de Venta, cobros a clientes y pagos a proveedores.
+              Activa o desactiva los métodos de pago disponibles en el Punto de Venta
+              {isGym && <> y en Suscripciones de clientes</>}.
             </p>
             <p className="text-muted-foreground">
               País actual: <span className="font-medium">{country}</span> · Moneda local: <span className="font-medium">{localLabel}</span>
@@ -232,7 +271,11 @@ export function PaymentMethodsTab({ country }: PaymentMethodsTabProps) {
           <div className="flex items-center justify-between">
             <div>
               <CardTitle className="text-base">Métodos de Pago</CardTitle>
-              <CardDescription>Arrastra para reordenar (próximamente) · Toca el switch para activar/desactivar</CardDescription>
+              <CardDescription>
+                {isGym
+                  ? 'Controla por separado qué métodos se ven en Punto de Venta y en Suscripciones'
+                  : 'Toca el switch para activar/desactivar'}
+              </CardDescription>
             </div>
             <Button variant="outline" size="sm" onClick={() => setShowCreateDialog(true)}>
               <Plus className="mr-1.5 h-3.5 w-3.5" />
@@ -292,8 +335,8 @@ export function PaymentMethodsTab({ country }: PaymentMethodsTabProps) {
                   </div>
 
                   {/* Actions */}
-                  <div className="flex items-center gap-3 shrink-0">
-                    {/* Only show delete for custom methods (not the 6 defaults) */}
+                  <div className="flex items-center gap-4 shrink-0">
+                    {/* Delete for custom methods */}
                     {!method.isDefault && (
                       <Button
                         variant="ghost"
@@ -304,28 +347,83 @@ export function PaymentMethodsTab({ country }: PaymentMethodsTabProps) {
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
                     )}
-                    <div
-                      className="flex items-center gap-2 cursor-pointer"
-                      onClick={() => handleToggle(method)}
-                    >
-                      <span className="text-xs text-muted-foreground">
-                        {togglingId === method.id ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          method.enabled ? 'ON' : 'OFF'
-                        )}
-                      </span>
-                      <Switch
-                        checked={method.enabled}
-                        disabled={togglingId === method.id}
-                        onCheckedChange={() => handleToggle(method)}
-                      />
-                    </div>
+
+                    {/* Toggle section */}
+                    {isGym ? (
+                      /* Gym: two separate toggles */
+                      <div className="flex flex-col gap-2">
+                        {/* POS toggle */}
+                        <div
+                          className="flex items-center gap-1.5 cursor-pointer"
+                          onClick={() => handleTogglePos(method)}
+                        >
+                          <ShoppingCart className="h-3 w-3 text-muted-foreground" />
+                          <span className="text-[10px] text-muted-foreground w-4">
+                            {togglingId === method.id ? <Loader2 className="h-3 w-3 animate-spin" /> : method.enabledInPos ? 'ON' : 'OFF'}
+                          </span>
+                          <Switch
+                            checked={method.enabledInPos}
+                            disabled={togglingId === method.id}
+                            onCheckedChange={() => handleTogglePos(method)}
+                            className="scale-75"
+                          />
+                        </div>
+                        {/* Subscription toggle */}
+                        <div
+                          className="flex items-center gap-1.5 cursor-pointer"
+                          onClick={() => handleToggleSubscription(method)}
+                        >
+                          <RefreshCw className="h-3 w-3 text-muted-foreground" />
+                          <span className="text-[10px] text-muted-foreground w-4">
+                            {togglingId === method.id ? <Loader2 className="h-3 w-3 animate-spin" /> : method.enabledInSubscription ? 'ON' : 'OFF'}
+                          </span>
+                          <Switch
+                            checked={method.enabledInSubscription}
+                            disabled={togglingId === method.id}
+                            onCheckedChange={() => handleToggleSubscription(method)}
+                            className="scale-75"
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      /* Non-gym: single general toggle */
+                      <div
+                        className="flex items-center gap-2 cursor-pointer"
+                        onClick={() => handleToggleGeneral(method)}
+                      >
+                        <span className="text-xs text-muted-foreground">
+                          {togglingId === method.id ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            method.enabled ? 'ON' : 'OFF'
+                          )}
+                        </span>
+                        <Switch
+                          checked={method.enabled}
+                          disabled={togglingId === method.id}
+                          onCheckedChange={() => handleToggleGeneral(method)}
+                        />
+                      </div>
+                    )}
                   </div>
                 </div>
               )
             })}
           </div>
+
+          {/* Legend for gym */}
+          {isGym && (
+            <div className="flex items-center gap-6 mt-4 pt-3 border-t text-xs text-muted-foreground">
+              <div className="flex items-center gap-1.5">
+                <ShoppingCart className="h-3 w-3" />
+                <span>Punto de Venta</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <RefreshCw className="h-3 w-3" />
+                <span>Suscripciones</span>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -423,7 +521,7 @@ export function PaymentMethodsTab({ country }: PaymentMethodsTabProps) {
                 onClick={handleCreate}
                 disabled={creating || !newCode.trim() || !newName.trim()}
               >
-                {creating ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Creando...</> : 'Crear Método'}
+                {creating ? <><Loader2 className="mr-1.5 h-3 w-3 animate-spin" /> Creando...</> : 'Crear Método'}
               </Button>
               <Button variant="outline" onClick={() => { setShowCreateDialog(false); resetCreateForm() }}>
                 Cancelar
@@ -449,7 +547,7 @@ export function PaymentMethodsTab({ country }: PaymentMethodsTabProps) {
               disabled={deleting}
               className="bg-destructive text-white hover:bg-destructive/90"
             >
-              {deleting ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Eliminando...</> : 'Eliminar'}
+              {deleting ? <><Loader2 className="mr-1.5 h-3 w-3 animate-spin" /> Eliminando...</> : 'Eliminar'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

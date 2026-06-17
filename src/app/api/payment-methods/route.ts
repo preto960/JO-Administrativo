@@ -16,19 +16,17 @@ const DEFAULT_METHODS = [
 // Track if migration was already attempted this process
 let _migrated = false
 
-/** Add isDefault column if missing (backward compat with existing tables) */
-async function ensureIsDefaultColumn() {
+/** Ensure new columns exist (backward compat with existing tables) */
+async function ensureColumns() {
   if (_migrated) return
   _migrated = true
   try {
-    // Try a query that uses the column — if it fails, add it
     await db.$queryRawUnsafe(`SELECT "isDefault" FROM "PaymentMethod" LIMIT 0`)
   } catch {
     try {
       await db.$executeRawUnsafe(
         `ALTER TABLE "PaymentMethod" ADD COLUMN "isDefault" BOOLEAN NOT NULL DEFAULT false`
       )
-      // Mark existing rows as default methods
       const defaultCodes = ['divisas', 'efectivo', 'pago_movil', 'tarjeta', 'transferencia', 'credito']
       await db.$executeRawUnsafe(
         `UPDATE "PaymentMethod" SET "isDefault" = true WHERE "code" = ANY($1)`,
@@ -39,14 +37,41 @@ async function ensureIsDefaultColumn() {
       console.error('[PaymentMethod] Migration failed:', e)
     }
   }
+  // enabledInPos
+  try {
+    await db.$queryRawUnsafe(`SELECT "enabledInPos" FROM "PaymentMethod" LIMIT 0`)
+  } catch {
+    try {
+      await db.$executeRawUnsafe(
+        `ALTER TABLE "PaymentMethod" ADD COLUMN "enabledInPos" BOOLEAN NOT NULL DEFAULT true`
+      )
+      console.log('[PaymentMethod] Migration: added enabledInPos column')
+    } catch (e) {
+      console.error('[PaymentMethod] Migration failed (enabledInPos):', e)
+    }
+  }
+  // enabledInSubscription
+  try {
+    await db.$queryRawUnsafe(`SELECT "enabledInSubscription" FROM "PaymentMethod" LIMIT 0`)
+  } catch {
+    try {
+      await db.$executeRawUnsafe(
+        `ALTER TABLE "PaymentMethod" ADD COLUMN "enabledInSubscription" BOOLEAN NOT NULL DEFAULT true`
+      )
+      console.log('[PaymentMethod] Migration: added enabledInSubscription column')
+    } catch (e) {
+      console.error('[PaymentMethod] Migration failed (enabledInSubscription):', e)
+    }
+  }
 }
 
-// GET /api/payment-methods?country=VE
+// GET /api/payment-methods?country=VE&context=pos|subscription
 export async function GET(request: Request) {
   try {
-    await ensureIsDefaultColumn()
+    await ensureColumns()
     const { searchParams } = new URL(request.url)
     const country = searchParams.get('country') || undefined
+    const context = searchParams.get('context') || undefined // "pos" | "subscription"
 
     let methods = await db.paymentMethod.findMany({ orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] })
 
@@ -60,6 +85,14 @@ export async function GET(request: Request) {
       return m.countries.split(',').includes(country || 'VE')
     })
 
+    // If context is specified, filter by the appropriate enabled flag
+    if (context === 'pos') {
+      return NextResponse.json(filtered.filter(m => m.enabledInPos))
+    }
+    if (context === 'subscription') {
+      return NextResponse.json(filtered.filter(m => m.enabledInSubscription))
+    }
+
     return NextResponse.json(filtered)
   } catch (error) {
     console.error('[GET /api/payment-methods]', error)
@@ -70,9 +103,9 @@ export async function GET(request: Request) {
 // PUT /api/payment-methods
 export async function PUT(request: Request) {
   try {
-    await ensureIsDefaultColumn()
+    await ensureColumns()
     const body = await request.json()
-    const { id, enabled, name, needsReference, sortOrder } = body
+    const { id, enabled, enabledInPos, enabledInSubscription, name, needsReference, sortOrder } = body
 
     if (!id) {
       return NextResponse.json({ error: 'ID requerido' }, { status: 400 })
@@ -80,6 +113,8 @@ export async function PUT(request: Request) {
 
     const data: Prisma.PaymentMethodUpdateInput = {}
     if (enabled !== undefined) data.enabled = enabled
+    if (enabledInPos !== undefined) data.enabledInPos = enabledInPos
+    if (enabledInSubscription !== undefined) data.enabledInSubscription = enabledInSubscription
     if (name !== undefined) data.name = name
     if (needsReference !== undefined) data.needsReference = needsReference
     if (sortOrder !== undefined) data.sortOrder = sortOrder
@@ -99,7 +134,7 @@ export async function PUT(request: Request) {
 // POST /api/payment-methods
 export async function POST(request: Request) {
   try {
-    await ensureIsDefaultColumn()
+    await ensureColumns()
     const body = await request.json()
     const { code, name, icon, needsReference, isLocalCurrency, isCash, isCredit, countries } = body
 
@@ -118,6 +153,8 @@ export async function POST(request: Request) {
         name,
         icon: icon || 'CircleDollarSign',
         enabled: true,
+        enabledInPos: true,
+        enabledInSubscription: true,
         needsReference: needsReference || false,
         isLocalCurrency: isLocalCurrency || false,
         isCash: isCash || false,
@@ -138,7 +175,7 @@ export async function POST(request: Request) {
 // DELETE /api/payment-methods?id=xxx
 export async function DELETE(request: Request) {
   try {
-    await ensureIsDefaultColumn()
+    await ensureColumns()
     const { searchParams } = new URL(request.url)
     const id = searchParams.get('id')
 
@@ -172,6 +209,8 @@ async function seedDefaults(country?: string) {
         name: m.name,
         icon: m.icon,
         enabled: availableForCountry,
+        enabledInPos: availableForCountry,
+        enabledInSubscription: availableForCountry,
         needsReference: m.needsReference,
         isLocalCurrency: m.isLocalCurrency,
         isCash: m.isCash,

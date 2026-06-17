@@ -154,7 +154,7 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
       api.get<{ id: string; code: string; symbol: string; isBase: boolean }[]>('/api/currencies'),
       api.get<Array<{ id: string; status: string }>>('/api/cash-register'),
       api.get<ClientOption[]>('/api/clients'),
-      api.get<PaymentMethodItem[]>(`/api/payment-methods?country=${country}`),
+      api.get<PaymentMethodItem[]>(`/api/payment-methods?country=${country}&context=pos`),
     ]).then(([currencies, registers, clients, methods]) => {
       setCurrencies(currencies)
       const openReg = registers?.find(r => r.status === 'abierta')

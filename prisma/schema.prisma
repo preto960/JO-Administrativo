@@ -443,20 +443,22 @@ model Expense {
 }
 
 model PaymentMethod {
-  id             String   @id @default(cuid())
-  code           String   @unique          // "efectivo", "divisas", "pago_movil", etc.
-  name           String                    // Display name: "Efectivo", "Divisas", etc.
-  icon           String   @default("Banknote")  // Lucide icon name
-  enabled        Boolean  @default(true)
-  needsReference Boolean  @default(false)
-  isLocalCurrency Boolean @default(false)  // Uses country's local currency (Bs, COP, etc.)
-  isCash         Boolean  @default(false)  // Affects cash register (only efectivo = true)
-  isCredit       Boolean  @default(false)  // Creates AccountReceivable
-  sortOrder      Int      @default(0)
-  countries      String   @default("ALL")  // "ALL" = all countries, or comma-joined "VE,CO,MX"
-  isDefault      Boolean  @default(false)  // System methods cannot be deleted
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id                     String   @id @default(cuid())
+  code                   String   @unique          // "efectivo", "divisas", "pago_movil", etc.
+  name                   String                    // Display name: "Efectivo", "Divisas", etc.
+  icon                   String   @default("Banknote")  // Lucide icon name
+  enabled                Boolean  @default(true)       // General enabled (legacy fallback)
+  enabledInPos           Boolean  @default(true)       // Visible in Point of Sale
+  enabledInSubscription  Boolean  @default(true)       // Visible in Subscription/Gym renewal
+  needsReference         Boolean  @default(false)
+  isLocalCurrency        Boolean  @default(false)  // Uses country's local currency (Bs, COP, etc.)
+  isCash                 Boolean  @default(false)  // Affects cash register (only efectivo = true)
+  isCredit               Boolean  @default(false)  // Creates AccountReceivable
+  sortOrder              Int      @default(0)
+  countries              String   @default("ALL")  // "ALL" = all countries, or comma-joined "VE,CO,MX"
+  isDefault              Boolean  @default(false)  // System methods cannot be deleted
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 
   @@map("PaymentMethod")
 }

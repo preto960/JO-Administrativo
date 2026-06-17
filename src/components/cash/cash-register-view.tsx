@@ -277,6 +277,19 @@ export function CashRegisterView() {
   // Arqueo de Caja state
   const [showAudit, setShowAudit] = useState(false)
   const [auditRegId, setAuditRegId] = useState<string | null>(null)
+
+  // Sales breakdown state
+  const [expandedBreakdown, setExpandedBreakdown] = useState<string | null>(null)
+  const [breakdownData, setBreakdownData] = useState<{
+    posSales: Array<{ id: string; date: string; total: number; method: string; clientName: string | null; description: string }>
+    subscriptionSales: Array<{ id: string; date: string; total: number; method: string; clientName: string | null; description: string }>
+    legacySubscriptions: Array<{ id: string; date: string; total: number; method: string; clientName: string; description: string }>
+    posTotal: number
+    subTotal: number
+    legacyTotal: number
+    totalCount: number
+  } | null>(null)
+  const [loadingBreakdown, setLoadingBreakdown] = useState(false)
   const [auditBreakdown, setAuditBreakdown] = useState<Record<string, string>>({})
   const [auditNotes, setAuditNotes] = useState('')
   const [auditResult, setAuditResult] = useState<{ counted: number; expected: number; difference: number } | null>(null)
@@ -359,6 +372,25 @@ export function CashRegisterView() {
     window.addEventListener('focus', onFocus)
     return () => window.removeEventListener('focus', onFocus)
   }, [openRegisters.length, filterBranchId])
+
+  const toggleBreakdown = async (regId: string) => {
+    if (expandedBreakdown === regId) {
+      setExpandedBreakdown(null)
+      setBreakdownData(null)
+      return
+    }
+    setExpandedBreakdown(regId)
+    setLoadingBreakdown(true)
+    try {
+      const data = await api.get<any>(`/api/cash-register/${regId}/sales-breakdown`)
+      setBreakdownData(data)
+    } catch {
+      toast.error('Error al cargar desglose de ventas')
+      setExpandedBreakdown(null)
+    } finally {
+      setLoadingBreakdown(false)
+    }
+  }
 
   const openCreateDialog = () => {
     setInitialAmt('')
@@ -827,8 +859,97 @@ export function CashRegisterView() {
                         </TooltipTrigger>
                         <TooltipContent>Arqueo de Caja</TooltipContent>
                       </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button size="sm" variant="ghost" className="h-8 px-2.5 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 dark:hover:bg-indigo-950/30" onClick={() => toggleBreakdown(reg.id)}>
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Desglose de Ventas</TooltipContent>
+                      </Tooltip>
                     </div>
                   </CardContent>
+
+                  {/* Sales Breakdown (expandable) */}
+                  {expandedBreakdown === reg.id && (
+                    <div className="border-t px-4 py-3 bg-muted/30 space-y-3">
+                      {loadingBreakdown ? (
+                        <div className="flex items-center justify-center py-4">
+                          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                        </div>
+                      ) : breakdownData ? (
+                        <>
+                          {/* Summary cards */}
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="rounded-md bg-blue-50 dark:bg-blue-950/30 p-2 text-center">
+                              <p className="text-[10px] text-blue-600 dark:text-blue-400 uppercase font-medium">Punto de Venta</p>
+                              <p className="text-sm font-bold text-blue-700 dark:text-blue-300">{fmtBase(breakdownData.posTotal)}</p>
+                              <p className="text-[10px] text-muted-foreground">{breakdownData.posSales.length} venta{breakdownData.posSales.length !== 1 ? 's' : ''}</p>
+                            </div>
+                            <div className="rounded-md bg-emerald-50 dark:bg-emerald-950/30 p-2 text-center">
+                              <p className="text-[10px] text-emerald-600 dark:text-emerald-400 uppercase font-medium">Suscripciones</p>
+                              <p className="text-sm font-bold text-emerald-700 dark:text-emerald-300">{fmtBase(breakdownData.subTotal + breakdownData.legacyTotal)}</p>
+                              <p className="text-[10px] text-muted-foreground">{breakdownData.subscriptionSales.length + breakdownData.legacySubscriptions.length} renovación(es)</p>
+                            </div>
+                          </div>
+
+                          {/* POS Sales list */}
+                          {breakdownData.posSales.length > 0 && (
+                            <div className="space-y-1">
+                              <p className="text-[10px] font-semibold text-muted-foreground uppercase">Ventas Punto de Venta</p>
+                              {breakdownData.posSales.slice(0, 10).map(s => (
+                                <div key={s.id} className="flex items-center justify-between text-xs py-1 border-b last:border-b-0 border-muted">
+                                  <div className="min-w-0 flex-1">
+                                    <span className="font-medium truncate block">{s.description}</span>
+                                    {s.clientName && <span className="text-muted-foreground">{s.clientName}</span>}
+                                  </div>
+                                  <div className="text-right shrink-0 ml-2">
+                                    <span className="font-semibold">{fmtBase(s.total)}</span>
+                                    <span className="text-muted-foreground ml-1">{s.method}</span>
+                                  </div>
+                                </div>
+                              ))}
+                              {breakdownData.posSales.length > 10 && (
+                                <p className="text-[10px] text-muted-foreground text-center">...y {breakdownData.posSales.length - 10} más</p>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Subscription Sales list */}
+                          {(breakdownData.subscriptionSales.length > 0 || breakdownData.legacySubscriptions.length > 0) && (
+                            <div className="space-y-1">
+                              <p className="text-[10px] font-semibold text-muted-foreground uppercase">Suscripciones</p>
+                              {breakdownData.subscriptionSales.map(s => (
+                                <div key={s.id} className="flex items-center justify-between text-xs py-1 border-b last:border-b-0 border-muted">
+                                  <div className="min-w-0 flex-1">
+                                    <span className="font-medium truncate block">Renovación de suscripción</span>
+                                    {s.clientName && <span className="text-muted-foreground">{s.clientName}</span>}
+                                    {s.description && <span className="text-muted-foreground block">{s.description}</span>}
+                                  </div>
+                                  <div className="text-right shrink-0 ml-2">
+                                    <span className="font-semibold text-emerald-700 dark:text-emerald-400">{fmtBase(s.total)}</span>
+                                    <span className="text-muted-foreground ml-1">{s.method}</span>
+                                  </div>
+                                </div>
+                              ))}
+                              {breakdownData.legacySubscriptions.map(m => (
+                                <div key={m.id} className="flex items-center justify-between text-xs py-1 border-b last:border-b-0 border-muted">
+                                  <div className="min-w-0 flex-1">
+                                    <span className="font-medium truncate block">{m.description}</span>
+                                  </div>
+                                  <span className="font-semibold text-emerald-700 dark:text-emerald-400 shrink-0 ml-2">{fmtBase(m.total)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {breakdownData.posSales.length === 0 && breakdownData.subscriptionSales.length === 0 && breakdownData.legacySubscriptions.length === 0 && (
+                            <p className="text-xs text-muted-foreground text-center py-2">No hay ventas registradas en esta caja</p>
+                          )}
+                        </>
+                      ) : null}
+                    </div>
+                  )}
                 </Card>
               )
             })}
