@@ -32,11 +32,16 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Get base currency from settings
+    const settings = await db.settings.findFirst()
+    const currencyId = settings?.baseCurrencyId || ''
+
     const register = await db.cashRegister.create({
       data: {
         name: name?.trim() || null,
         userId,
         branchId: effectiveBranchId,
+        currencyId,
         initialAmt: initialAmt || 0,
         currentAmt: initialAmt || 0,
         status: 'abierta',
@@ -53,8 +58,9 @@ export async function POST(request: NextRequest) {
     })
 
     return NextResponse.json(register, { status: 201 })
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Error al abrir caja:', error)
-    return NextResponse.json({ error: 'Error al abrir caja' }, { status: 500 })
+    const msg = error instanceof Error ? error.message : 'Error desconocido'
+    return NextResponse.json({ error: `Error al abrir caja: ${msg}` }, { status: 500 })
   }
 }

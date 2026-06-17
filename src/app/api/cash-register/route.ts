@@ -61,7 +61,9 @@ export async function POST(request: NextRequest) {
     })
 
     return NextResponse.json(register, { status: 201 })
-  } catch (error) {
-    return NextResponse.json({ error: 'Error al abrir caja' }, { status: 500 })
+  } catch (error: unknown) {
+    console.error('Error al abrir caja:', error)
+    const msg = error instanceof Error ? error.message : 'Error desconocido'
+    return NextResponse.json({ error: `Error al abrir caja: ${msg}` }, { status: 500 })
   }
 }
