@@ -94,10 +94,20 @@ export async function GET(request: NextRequest) {
     })
     const expensesMonth = await db.expense.findMany({ where: { date: { gte: monthStart }, branchId, deletedAt: null } })
 
+    // Renewal income (CashMovement entries for plan renewals)
+    const branchRegIds = (await db.cashRegister.findMany({ where: { branchId }, select: { id: true } })).map(r => r.id)
+    const renewalFilter = { cashRegId: { in: branchRegIds }, type: 'entrada', concept: { contains: 'Renovación plan:' } }
+    const [renewalTodayResult, renewalMonthResult] = await Promise.all([
+      db.cashMovement.aggregate({ where: { ...renewalFilter, createdAt: { gte: today } }, _sum: { amount: true } }),
+      db.cashMovement.aggregate({ where: { ...renewalFilter, createdAt: { gte: monthStart } }, _sum: { amount: true } }),
+    ])
+    const renewalHoy = renewalTodayResult._sum.amount || 0
+    const renewalMes = renewalMonthResult._sum.amount || 0
+
     // Calculate KPIs
-    const ingresosHoy = salesToday.reduce((s, sale) => s + sale.total, 0)
+    const ingresosHoy = Math.round((salesToday.reduce((s, sale) => s + sale.total, 0) + renewalHoy) * 100) / 100
     const gastosHoy = expensesToday.reduce((s, e) => s + e.amount, 0)
-    const ingresosMes = salesMonth.reduce((s, sale) => s + sale.total, 0)
+    const ingresosMes = Math.round((salesMonth.reduce((s, sale) => s + sale.total, 0) + renewalMes) * 100) / 100
     const gastosMes = expensesMonth.reduce((s, e) => s + e.amount, 0)
 
     const costoVentasMes = salesMonth.reduce((s, sale) =>

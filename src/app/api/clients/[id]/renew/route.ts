@@ -39,7 +39,13 @@ export async function POST(
 
   try {
     const body = await request.json()
-    const { planId } = body
+    const { planId, paymentMethod, paymentReference, cashRegId, branchId } = body as {
+      planId: string
+      paymentMethod?: string
+      paymentReference?: string
+      cashRegId?: string
+      branchId?: string
+    }
 
     if (!planId) {
       return NextResponse.json({ error: 'Debes seleccionar un plan' }, { status: 400 })
@@ -58,19 +64,34 @@ export async function POST(
       return NextResponse.json({ error: 'Este plan está inactivo' }, { status: 400 })
     }
 
-    const totalDays = getPlanDays(plan.durationType, plan.durationDays)
-    const startDate = getTodayBogota()
-    const endDate = new Date(startDate)
-    endDate.setDate(endDate.getDate() + totalDays)
+    // If payment method provided, validate it
+    let pmInfo: { code: string; isCash: boolean } | null = null
+    if (paymentMethod) {
+      const { getPaymentMethodsFromDB, FALLBACK_METHODS } = await import('@/lib/payment-methods')
+      const pmList = await getPaymentMethodsFromDB().catch(() => FALLBACK_METHODS)
+      pmInfo = pmList.find((m: { code: string }) => m.code === paymentMethod) || null
+      if (!pmInfo) {
+        return NextResponse.json({ error: 'Método de pago no válido' }, { status: 400 })
+      }
+    }
 
-    // Create or update the latest membership
+    // ── Membership: accumulate days if active ──
+    const totalDays = getPlanDays(plan.durationType, plan.durationDays)
+    const cost = plan.cost
+    const today = getTodayBogota()
+
     const existingMembership = await db.clientMembership.findFirst({
       where: { clientId: id },
       orderBy: { createdAt: 'desc' },
     })
 
     let membership
-    if (existingMembership) {
+    if (existingMembership && existingMembership.endDate && existingMembership.status === 'Activo') {
+      // Active membership with future endDate → extend from existing endDate
+      const existingEnd = new Date(existingMembership.endDate)
+      const newEndDate = new Date(existingEnd)
+      newEndDate.setDate(newEndDate.getDate() + totalDays)
+
       membership = await db.clientMembership.update({
         where: { id: existingMembership.id },
         data: {
@@ -78,26 +99,104 @@ export async function POST(
           planId: plan.id,
           tarifa: plan.name,
           paymentDate: new Date(),
-          startDate,
-          endDate,
-          daysRemaining: totalDays,
+          endDate: newEndDate,
+          daysRemaining: totalDays, // store new plan days added
           ticketsRemaining: totalDays,
         },
       })
     } else {
-      membership = await db.clientMembership.create({
-        data: {
-          clientId: id,
-          status: 'Activo',
-          planId: plan.id,
-          tarifa: plan.name,
-          paymentDate: new Date(),
-          startDate,
-          endDate,
-          daysRemaining: totalDays,
-          ticketsRemaining: totalDays,
-        },
-      })
+      // Expired or no membership → start from today
+      const endDate = new Date(today)
+      endDate.setDate(endDate.getDate() + totalDays)
+
+      if (existingMembership) {
+        membership = await db.clientMembership.update({
+          where: { id: existingMembership.id },
+          data: {
+            status: 'Activo',
+            planId: plan.id,
+            tarifa: plan.name,
+            paymentDate: new Date(),
+            startDate: today,
+            endDate,
+            daysRemaining: totalDays,
+            ticketsRemaining: totalDays,
+          },
+        })
+      } else {
+        membership = await db.clientMembership.create({
+          data: {
+            clientId: id,
+            status: 'Activo',
+            planId: plan.id,
+            tarifa: plan.name,
+            paymentDate: new Date(),
+            startDate: today,
+            endDate,
+            daysRemaining: totalDays,
+            ticketsRemaining: totalDays,
+          },
+        })
+      }
+    }
+
+    // ── Create CashMovement (for ALL payment methods, not just cash) ──
+    let movementId: string | null = null
+    let movementError: string | null = null
+
+    if (paymentMethod && cashRegId) {
+      const register = await db.cashRegister.findUnique({ where: { id: cashRegId } })
+
+      if (!register) {
+        movementError = `Caja ${cashRegId} no encontrada`
+      } else if (register.status !== 'abierta') {
+        movementError = `Caja está cerrada (status: ${register.status})`
+      } else {
+        // Resolve currency from settings
+        const settings = await db.settings.findFirst()
+        let currencyId = settings?.baseCurrencyId || ''
+
+        if (!currencyId) {
+          const { getCurrencyForCountry } = await import('@/lib/country-currency')
+          const localCurrency = getCurrencyForCountry(settings?.country || 'CO')
+          if (localCurrency) {
+            const currency = await db.currency.upsert({
+              where: { code: localCurrency.code },
+              create: { code: localCurrency.code, name: localCurrency.name, symbol: localCurrency.symbol, isBase: true },
+              update: {},
+            })
+            currencyId = currency.id
+            if (settings) {
+              await db.settings.update({ where: { id: settings.id }, data: { baseCurrencyId: currency.id } })
+            }
+          }
+        }
+
+        if (!currencyId) {
+          movementError = 'No se pudo resolver la moneda'
+        } else {
+          const clientName = `${client.name}${client.lastName ? ' ' + client.lastName : ''}`
+          const refPart = paymentReference?.trim() ? ` (${paymentMethod}: ${paymentReference.trim()})` : ` (${paymentMethod})`
+          const concept = `Renovación plan: ${plan.name} - ${clientName}${refPart}`
+
+          try {
+            const movement = await db.cashMovement.create({
+              data: { cashRegId, userId: auth.userId, type: 'entrada', amount: cost, concept, currencyId },
+            })
+            movementId = movement.id
+          } catch (err) {
+            movementError = err instanceof Error ? err.message : String(err)
+          }
+
+          // Always update register balance if movement was created
+          if (movementId) {
+            await db.cashRegister.update({
+              where: { id: cashRegId },
+              data: { currentAmt: Math.round((register.currentAmt + cost) * 100) / 100 },
+            })
+          }
+        }
+      }
     }
 
     await logAction({
@@ -109,17 +208,21 @@ export async function POST(
         planName: plan.name,
         planId: plan.id,
         totalDays,
-        endDate: endDate.toISOString(),
+        cost,
+        paymentMethod: paymentMethod || null,
+        movementId,
       },
       request,
     })
 
     return NextResponse.json({
       membership,
-      message: `Plan "${plan.name}" asignado (${totalDays} días)`,
+      movementId,
+      movementError,
+      message: `Plan "${plan.name}" asignado (+${totalDays} días)`,
     }, { status: 201 })
   } catch (error) {
-    console.error('[Renew POST]', error)
+    console.error('[Renew POST]', error instanceof Error ? error.message : error)
     return NextResponse.json({ error: 'Error al renovar suscripción' }, { status: 500 })
   }
 }
