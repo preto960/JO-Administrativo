@@ -38,7 +38,7 @@ export async function PUT(request: NextRequest) {
   const auth = await requireAuth()
   if ('status' in auth) return auth
   const perms = getPermissions(auth.role)
-  if (!perms.canManageSettings) {
+  if (!perms.canAccessSettings) {
     return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
   }
 
