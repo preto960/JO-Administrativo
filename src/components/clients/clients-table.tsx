@@ -1611,17 +1611,36 @@ export function ClientsTable() {
                 </Select>
               </div>
 
-              {/* Cost display */}
+              {/* Cost display — adapts to selected payment method currency */}
               {renewPlanId && (() => {
                 const selectedPlan = plans.find(p => p.id === renewPlanId)
+                const selectedRenewPm = renewMethods.find(m => m.code === renewPaymentMethod)
+                const isLocal = selectedRenewPm?.isLocalCurrency ?? false
                 if (!selectedPlan) return null
+                const costInLocal = isLocal && exchangeRate > 0
+                  ? Math.round(selectedPlan.cost * exchangeRate * 100) / 100
+                  : null
                 return (
-                  <div className="rounded-md bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 p-3 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <DollarSign className="h-4 w-4 text-emerald-600" />
-                      <span className="text-sm font-medium">Costo del plan:</span>
+                  <div className="rounded-md bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 p-3 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <DollarSign className="h-4 w-4 text-emerald-600" />
+                        <span className="text-sm font-medium">
+                          {isLocal ? `Costo del plan (${baseSym}):` : 'Costo del plan:'}
+                        </span>
+                      </div>
+                      <span className="text-lg font-bold text-emerald-700 dark:text-emerald-400">
+                        {isLocal && costInLocal !== null
+                          ? `${baseSym}${costInLocal.toFixed(2)}`
+                          : fmt(selectedPlan.cost)
+                        }
+                      </span>
                     </div>
-                    <span className="text-lg font-bold text-emerald-700 dark:text-emerald-400">{fmt(selectedPlan.cost)}</span>
+                    {isLocal && costInLocal !== null && (
+                      <p className="text-xs text-muted-foreground text-right">
+                        Equivale a {currencySymbol}{selectedPlan.cost.toFixed(2)} (Tasa: {exchangeRate.toFixed(2)} {baseSym}/{referenceCurrency || 'USD'})
+                      </p>
+                    )}
                   </div>
                 )
               })()}

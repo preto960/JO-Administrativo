@@ -288,19 +288,23 @@ export function PaymentMethodsTab({ country }: PaymentMethodsTabProps) {
             {methods.map((method) => {
               const Icon = getIcon(method.icon)
               const isCountrySpecific = method.countries !== 'ALL'
+              // In gym mode, consider a method "enabled" if at least one toggle is ON
+              const isEnabled = isGym
+                ? (method.enabledInPos || method.enabledInSubscription)
+                : method.enabled
 
               return (
                 <div
                   key={method.id}
                   className={`flex items-center gap-4 rounded-lg border p-4 transition-colors ${
-                    method.enabled
+                    isEnabled
                       ? 'bg-background'
                       : 'bg-muted/30 opacity-60'
                   }`}
                 >
                   {/* Icon */}
                   <div className={`flex h-10 w-10 items-center justify-center rounded-lg shrink-0 ${
-                    method.enabled ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'
+                    isEnabled ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'
                   }`}>
                     <Icon className="h-5 w-5" />
                   </div>

@@ -36,10 +36,16 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const search = searchParams.get('search') || ''
     const includeDeleted = searchParams.get('includeDeleted') === 'true'
+    const activeMembership = searchParams.get('activeMembership') === 'true'
 
     const where: Record<string, unknown> = {}
     if (!includeDeleted) {
       where.deletedAt = null
+    }
+    if (activeMembership) {
+      where.memberships = {
+        some: { status: 'Activo' },
+      }
     }
     if (search) {
       where.OR = [

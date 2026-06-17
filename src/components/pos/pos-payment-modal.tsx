@@ -84,6 +84,7 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
   const exchangeRate = useSetting('exchangeRate')
   const baseCurrencyId = useSetting('baseCurrencyId')
   const country = useSetting('country') || 'VE'
+  const businessType = useSetting('businessType')
   const [method, setMethod] = useState('')
   const [amount, setAmount] = useState('')
   const [reference, setReference] = useState('')
@@ -150,10 +151,13 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
 
   // Load currencies, open cash register, clients, and payment methods on mount
   useEffect(() => {
+    const clientsUrl = businessType === 'gym'
+      ? '/api/clients?activeMembership=true'
+      : '/api/clients'
     Promise.all([
       api.get<{ id: string; code: string; symbol: string; isBase: boolean }[]>('/api/currencies'),
       api.get<Array<{ id: string; status: string }>>('/api/cash-register'),
-      api.get<ClientOption[]>('/api/clients'),
+      api.get<ClientOption[]>(clientsUrl),
       api.get<PaymentMethodItem[]>(`/api/payment-methods?country=${country}&context=pos`),
     ]).then(([currencies, registers, clients, methods]) => {
       setCurrencies(currencies)
