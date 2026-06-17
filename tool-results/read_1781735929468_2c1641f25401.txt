@@ -1,0 +1,1154 @@
+     1→     1→'use client'
+     2→     2→
+     3→     3→import { useEffect, useState, useCallback, useRef } from 'react'
+     4→     4→import { useAppStore } from '@/stores/use-app-store'
+     5→     5→import { useAuth } from '@/hooks/use-auth'
+     6→     6→import { canAccessView } from '@/lib/permissions'
+     7→     7→import { ArrowLeft, ArrowRight, X, Wallet, ShoppingCart, Store, Package, Building2, DollarSign, Percent, Tag, Loader2, CheckCircle2 } from 'lucide-react'
+     8→     8→import { Button } from '@/components/ui/button'
+     9→     9→import { cn } from '@/lib/utils'
+    10→    10→import { api } from '@/lib/api'
+    11→    11→
+    12→    12→// ── Types ───────────────────────────────────────────────
+    13→    13→
+    14→    14→type ValidationType = 'has-categories' | 'has-products' | 'caja-open'
+    15→    15→
+    16→    16→interface TourStep {
+    17→    17→  /** CSS selector for the element to highlight. Omit for welcome/finish steps. */
+    18→    18→  target?: string
+    19→    19→  title: string
+    20→    20→  description: string
+    21→    21→  /** Which view must be active for this step. Navigates automatically. */
+    22→    22→  navigateTo?: string
+    23→    23→  /** Side where the popover appears relative to the target. */
+    24→    24→  side?: 'top' | 'bottom' | 'left' | 'right'
+    25→    25→  /** Icon to show in the step header. */
+    26→    26→  icon?: React.ReactNode
+    27→    27→  /** Validation: block "Siguiente" until this condition is met. */
+    28→    28→  validation?: ValidationType
+    29→    29→  /** Message shown while waiting for validation. */
+    30→    30→  validationMessage?: string
+    31→    31→  /** If set, dispatches a custom event to switch the Settings tab before highlighting. */
+    32→    32→  switchTab?: string
+    33→    33→}
+    34→    34→
+    35→    35→// ── Validation functions ────────────────────────────────
+    36→    36→
+    37→    37→async function checkValidation(type: ValidationType): Promise<boolean> {
+    38→    38→  try {
+    39→    39→    switch (type) {
+    40→    40→      case 'has-categories': {
+    41→    41→        const cats = await api.get<Array<unknown>>('/api/categories')
+    42→    42→        return Array.isArray(cats) && cats.length > 0
+    43→    43→      }
+    44→    44→      case 'has-products': {
+    45→    45→        const res = await api.get<{ products: Array<unknown> }>('/api/products?active=true')
+    46→    46→        return Array.isArray(res.products) && res.products.length > 0
+    47→    47→      }
+    48→    48→      case 'caja-open': {
+    49→    49→        const registers = await api.get<Array<{ status: string }>>('/api/cash-register')
+    50→    50→        return Array.isArray(registers) && registers.some((r) => r.status === 'abierta')
+    51→    51→      }
+    52→    52→      default:
+    53→    53→        return true
+    54→    54→    }
+    55→    55→  } catch {
+    56→    56→    return false
+    57→    57→  }
+    58→    58→}
+    59→    59→
+    60→    60→const DEFAULT_VALIDATION_MESSAGES: Record<ValidationType, string> = {
+    61→    61→  'has-categories': 'Crea al menos una categoría para continuar.',
+    62→    62→  'has-products': 'Crea al menos un producto para continuar.',
+    63→    63→  'caja-open': 'Abre una caja para continuar al Punto de Venta.',
+    64→    64→}
+    65→    65→
+    66→    66→// ── Helper: find element and scroll into view ──────────
+    67→    67→
+    68→    68→function findElement(selector: string): HTMLElement | null {
+    69→    69→  const el = document.querySelector<HTMLElement>(selector)
+    70→    70→  if (el) {
+    71→    71→    el.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' })
+    72→    72→  }
+    73→    73→  return el
+    74→    74→}
+    75→    75→
+    76→    76→// ── Helper: get the bounding rect of the target, with padding ──
+    77→    77→
+    78→    78→interface Rect {
+    79→    79→  top: number
+    80→    80→  left: number
+    81→    81→  width: number
+    82→    82→  height: number
+    83→    83→  right: number
+    84→    84→  bottom: number
+    85→    85→}
+    86→    86→
+    87→    87→function getTargetRect(el: HTMLElement, padding = 8): Rect {
+    88→    88→  const r = el.getBoundingClientRect()
+    89→    89→  return {
+    90→    90→    top: r.top - padding,
+    91→    91→    left: r.left - padding,
+    92→    92→    width: r.width + padding * 2,
+    93→    93→    height: r.height + padding * 2,
+    94→    94→    right: r.right + padding,
+    95→    95→    bottom: r.bottom + padding,
+    96→    96→  }
+    97→    97→}
+    98→    98→
+    99→    99→// ── Step builders per role ─────────────────────────────
+   100→   100→//
+   101→   101→// ADMIN FLOW (sistema recién instalado):
+   102→   102→// 1. Bienvenida
+   103→   103→// 2. Configurar Empresa (nombre, RIF, etc.)
+   104→   104→// 3. Configurar Moneda (tasa de cambio)
+   105→   105→// 4. Configurar IVA
+   106→   106→// 5. Crear Categorías (VALIDAR: ≥1 categoría)
+   107→   107→// 6. Crear Productos (VALIDAR: ≥1 producto)
+   108→   108→// 7. Abrir Caja (VALIDAR: caja abierta)
+   109→   109→// 8. Punto de Venta (buscar, agregar, cobrar)
+   110→   110→// 9. Dashboard, Clientes, Proveedores, Gastos, Sucursales, Usuarios, Roles, Sistema, Apariencia
+   111→   111→// 10. Completado
+   112→   112→
+   113→   113→function buildAdminSteps(): TourStep[] {
+   114→   114→  const steps: TourStep[] = []
+   115→   115→
+   116→   116→  // ═══════════════════════════════════════════════════════
+   117→   117→  // FASE 1: BIENVENIDA
+   118→   118→  // ═══════════════════════════════════════════════════════
+   119→   119→  steps.push({
+   120→   120→    title: 'Bienvenido a JO-Administrativo',
+   121→   121→    description: 'Tu sistema está recién instalado. Antes de poder vender, necesitamos configurar los datos básicos. Te guiaremos paso a paso para que en unos minutos estés operando.',
+   122→   122→    icon: <Store className="h-5 w-5" />,
+   123→   123→  })
+   124→   124→
+   125→   125→  steps.push({
+   126→   126→    target: '[data-sidebar] [data-sidebar="content"]',
+   127→   127→    title: 'Menú de Navegación',
+   128→   128→    description: 'Desde aquí accedes a todas las secciones del sistema. Vamos a ir moviéndonos por cada una según la necesites.',
+   129→   129→    side: 'right',
+   130→   130→  })
+   131→   131→
+   132→   132→  // ═══════════════════════════════════════════════════════
+   133→   133→  // FASE 2: CONFIGURACION INICIAL
+   134→   134→  // ═══════════════════════════════════════════════════════
+   135→   135→
+   136→   136→  steps.push({
+   137→   137→    target: '[data-tutorial="nav-settings"]',
+   138→   138→    title: 'Vamos a Configurar',
+   139→   139→    description: 'Primero vamos a la sección de Configuración para poner los datos de tu empresa, las tasas de cambio y demás datos antes de empezar a vender.',
+   140→   140→    side: 'right',
+   141→   141→    navigateTo: 'settings',
+   142→   142→    icon: <Building2 className="h-5 w-5" />,
+   143→   143→  })
+   144→   144→
+   145→   145→  steps.push({
+   146→   146→    target: '[data-tutorial="settings-tab-empresa"]',
+   147→   147→    title: 'Datos de la Empresa',
+   148→   148→    description: 'Registra aquí el nombre de tu negocio, identificación fiscal, correo, teléfono y dirección. Estos datos aparecen en tus comprobantes de venta y reportes.',
+   149→   149→    side: 'bottom',
+   150→   150→    navigateTo: 'settings',
+   151→   151→    icon: <Building2 className="h-5 w-5" />,
+   152→   152→    switchTab: 'empresa',
+   153→   153→  })
+   154→   154→
+   155→   155→  steps.push({
+   156→   156→    target: '[data-tutorial="settings-tab-moneda"]',
+   157→   157→    title: 'Tasa de Cambio',
+   158→   158→    description: 'Configura la moneda de referencia y la tasa de cambio. Puedes actualizar con las tasas oficiales o ingresar una manualmente. Esto es clave para los precios.',
+   159→   159→    side: 'bottom',
+   160→   160→    navigateTo: 'settings',
+   161→   161→    icon: <DollarSign className="h-5 w-5" />,
+   162→   162→    switchTab: 'moneda',
+   163→   163→  })
+   164→   164→
+   165→   165→  steps.push({
+   166→   166→    target: '[data-tutorial="settings-tab-iva"]',
+   167→   167→    title: 'Impuesto I.V.A.',
+   168→   168→    description: 'Activa o desactiva el IVA y define el porcentaje (por defecto 16%). Si tu negocio cobra IVA, activa esta opción antes de la primera venta.',
+   169→   169→    side: 'bottom',
+   170→   170→    navigateTo: 'settings',
+   171→   171→    icon: <Percent className="h-5 w-5" />,
+   172→   172→    switchTab: 'iva',
+   173→   173→  })
+   174→   174→
+   175→   175→  // --- Categorías (VALIDADO) ---
+   176→   176→  steps.push({
+   177→   177→    target: '[data-tutorial="settings-tab-categorias"]',
+   178→   178→    title: 'Crear Categorías',
+   179→   179→    description: 'Define las categorías para organizar tu catálogo: Alimentos, Bebidas, Limpieza, etc. Se usan como filtros en el Punto de Venta. Haz clic en "Nueva" para crear una.',
+   180→   180→    side: 'bottom',
+   181→   181→    navigateTo: 'settings',
+   182→   182→    icon: <Tag className="h-5 w-5" />,
+   183→   183→    switchTab: 'categorias',
+   184→   184→    validation: 'has-categories',
+   185→   185→    validationMessage: 'Crea al menos una categoría para continuar. Presiona "Nueva" en esta sección.',
+   186→   186→  })
+   187→   187→
+   188→   188→  // ═══════════════════════════════════════════════════════
+   189→   189→  // FASE 3: PRODUCTOS (VALIDADO)
+   190→   190→  // ═══════════════════════════════════════════════════════
+   191→   191→
+   192→   192→  steps.push({
+   193→   193→    target: '[data-tutorial="nav-products"]',
+   194→   194→    title: 'Crear Productos',
+   195→   195→    description: 'Sin productos no hay nada que vender. Vamos a la sección de Productos para crear tu catálogo.',
+   196→   196→    side: 'right',
+   197→   197→    navigateTo: 'products',
+   198→   198→    icon: <Package className="h-5 w-5" />,
+   199→   199→  })
+   200→   200→
+   201→   201→  steps.push({
+   202→   202→    target: '[data-tutorial="products-new-btn"]',
+   203→   203→    title: 'Boton "Nuevo" Producto',
+   204→   204→    description: 'Presiona este botón para registrar un nuevo producto. Completa nombre, SKU, precio, categoría y stock. Repite para todos tus productos.',
+   205→   205→    side: 'left',
+   206→   206→    navigateTo: 'products',
+   207→   207→    validation: 'has-products',
+   208→   208→    validationMessage: 'Crea al menos un producto para continuar.',
+   209→   209→  })
+   210→   210→
+   211→   211→  // ═══════════════════════════════════════════════════════
+   212→   212→  // FASE 4: CAJA (VALIDADO)
+   213→   213→  // ═══════════════════════════════════════════════════════
+   214→   214→
+   215→   215→  steps.push({
+   216→   216→    target: '[data-tutorial="nav-cash"]',
+   217→   217→    title: 'Abrir Caja',
+   218→   218→    description: 'El último paso antes de vender. Sin caja abierta el Punto de Venta está bloqueado.',
+   219→   219→    side: 'right',
+   220→   220→    navigateTo: 'cash',
+   221→   221→    icon: <Wallet className="h-5 w-5" />,
+   222→   222→  })
+   223→   223→
+   224→   224→  steps.push({
+   225→   225→    target: '[data-tutorial="cash-open-btn"]',
+   226→   226→    title: 'Pulsa "Abrir Caja"',
+   227→   227→    description: 'Haz clic aquí para registrar la apertura. Indica el monto inicial y asigna un cajero. Una vez abierta, el POS se desbloqueará.',
+   228→   228→    side: 'right',
+   229→   229→    navigateTo: 'cash',
+   230→   230→    validation: 'caja-open',
+   231→   231→    validationMessage: 'Abre una caja para continuar al Punto de Venta.',
+   232→   232→  })
+   233→   233→
+   234→   234→  // ═══════════════════════════════════════════════════════
+   235→   235→  // FASE 5: PUNTO DE VENTA
+   236→   236→  // ═══════════════════════════════════════════════════════
+   237→   237→
+   238→   238→  steps.push({
+   239→   239→    target: '[data-tutorial="nav-pos"]',
+   240→   240→    title: 'Punto de Venta',
+   241→   241→    description: 'Ahora sí, tu sistema está listo. Aquí procesarás todas las ventas diarias.',
+   242→   242→    side: 'right',
+   243→   243→    navigateTo: 'pos',
+   244→   244→    icon: <ShoppingCart className="h-5 w-5" />,
+   245→   245→  })
+   246→   246→
+   247→   247→  steps.push({
+   248→   248→    target: '[data-tutorial="pos-search"]',
+   249→   249→    title: 'Buscar Productos',
+   250→   250→    description: 'Escribe el nombre o marca del producto para encontrarlo rápido. También puedes escanear el código de barras.',
+   251→   251→    side: 'bottom',
+   252→   252→    navigateTo: 'pos',
+   253→   253→  })
+   254→   254→
+   255→   255→  steps.push({
+   256→   256→    target: '[data-tutorial="pos-products"]',
+   257→   257→    title: 'Tu Catálogo',
+   258→   258→    description: 'Aquí se muestran todos tus productos con precio y stock. Haz clic para agregar al carrito.',
+   259→   259→    side: 'top',
+   260→   260→    navigateTo: 'pos',
+   261→   261→  })
+   262→   262→
+   263→   263→  steps.push({
+   264→   264→    target: '[data-tutorial="pos-pay"]',
+   265→   265→    title: 'Cobrar',
+   266→   266→    description: 'Presiona aquí para procesar el pago: efectivo, punto de venta, transferencia o pago mixto.',
+   267→   267→    side: 'left',
+   268→   268→    navigateTo: 'pos',
+   269→   269→  })
+   270→   270→
+   271→   271→  // ═══════════════════════════════════════════════════════
+   272→   272→  // FASE 6: RESTO DEL SISTEMA
+   273→   273→  // ═══════════════════════════════════════════════════════
+   274→   274→
+   275→   275→  steps.push({
+   276→   276→    target: '[data-tutorial="nav-dashboard"]',
+   277→   277→    title: 'Dashboard Financiero',
+   278→   278→    description: 'Aquí verás el panorama completo de todo tu panel administrativo.',
+   279→   279→    side: 'right',
+   280→   280→    navigateTo: 'dashboard',
+   281→   281→  })
+   282→   282→
+   283→   283→  steps.push({
+   284→   284→    target: '[data-tutorial="nav-clients"]',
+   285→   285→    title: 'Clientes',
+   286→   286→    description: 'Registra clientes, vincúlalos a ventas y genera estados de cuenta para control de pagos a crédito.',
+   287→   287→    side: 'right',
+   288→   288→    navigateTo: 'clients',
+   289→   289→  })
+   290→   290→
+   291→   291→  steps.push({
+   292→   292→    target: '[data-tutorial="nav-suppliers"]',
+   293→   293→    title: 'Proveedores',
+   294→   294→    description: 'Gestiona proveedores, registra compras y controla cuentas por pagar con pagos parciales.',
+   295→   295→    side: 'right',
+   296→   296→    navigateTo: 'suppliers',
+   297→   297→  })
+   298→   298→
+   299→   299→  steps.push({
+   300→   300→    target: '[data-tutorial="nav-expenses"]',
+   301→   301→    title: 'Gastos',
+   302→   302→    description: 'Registra gastos operativos: servicios, compras menores y otros egresos. Se reflejan en el cierre de caja y dashboard.',
+   303→   303→    side: 'right',
+   304→   304→    navigateTo: 'expenses',
+   305→   305→  })
+   306→   306→
+   307→   307→  steps.push({
+   308→   308→    target: '[data-tutorial="settings-tab-sucursales"]',
+   309→   309→    title: 'Sucursales',
+   310→   310→    description: 'Si tienes más de una sede, crea sucursales aquí. Cada una con su propio inventario y cajas.',
+   311→   311→    side: 'bottom',
+   312→   312→    navigateTo: 'settings',
+   313→   313→    switchTab: 'sucursales',
+   314→   314→  })
+   315→   315→
+   316→   316→  steps.push({
+   317→   317→    target: '[data-tutorial="settings-tab-usuarios"]',
+   318→   318→    title: 'Usuarios',
+   319→   319→    description: 'Crea cuentas para tu equipo: cajeros, vendedores y gerentes con permisos diferentes.',
+   320→   320→    side: 'bottom',
+   321→   321→    navigateTo: 'settings',
+   322→   322→    switchTab: 'usuarios',
+   323→   323→  })
+   324→   324→
+   325→   325→  steps.push({
+   326→   326→    target: '[data-tutorial="settings-tab-roles"]',
+   327→   327→    title: 'Permisos por Rol',
+   328→   328→    description: 'Personaliza qué vistas y acciones puede realizar cada rol según las necesidades de tu negocio.',
+   329→   329→    side: 'bottom',
+   330→   330→    navigateTo: 'settings',
+   331→   331→    switchTab: 'roles',
+   332→   332→  })
+   333→   333→
+   334→   334→  steps.push({
+   335→   335→    target: '[data-tutorial="settings-tab-sistema"]',
+   336→   336→    title: 'Sistema',
+   337→   337→    description: 'Ajusta la duración de las sesiones de usuario y administra las notificaciones.',
+   338→   338→    side: 'bottom',
+   339→   339→    navigateTo: 'settings',
+   340→   340→    switchTab: 'sistema',
+   341→   341→  })
+   342→   342→
+   343→   343→  steps.push({
+   344→   344→    target: '[data-tutorial="settings-tab-apariencia"]',
+   345→   345→    title: 'Apariencia',
+   346→   346→    description: 'Personaliza los colores del sistema para que coincidan con la identidad visual de tu negocio.',
+   347→   347→    side: 'bottom',
+   348→   348→    navigateTo: 'settings',
+   349→   349→    switchTab: 'apariencia',
+   350→   350→  })
+   351→   351→
+   352→   352→  steps.push({
+   353→   353→    title: 'Tutorial Completado',
+   354→   354→    description: 'Tu sistema está listo para operar. Recuerda: abre caja al inicio del turno, ciérrala al final. Puedes ver este tutorial de nuevo desde tu menú de perfil.',
+   355→   355→    icon: <Store className="h-5 w-5" />,
+   356→   356→  })
+   357→   357→
+   358→   358→  return steps
+   359→   359→}
+   360→   360→
+   361→   361→function buildGerenteSteps(): TourStep[] {
+   362→   362→  const steps: TourStep[] = []
+   363→   363→
+   364→   364→  steps.push({
+   365→   365→    title: 'Bienvenido a JO-Administrativo',
+   366→   366→    description: 'Hola Gerente. Te mostraremos las funciones principales a las que tienes acceso y cómo usar el sistema diariamente.',
+   367→   367→    icon: <Store className="h-5 w-5" />,
+   368→   368→  })
+   369→   369→
+   370→   370→  steps.push({
+   371→   371→    target: '[data-sidebar] [data-sidebar="content"]',
+   372→   372→    title: 'Menú de Navegación',
+   373→   373→    description: 'Desde aquí accedes a todas las secciones disponibles para tu rol.',
+   374→   374→    side: 'right',
+   375→   375→  })
+   376→   376→
+   377→   377→  // Products (validated)
+   378→   378→  steps.push({
+   379→   379→    target: '[data-tutorial="nav-products"]',
+   380→   380→    title: 'Productos e Inventario',
+   381→   381→    description: 'Aquí puedes crear y gestionar productos. Es importante tener productos registrados para poder vender.',
+   382→   382→    side: 'right',
+   383→   383→    navigateTo: 'products',
+   384→   384→    icon: <Package className="h-5 w-5" />,
+   385→   385→  })
+   386→   386→
+   387→   387→  steps.push({
+   388→   388→    target: '[data-tutorial="products-new-btn"]',
+   389→   389→    title: 'Crear un Producto',
+   390→   390→    description: 'Presiona "Nuevo" para registrar un producto con nombre, precio, categoria y stock.',
+   391→   391→    side: 'left',
+   392→   392→    navigateTo: 'products',
+   393→   393→    validation: 'has-products',
+   394→   394→    validationMessage: 'Crea al menos un producto para continuar.',
+   395→   395→  })
+   396→   396→
+   397→   397→  // Caja (validated)
+   398→   398→  steps.push({
+   399→   399→    target: '[data-tutorial="nav-cash"]',
+   400→   400→    title: 'Caja',
+   401→   401→    description: 'Para poder vender necesitas una caja abierta. Presiona "Abrir Caja" con el monto inicial del día.',
+   402→   402→    side: 'right',
+   403→   403→    navigateTo: 'cash',
+   404→   404→    icon: <Wallet className="h-5 w-5" />,
+   405→   405→  })
+   406→   406→
+   407→   407→  steps.push({
+   408→   408→    target: '[data-tutorial="cash-open-btn"]',
+   409→   409→    title: 'Abrir Caja',
+   410→   410→    description: 'Indica el monto inicial y el cajero asignado. Sin caja abierta el POS estará bloqueado.',
+   411→   411→    side: 'right',
+   412→   412→    navigateTo: 'cash',
+   413→   413→    validation: 'caja-open',
+   414→   414→    validationMessage: 'Abre una caja para continuar al Punto de Venta.',
+   415→   415→  })
+   416→   416→
+   417→   417→  // POS
+   418→   418→  steps.push({
+   419→   419→    target: '[data-tutorial="nav-pos"]',
+   420→   420→    title: 'Punto de Venta',
+   421→   421→    description: 'Con productos y caja abierta, estás listo para vender.',
+   422→   422→    side: 'right',
+   423→   423→    navigateTo: 'pos',
+   424→   424→    icon: <ShoppingCart className="h-5 w-5" />,
+   425→   425→  })
+   426→   426→
+   427→   427→  steps.push({
+   428→   428→    target: '[data-tutorial="pos-search"]',
+   429→   429→    title: 'Buscar Productos',
+   430→   430→    description: 'Escribe el nombre o usa el scanner para encontrar productos.',
+   431→   431→    side: 'bottom',
+   432→   432→    navigateTo: 'pos',
+   433→   433→  })
+   434→   434→
+   435→   435→  steps.push({
+   436→   436→    target: '[data-tutorial="pos-products"]',
+   437→   437→    title: 'Catálogo de Productos',
+   438→   438→    description: 'Productos con precio y stock. Haz clic para agregar al carrito.',
+   439→   439→    side: 'top',
+   440→   440→    navigateTo: 'pos',
+   441→   441→  })
+   442→   442→
+   443→   443→  steps.push({
+   444→   444→    target: '[data-tutorial="pos-pay"]',
+   445→   445→    title: 'Boton de Cobrar',
+   446→   446→    description: 'Procesa el pago: efectivo, punto de venta, transferencia o pago mixto.',
+   447→   447→    side: 'left',
+   448→   448→    navigateTo: 'pos',
+   449→   449→  })
+   450→   450→
+   451→   451→  // Rest
+   452→   452→  steps.push({
+   453→   453→    target: '[data-tutorial="nav-dashboard"]',
+   454→   454→    title: 'Dashboard Financiero',
+   455→   455→    description: 'Revisa ingresos, gastos, utilidades y gráficas de ventas.',
+   456→   456→    side: 'right',
+   457→   457→    navigateTo: 'dashboard',
+   458→   458→  })
+   459→   459→
+   460→   460→  steps.push({
+   461→   461→    target: '[data-tutorial="nav-clients"]',
+   462→   462→    title: 'Clientes',
+   463→   463→    description: 'Registra clientes y genera estados de cuenta para créditos.',
+   464→   464→    side: 'right',
+   465→   465→    navigateTo: 'clients',
+   466→   466→  })
+   467→   467→
+   468→   468→  steps.push({
+   469→   469→    target: '[data-tutorial="nav-suppliers"]',
+   470→   470→    title: 'Proveedores',
+   471→   471→    description: 'Gestiona proveedores, compras y cuentas por pagar.',
+   472→   472→    side: 'right',
+   473→   473→    navigateTo: 'suppliers',
+   474→   474→  })
+   475→   475→
+   476→   476→  steps.push({
+   477→   477→    target: '[data-tutorial="nav-cash"]',
+   478→   478→    title: 'Caja (Revision)',
+   479→   479→    description: 'Aquí puedes registrar movimientos, retiros de excedente y cerrar al final del turno.',
+   480→   480→    side: 'right',
+   481→   481→    navigateTo: 'cash',
+   482→   482→  })
+   483→   483→
+   484→   484→  steps.push({
+   485→   485→    target: '[data-tutorial="nav-expenses"]',
+   486→   486→    title: 'Gastos',
+   487→   487→    description: 'Registra gastos operativos. Se reflejan en el cierre de caja y dashboard.',
+   488→   488→    side: 'right',
+   489→   489→    navigateTo: 'expenses',
+   490→   490→  })
+   491→   491→
+   492→   492→  steps.push({
+   493→   493→    title: 'Tutorial Completado',
+   494→   494→    description: 'Ya conoces las funciones principales. No tienes acceso a Configuración ni Usuarios. Puedes ver este tutorial de nuevo desde tu menú de perfil.',
+   495→   495→    icon: <Store className="h-5 w-5" />,
+   496→   496→  })
+   497→   497→
+   498→   498→  return steps
+   499→   499→}
+   500→   500→
+   501→   501→function buildCajeroSteps(): TourStep[] {
+   502→   502→  const steps: TourStep[] = []
+   503→   503→
+   504→   504→  steps.push({
+   505→   505→    title: 'Bienvenido a JO-Administrativo',
+   506→   506→    description: 'Hola Cajero. Te mostraremos cómo usar el Punto de Venta para procesar ventas rápidamente.',
+   507→   507→    icon: <Store className="h-5 w-5" />,
+   508→   508→  })
+   509→   509→
+   510→   510→  steps.push({
+   511→   511→    target: '[data-sidebar] [data-sidebar="content"]',
+   512→   512→    title: 'Tu Menú',
+   513→   513→    description: 'Como cajero tienes acceso al Punto de Venta y a la sección de Caja (solo lectura).',
+   514→   514→    side: 'right',
+   515→   515→  })
+   516→   516→
+   517→   517→  steps.push({
+   518→   518→    target: '[data-tutorial="nav-pos"]',
+   519→   519→    title: 'Punto de Venta',
+   520→   520→    description: 'Aquí procesas todas las ventas. Si la caja no está abierta, verás un mensaje de bloqueo. Contacta al administrador.',
+   521→   521→    side: 'right',
+   522→   522→    navigateTo: 'pos',
+   523→   523→    icon: <ShoppingCart className="h-5 w-5" />,
+   524→   524→  })
+   525→   525→
+   526→   526→  steps.push({
+   527→   527→    target: '[data-tutorial="pos-search"]',
+   528→   528→    title: 'Buscar Productos',
+   529→   529→    description: 'Escribe el nombre o escanea el código de barras para agregarlo a la venta.',
+   530→   530→    side: 'bottom',
+   531→   531→    navigateTo: 'pos',
+   532→   532→  })
+   533→   533→
+   534→   534→  steps.push({
+   535→   535→    target: '[data-tutorial="pos-products"]',
+   536→   536→    title: 'Productos Disponibles',
+   537→   537→    description: 'Haz click en un producto para agregarlo al carrito de la venta.',
+   538→   538→    side: 'top',
+   539→   539→    navigateTo: 'pos',
+   540→   540→  })
+   541→   541→
+   542→   542→  steps.push({
+   543→   543→    target: '[data-tutorial="pos-pay"]',
+   544→   544→    title: 'Cobrar',
+   545→   545→    description: 'Cuando tengas productos en el carrito, presiona aquí para procesar el pago.',
+   546→   546→    side: 'left',
+   547→   547→    navigateTo: 'pos',
+   548→   548→  })
+   549→   549→
+   550→   550→  steps.push({
+   551→   551→    target: '[data-tutorial="nav-cash"]',
+   552→   552→    title: 'Tu Caja',
+   553→   553→    description: 'Puedes ver el resumen de tu caja abierta y consultar movimientos. Solo el admin puede abrir, cerrar o hacer movimientos.',
+   554→   554→    side: 'right',
+   555→   555→    navigateTo: 'cash',
+   556→   556→  })
+   557→   557→
+   558→   558→  steps.push({
+   559→   559→    title: 'Tutorial Completado',
+   560→   560→    description: 'Ya estás listo para procesar ventas. Si la caja se cierra, contacta a un administrador. Puedes ver este tutorial de nuevo desde tu menú de perfil.',
+   561→   561→    icon: <Store className="h-5 w-5" />,
+   562→   562→  })
+   563→   563→
+   564→   564→  return steps
+   565→   565→}
+   566→   566→
+   567→   567→function buildVendedorSteps(): TourStep[] {
+   568→   568→  const steps: TourStep[] = []
+   569→   569→
+   570→   570→  steps.push({
+   571→   571→    title: 'Bienvenido a JO-Administrativo',
+   572→   572→    description: 'Hola Vendedor. Te mostraremos como usar el sistema para registrar ventas y gestionar clientes.',
+   573→   573→    icon: <Store className="h-5 w-5" />,
+   574→   574→  })
+   575→   575→
+   576→   576→  steps.push({
+   577→   577→    target: '[data-sidebar] [data-sidebar="content"]',
+   578→   578→    title: 'Tu Menú',
+   579→   579→    description: 'Como vendedor tienes acceso al Punto de Venta, Productos y Clientes.',
+   580→   580→    side: 'right',
+   581→   581→  })
+   582→   582→
+   583→   583→  steps.push({
+   584→   584→    target: '[data-tutorial="nav-pos"]',
+   585→   585→    title: 'Punto de Venta',
+   586→   586→    description: 'Aquí procesas las ventas. Si no hay caja abierta, verás un bloqueo. Contacta a un admin o gerente.',
+   587→   587→    side: 'right',
+   588→   588→    navigateTo: 'pos',
+   589→   589→    icon: <ShoppingCart className="h-5 w-5" />,
+   590→   590→  })
+   591→   591→
+   592→   592→  steps.push({
+   593→   593→    target: '[data-tutorial="pos-search"]',
+   594→   594→    title: 'Buscar Productos',
+   595→   595→    description: 'Busca productos por nombre o con el scanner de código de barras.',
+   596→   596→    side: 'bottom',
+   597→   597→    navigateTo: 'pos',
+   598→   598→  })
+   599→   599→
+   600→   600→  steps.push({
+   601→   601→    target: '[data-tutorial="pos-products"]',
+   602→   602→    title: 'Catálogo de Productos',
+   603→   603→    description: 'Haz click en un producto para agregarlo al carrito de la venta.',
+   604→   604→    side: 'top',
+   605→   605→    navigateTo: 'pos',
+   606→   606→  })
+   607→   607→
+   608→   608→  steps.push({
+   609→   609→    target: '[data-tutorial="pos-pay"]',
+   610→   610→    title: 'Cobrar',
+   611→   611→    description: 'Procesa el pago: efectivo, punto de venta, transferencia o pago mixto.',
+   612→   612→    side: 'left',
+   613→   613→    navigateTo: 'pos',
+   614→   614→  })
+   615→   615→
+   616→   616→  steps.push({
+   617→   617→    target: '[data-tutorial="nav-products"]',
+   618→   618→    title: 'Productos',
+   619→   619→    description: 'Consulta el catálogo completo, precios y stock por sucursal.',
+   620→   620→    side: 'right',
+   621→   621→    navigateTo: 'products',
+   622→   622→    icon: <Package className="h-5 w-5" />,
+   623→   623→  })
+   624→   624→
+   625→   625→  steps.push({
+   626→   626→    target: '[data-tutorial="nav-clients"]',
+   627→   627→    title: 'Clientes',
+   628→   628→    description: 'Registra clientes, consulta sus datos y genera estados de cuenta para ventas a credito.',
+   629→   629→    side: 'right',
+   630→   630→    navigateTo: 'clients',
+   631→   631→  })
+   632→   632→
+   633→   633→  steps.push({
+   634→   634→    title: 'Tutorial Completado',
+   635→   635→    description: 'Ya sabes lo fundamental. Registra clientes, busca productos y procesa ventas. Puedes ver este tutorial de nuevo desde tu menú de perfil.',
+   636→   636→    icon: <Store className="h-5 w-5" />,
+   637→   637→  })
+   638→   638→
+   639→   639→  return steps
+   640→   640→}
+   641→   641→
+   642→   642→// ── Master builder ─────────────────────────────────────
+   643→   643→
+   644→   644→function buildSteps(userRole: string): TourStep[] {
+   645→   645→  switch (userRole) {
+   646→   646→    case 'admin':
+   647→   647→      return buildAdminSteps()
+   648→   648→    case 'gerente':
+   649→   649→      return buildGerenteSteps()
+   650→   650→    case 'cajero':
+   651→   651→      return buildCajeroSteps()
+   652→   652→    case 'vendedor':
+   653→   653→      return buildVendedorSteps()
+   654→   654→    default:
+   655→   655→      return buildCajeroSteps()
+   656→   656→  }
+   657→   657→}
+   658→   658→
+   659→   659→// ── Tour Component ─────────────────────────────────────
+   660→   660→
+   661→   661→export function OnboardingTutorial() {
+   662→   662→  const setActiveView = useAppStore((s) => s.setActiveView)
+   663→   663→  const { user } = useAuth()
+   664→   664→
+   665→   665→  const [isOpen, setIsOpen] = useState(false)
+   666→   666→  const [stepIndex, setStepIndex] = useState(0)
+   667→   667→  const [targetRect, setTargetRect] = useState<Rect | null>(null)
+   668→   668→  const [popoverPos, setPopoverPos] = useState<{ top: number; left: number; side: string }>({
+   669→   669→    top: 0,
+   670→   670→    left: 0,
+   671→   671→    side: 'bottom',
+   672→   672→  })
+   673→   673→
+   674→   674→  // Validation state
+   675→   675→  const [isValidated, setIsValidated] = useState(true)
+   676→   676→  const [isValidating, setIsValidating] = useState(false)
+   677→   677→
+   678→   678→  const stepsRef = useRef<TourStep[]>([])
+   679→   679→  const waitForViewRef = useRef(false)
+   680→   680→  const validationTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+   681→   681→
+   682→   682→  const role = user?.role || 'cajero'
+   683→   683→  const steps = stepsRef.current
+   684→   684→  const currentStep = steps[stepIndex]
+   685→   685→  const totalSteps = steps.length
+   686→   686→  const isFirst = stepIndex === 0
+   687→   687→  const isLast = stepIndex === totalSteps - 1
+   688→   688→  const hasTarget = !!currentStep?.target
+   689→   689→  const needsValidation = !!currentStep?.validation
+   690→   690→
+   691→   691→  // ── Highlight logic ──────────────────────────────────
+   692→   692→
+   693→   693→  const updateHighlight = useCallback((step: TourStep) => {
+   694→   694→    if (!step.target) {
+   695→   695→      setTargetRect(null)
+   696→   696→      setPopoverPos({ top: window.innerHeight / 2, left: window.innerWidth / 2, side: 'bottom' })
+   697→   697→      return
+   698→   698→    }
+   699→   699→
+   700→   700→    // If this step needs to switch a Settings tab, dispatch the custom event
+   701→   701→    if (step.switchTab) {
+   702→   702→      window.dispatchEvent(new CustomEvent('tutorial-switch-tab', { detail: step.switchTab }))
+   703→   703→      // Wait for the tab content to render, then highlight
+   704→   704→      setTimeout(() => {
+   705→   705→        const el = findElement(step.target!)
+   706→   706→        if (el) {
+   707→   707→          const rect = getTargetRect(el)
+   708→   708→          setTargetRect(rect)
+   709→   709→          positionPopover(rect, step.side || 'bottom')
+   710→   710→        }
+   711→   711→      }, 300)
+   712→   712→      return
+   713→   713→    }
+   714→   714→
+   715→   715→    // Try to find the element, retry if view hasn't loaded yet
+   716→   716→    let el = findElement(step.target)
+   717→   717→    if (!el) {
+   718→   718→      requestAnimationFrame(() => {
+   719→   719→        el = findElement(step.target!)
+   720→   720→        if (el) {
+   721→   721→          const rect = getTargetRect(el)
+   722→   722→          setTargetRect(rect)
+   723→   723→          positionPopover(rect, step.side || 'bottom')
+   724→   724→        }
+   725→   725→      })
+   726→   726→      return
+   727→   727→    }
+   728→   728→
+   729→   729→    // Small delay to let scrollIntoView finish
+   730→   730→    setTimeout(() => {
+   731→   731→      const rect = getTargetRect(el!)
+   732→   732→      setTargetRect(rect)
+   733→   733→      positionPopover(rect, step.side || 'bottom')
+   734→   734→    }, 100)
+   735→   735→  }, [])
+   736→   736→
+   737→   737→  function positionPopover(rect: Rect, side: string) {
+   738→   738→    const vw = window.innerWidth
+   739→   739→    const vh = window.innerHeight
+   740→   740→    const popoverW = 360
+   741→   741→    const popoverH = 260 // approximate (slightly larger for validation msg)
+   742→   742→    const gap = 12
+   743→   743→
+   744→   744→    let top = 0
+   745→   745→    let left = 0
+   746→   746→    const resolvedSide = side
+   747→   747→
+   748→   748→    switch (side) {
+   749→   749→      case 'right': {
+   750→   750→        left = rect.right + gap
+   751→   751→        top = rect.top + rect.height / 2 - popoverH / 2
+   752→   752→        if (left + popoverW > vw - 16) {
+   753→   753→          left = rect.left - popoverW - gap
+   754→   754→        }
+   755→   755→        break
+   756→   756→      }
+   757→   757→      case 'left': {
+   758→   758→        left = rect.left - popoverW - gap
+   759→   759→        top = rect.top + rect.height / 2 - popoverH / 2
+   760→   760→        if (left < 16) {
+   761→   761→          left = rect.right + gap
+   762→   762→        }
+   763→   763→        break
+   764→   764→      }
+   765→   765→      case 'bottom': {
+   766→   766→        left = rect.left + rect.width / 2 - popoverW / 2
+   767→   767→        top = rect.bottom + gap
+   768→   768→        if (top + popoverH > vh - 16) {
+   769→   769→          top = rect.top - popoverH - gap
+   770→   770→        }
+   771→   771→        break
+   772→   772→      }
+   773→   773→      case 'top': {
+   774→   774→        left = rect.left + rect.width / 2 - popoverW / 2
+   775→   775→        top = rect.top - popoverH - gap
+   776→   776→        if (top < 16) {
+   777→   777→          top = rect.bottom + gap
+   778→   778→        }
+   779→   779→        break
+   780→   780→      }
+   781→   781→    }
+   782→   782→
+   783→   783→    left = Math.max(16, Math.min(left, vw - popoverW - 16))
+   784→   784→    top = Math.max(16, Math.min(top, vh - popoverH - 16))
+   785→   785→
+   786→   786→    setPopoverPos({ top, left, side: resolvedSide })
+   787→   787→  }
+   788→   788→
+   789→   789→  // ── Validation polling ───────────────────────────────
+   790→   790→
+   791→   791→  useEffect(() => {
+   792→   792→    // Clear previous polling
+   793→   793→    if (validationTimerRef.current) {
+   794→   794→      clearInterval(validationTimerRef.current)
+   795→   795→      validationTimerRef.current = null
+   796→   796→    }
+   797→   797→
+   798→   798→    if (!isOpen || !currentStep?.validation) {
+   799→   799→      setIsValidated(true)
+   800→   800→      setIsValidating(false)
+   801→   801→      return
+   802→   802→    }
+   803→   803→
+   804→   804→    // Start validation
+   805→   805→    const runValidation = async () => {
+   806→   806→      setIsValidating(true)
+   807→   807→      const result = await checkValidation(currentStep.validation!)
+   808→   808→      setIsValidated(result)
+   809→   809→      setIsValidating(false)
+   810→   810→    }
+   811→   811→
+   812→   812→    // Check immediately
+   813→   813→    runValidation()
+   814→   814→
+   815→   815→    // Then poll every 3 seconds
+   816→   816→    validationTimerRef.current = setInterval(runValidation, 3000)
+   817→   817→
+   818→   818→    return () => {
+   819→   819→      if (validationTimerRef.current) {
+   820→   820→        clearInterval(validationTimerRef.current)
+   821→   821→        validationTimerRef.current = null
+   822→   822→      }
+   823→   823→    }
+   824→   824→  }, [isOpen, stepIndex, currentStep?.validation])
+   825→   825→
+   826→   826→  // ── Navigation ───────────────────────────────────────
+   827→   827→
+   828→   828→  const goToStep = useCallback((index: number) => {
+   829→   829→    if (index < 0 || index >= steps.length) return
+   830→   830→
+   831→   831→    const step = steps[index]
+   832→   832→
+   833→   833→    // Navigate to the required view first
+   834→   834→    if (step.navigateTo) {
+   835→   835→      const currentView = useAppStore.getState().activeView
+   836→   836→      if (currentView !== step.navigateTo) {
+   837→   837→        setActiveView(step.navigateTo)
+   838→   838→        waitForViewRef.current = true
+   839→   839→        setStepIndex(index)
+   840→   840→        return
+   841→   841→      }
+   842→   842→    }
+   843→   843→
+   844→   844→    setStepIndex(index)
+   845→   845→    updateHighlight(step)
+   846→   846→  }, [steps, setActiveView, updateHighlight])
+   847→   847→
+   848→   848→  // When step index changes and we're NOT waiting for a view, highlight
+   849→   849→  useEffect(() => {
+   850→   850→    if (!isOpen) return
+   851→   851→    if (waitForViewRef.current) {
+   852→   852→      const timer = setTimeout(() => {
+   853→   853→        waitForViewRef.current = false
+   854→   854→        const step = steps[stepIndex]
+   855→   855→        if (step) updateHighlight(step)
+   856→   856→      }, 400) // slightly longer to account for tab click + content render
+   857→   857→      return () => clearTimeout(timer)
+   858→   858→    }
+   859→   859→    const step = steps[stepIndex]
+   860→   860→    if (step) updateHighlight(step)
+   861→   861→  }, [stepIndex, isOpen, steps, updateHighlight])
+   862→   862→
+   863→   863→  // Recalculate on resize
+   864→   864→  useEffect(() => {
+   865→   865→    if (!isOpen || !hasTarget) return
+   866→   866→    const handleResize = () => {
+   867→   867→      const step = steps[stepIndex]
+   868→   868→      if (step?.target) updateHighlight(step)
+   869→   869→    }
+   870→   870→    window.addEventListener('resize', handleResize)
+   871→   871→    return () => window.removeEventListener('resize', handleResize)
+   872→   872→  }, [isOpen, stepIndex, steps, hasTarget, updateHighlight])
+   873→   873→
+   874→   874→  // ── Start / Stop ─────────────────────────────────────
+   875→   875→
+   876→   876→  const startTour = useCallback((fromStep?: number) => {
+   877→   877→    stepsRef.current = buildSteps(role)
+   878→   878→    const savedStep = fromStep ?? parseInt(localStorage.getItem('jo-admin-tutorial-step') || '0', 10)
+   879→   879→    setStepIndex(isNaN(savedStep) ? 0 : Math.min(savedStep, stepsRef.current.length - 1))
+   880→   880→    setIsOpen(true)
+   881→   881→  }, [role])
+   882→   882→
+   883→   883→  const stopTour = useCallback((markCompleted = true) => {
+   884→   884→    if (markCompleted) {
+   885→   885→      localStorage.setItem('jo-admin-tutorial-completed', 'true')
+   886→   886→      localStorage.removeItem('jo-admin-tutorial-step')
+   887→   887→    } else {
+   888→   888→      // Save current step for later resumption
+   889→   889→      localStorage.setItem('jo-admin-tutorial-step', String(stepIndex))
+   890→   890→    }
+   891→   891→    setIsOpen(false)
+   892→   892→    setTargetRect(null)
+   893→   893→  }, [stepIndex])
+   894→   894→
+   895→   895→  // Auto-start on first visit (or resume from saved step)
+   896→   896→  useEffect(() => {
+   897→   897→    const completed = localStorage.getItem('jo-admin-tutorial-completed')
+   898→   898→    if (!completed) {
+   899→   899→      const savedStep = parseInt(localStorage.getItem('jo-admin-tutorial-step') || '0', 10)
+   900→   900→      const timer = setTimeout(() => {
+   901→   901→        stepsRef.current = buildSteps(role)
+   902→   902→        setStepIndex(isNaN(savedStep) ? 0 : Math.min(savedStep, stepsRef.current.length - 1))
+   903→   903→        setIsOpen(true)
+   904→   904→      }, 2000)
+   905→   905→      return () => clearTimeout(timer)
+   906→   906→    }
+   907→   907→  }, [role])
+   908→   908→
+   909→   909→  // Persist current step on every change
+   910→   910→  useEffect(() => {
+   911→   911→    if (isOpen) {
+   912→   912→      localStorage.setItem('jo-admin-tutorial-step', String(stepIndex))
+   913→   913→    }
+   914→   914→  }, [stepIndex, isOpen])
+   915→   915→
+   916→   916→  // Expose restart function
+   917→   917→  useEffect(() => {
+   918→   918→    ;(window as unknown as Record<string, () => void>).__restartTutorial = startTour
+   919→   919→    return () => {
+   920→   920→      const w = window as unknown as Record<string, () => void>
+   921→   921→      delete w.__restartTutorial
+   922→   922→    }
+   923→   923→  }, [startTour])
+   924→   924→
+   925→   925→  if (!isOpen || !currentStep) return null
+   926→   926→
+   927→   927→  // ── Render ───────────────────────────────────────────
+   928→   928→
+   929→   929→  const canAdvance = !needsValidation || isValidated
+   930→   930→
+   931→   931→  return (
+   932→   932→    <div className="fixed inset-0 z-[9999] pointer-events-none">
+   933→   933→      {/* Dark overlay with spotlight hole — ONLY for non-validation steps.
+   934→   934→          For validation steps we hide the overlay entirely so the user can freely
+   935→   935→          interact with buttons, forms, and modals (e.g. "Abrir Caja" dialog). */}
+   936→   936→      {hasTarget && !needsValidation && (
+   937→   937→        <svg className="absolute inset-0 w-full h-full pointer-events-auto" aria-hidden="true">
+   938→   938→          <defs>
+   939→   939→            <mask id="tour-spotlight">
+   940→   940→              <rect x="0" y="0" width="100%" height="100%" fill="white" />
+   941→   941→              {targetRect && (
+   942→   942→                <rect
+   943→   943→                  x={targetRect.left}
+   944→   944→                  y={targetRect.top}
+   945→   945→                  width={targetRect.width}
+   946→   946→                  height={targetRect.height}
+   947→   947→                  rx="8"
+   948→   948→                  fill="black"
+   949→   949→                />
+   950→   950→              )}
+   951→   951→            </mask>
+   952→   952→          </defs>
+   953→   953→          <rect
+   954→   954→            x="0"
+   955→   955→            y="0"
+   956→   956→            width="100%"
+   957→   957→            height="100%"
+   958→   958→            fill="rgba(0, 0, 0, 0.65)"
+   959→   959→            mask="url(#tour-spotlight)"
+   960→   960→          />
+   961→   961→        </svg>
+   962→   962→      )}
+   963→   963→
+   964→   964→      {/* Highlighted element border glow — only for non-validation steps */}
+   965→   965→      {targetRect && !needsValidation && (
+   966→   966→        <div
+   967→   967→          className="absolute rounded-lg border-2 border-white/80 shadow-[0_0_0_4px_rgba(59,130,246,0.5)] transition-all duration-300 pointer-events-none"
+   968→   968→          style={{
+   969→   969→            top: targetRect.top,
+   970→   970→            left: targetRect.left,
+   971→   971→            width: targetRect.width,
+   972→   972→            height: targetRect.height,
+   973→   973→          }}
+   974→   974→        />
+   975→   975→      )}
+   976→   976→
+   977→   977→      {/* Popover — fixed bottom-right for validation steps to avoid blocking centered modals */}
+   978→   978→      <div
+   979→   979→        className={cn(
+   980→   980→          'z-[10000] pointer-events-auto w-[360px] rounded-xl border bg-popover p-5 shadow-2xl transition-all duration-300',
+   981→   981→          // Centered for welcome/finish (no target)
+   982→   982→          !hasTarget && 'fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2',
+   983→   983→          // Fixed bottom-right for validation steps (stays out of the way of modals)
+   984→   984→          needsValidation && hasTarget && 'fixed bottom-4 right-4',
+   985→   985→          // Absolute positioned near target for normal steps
+   986→   986→          hasTarget && !needsValidation && 'absolute'
+   987→   987→        )}
+   988→   988→        style={
+   989→   989→          hasTarget && !needsValidation
+   990→   990→            ? { top: popoverPos.top, left: popoverPos.left }
+   991→   991→            : undefined
+   992→   992→        }
+   993→   993→      >
+   994→   994→        {/* Progress bar */}
+   995→   995→        <div className="absolute top-0 left-0 right-0 h-1 bg-muted rounded-t-xl overflow-hidden">
+   996→   996→          <div
+   997→   997→            className="h-full bg-primary transition-all duration-300"
+   998→   998→            style={{ width: `${((stepIndex + 1) / totalSteps) * 100}%` }}
+   999→   999→          />
+  1000→  1000→        </div>
+  1001→  1001→
+  1002→  1002→        {/* Close button */}
+  1003→  1003→        <button
+  1004→  1004→          onClick={() => stopTour(false)}
+  1005→  1005→          className="absolute top-3 right-3 h-6 w-6 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+  1006→  1006→        >
+  1007→  1007→          <X className="h-3.5 w-3.5" />
+  1008→  1008→        </button>
+  1009→  1009→
+  1010→  1010→        {/* Content */}
+  1011→  1011→        <div className="flex items-start gap-3">
+  1012→  1012→          {currentStep.icon && (
+  1013→  1013→            <div className="flex-shrink-0 rounded-lg bg-primary/10 p-2 text-primary mt-0.5">
+  1014→  1014→              {currentStep.icon}
+  1015→  1015→            </div>
+  1016→  1016→          )}
+  1017→  1017→          <div className="flex-1 min-w-0">
+  1018→  1018→            <h3 className="text-base font-semibold pr-6">{currentStep.title}</h3>
+  1019→  1019→            <p className="text-sm text-muted-foreground leading-relaxed mt-1.5">
+  1020→  1020→              {currentStep.description}
+  1021→  1021→            </p>
+  1022→  1022→
+  1023→  1023→            {/* Validation message */}
+  1024→  1024→            {needsValidation && !isValidated && (
+  1025→  1025→              <div className={cn(
+  1026→  1026→                'mt-3 rounded-lg p-2.5 text-sm flex items-start gap-2',
+  1027→  1027→                isValidated
+  1028→  1028→                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-800 dark:text-emerald-400'
+  1029→  1029→                  : 'bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/30 dark:border-amber-800 dark:text-amber-400'
+  1030→  1030→              )}>
+  1031→  1031→                {isValidated
+  1032→  1032→                  ? <CheckCircle2 className="h-4 w-4 flex-shrink-0 mt-0.5" />
+  1033→  1033→                  : <Loader2 className="h-4 w-4 flex-shrink-0 mt-0.5 animate-spin" />
+  1034→  1034→                }
+  1035→  1035→                <span>{currentStep.validationMessage || DEFAULT_VALIDATION_MESSAGES[currentStep.validation!]}</span>
+  1036→  1036→              </div>
+  1037→  1037→            )}
+  1038→  1038→          </div>
+  1039→  1039→        </div>
+  1040→  1040→
+  1041→  1041→        {/* Step indicator */}
+  1042→  1042→        <div className="mt-4 space-y-2">
+  1043→  1043→          {/* Progress bar */}
+  1044→  1044→          <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+  1045→  1045→            <div
+  1046→  1046→              className="h-full rounded-full bg-primary transition-all duration-500 ease-out"
+  1047→  1047→              style={{ width: `${((stepIndex + 1) / totalSteps) * 100}%` }}
+  1048→  1048→            />
+  1049→  1049→          </div>
+  1050→  1050→          {/* Step counter + dots */}
+  1051→  1051→          <div className="flex items-center gap-2">
+  1052→  1052→            <span className="text-xs font-semibold text-primary whitespace-nowrap">
+  1053→  1053→              Paso {stepIndex + 1} de {totalSteps}
+  1054→  1054→            </span>
+  1055→  1055→            <div className="flex-1 overflow-hidden">
+  1056→  1056→              <div className="flex items-center gap-1">
+  1057→  1057→                {steps.map((_, i) => (
+  1058→  1058→                  <span
+  1059→  1059→                    key={i}
+  1060→  1060→                    className={cn(
+  1061→  1061→                      'h-1 rounded-full transition-all duration-200 flex-shrink-0',
+  1062→  1062→                      i === stepIndex
+  1063→  1063→                        ? 'w-3 bg-primary'
+  1064→  1064→                        : i < stepIndex
+  1065→  1065→                          ? 'w-1 bg-primary/40'
+  1066→  1066→                          : 'w-1 bg-muted-foreground/20'
+  1067→  1067→                    )}
+  1068→  1068→                  />
+  1069→  1069→                ))}
+  1070→  1070→              </div>
+  1071→  1071→            </div>
+  1072→  1072→          </div>
+  1073→  1073→        </div>
+  1074→  1074→
+  1075→  1075→        {/* Navigation buttons */}
+  1076→  1076→        <div className="flex items-center justify-between mt-3">
+  1077→  1077→          <Button
+  1078→  1078→            variant="ghost"
+  1079→  1079→            size="sm"
+  1080→  1080→            onClick={() => stopTour(false)}
+  1081→  1081→            className="text-xs text-muted-foreground h-8"
+  1082→  1082→          >
+  1083→  1083→            Omitir
+  1084→  1084→          </Button>
+  1085→  1085→          <div className="flex gap-2">
+  1086→  1086→            {!isFirst && (
+  1087→  1087→              <Button
+  1088→  1088→                variant="outline"
+  1089→  1089→                size="sm"
+  1090→  1090→                onClick={() => goToStep(stepIndex - 1)}
+  1091→  1091→                className="h-8"
+  1092→  1092→              >
+  1093→  1093→                <ArrowLeft className="mr-1 h-3.5 w-3.5" />
+  1094→  1094→                Atrás
+  1095→  1095→              </Button>
+  1096→  1096→            )}
+  1097→  1097→            <Button
+  1098→  1098→              size="sm"
+  1099→  1099→              className={cn(
+  1100→  1100→                'h-8',
+  1101→  1101→                canAdvance
+  1102→  1102→                  ? 'bg-primary hover:bg-primary/90 text-white'
+  1103→  1103→                  : 'bg-muted text-muted-foreground cursor-not-allowed'
+  1104→  1104→              )}
+  1105→  1105→              disabled={!canAdvance && !isLast}
+  1106→  1106→              onClick={() => {
+  1107→  1107→                if (isLast) {
+  1108→  1108→                  stopTour()
+  1109→  1109→                } else if (canAdvance) {
+  1110→  1110→                  goToStep(stepIndex + 1)
+  1111→  1111→                }
+  1112→  1112→              }}
+  1113→  1113→            >
+  1114→  1114→              {isLast ? 'Finalizar' : 'Siguiente'}
+  1115→  1115→              {!isLast && <ArrowRight className="ml-1 h-3.5 w-3.5" />}
+  1116→  1116→            </Button>
+  1117→  1117→          </div>
+  1118→  1118→        </div>
+  1119→  1119→      </div>
+  1120→  1120→    </div>
+  1121→  1121→  )
+  1122→  1122→}
+  1123→  1123→
+  1124→  1124→// ── Public API ─────────────────────────────────────────
+  1125→  1125→
+  1126→  1126→export function startTutorial() {
+  1127→  1127→  if (typeof window !== 'undefined') {
+  1128→  1128→    const w = window as unknown as Record<string, (fromStep?: number) => void>
+  1129→  1129→    if (w.__restartTutorial) {
+  1130→  1130→      w.__restartTutorial()
+  1131→  1131→    } else {
+  1132→  1132→      localStorage.removeItem('jo-admin-tutorial-completed')
+  1133→  1133→      window.location.reload()
+  1134→  1134→    }
+  1135→  1135→  }
+  1136→  1136→}
+  1137→  1137→
+  1138→  1138→/** Start tutorial from a specific step (for per-view help). */
+  1139→  1139→export function startTutorialFromStep(viewName: string) {
+  1140→  1140→  if (typeof window !== 'undefined') {
+  1141→  1141→    const completed = localStorage.getItem('jo-admin-tutorial-completed')
+  1142→  1142→    if (completed) {
+  1143→  1143→      // Allow opening tutorial even if completed, for per-view help
+  1144→  1144→      localStorage.removeItem('jo-admin-tutorial-completed')
+  1145→  1145→    }
+  1146→  1146→    const w = window as unknown as Record<string, (fromStep?: number) => void>
+  1147→  1147→    if (w.__restartTutorial) {
+  1148→  1148→      w.__restartTutorial()
+  1149→  1149→    } else {
+  1150→  1150→      window.location.reload()
+  1151→  1151→    }
+  1152→  1152→  }
+  1153→  1153→}
+  1154→  1154→
