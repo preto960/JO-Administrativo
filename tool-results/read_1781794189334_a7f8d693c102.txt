@@ -1,0 +1,2002 @@
+     1→'use client'
+     2→
+     3→import { useEffect, useState } from 'react'
+     4→import { api } from '@/lib/api'
+     5→import { useAuth } from '@/hooks/use-auth'
+     6→import { useAppStore } from '@/stores/use-app-store'
+     7→import {
+     8→  Table,
+     9→  TableBody,
+    10→  TableCell,
+    11→  TableHead,
+    12→  TableHeader,
+    13→  TableRow,
+    14→} from '@/components/ui/table'
+    15→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    16→import { Badge } from '@/components/ui/badge'
+    17→import { Input } from '@/components/ui/input'
+    18→import { Button } from '@/components/ui/button'
+    19→import { Label } from '@/components/ui/label'
+    20→import {
+    21→  Dialog,
+    22→  DialogContent,
+    23→  DialogHeader,
+    24→  DialogTitle,
+    25→  DialogDescription,
+    26→} from '@/components/ui/dialog'
+    27→import {
+    28→  AlertDialog,
+    29→  AlertDialogContent,
+    30→  AlertDialogHeader,
+    31→  AlertDialogFooter,
+    32→  AlertDialogTitle,
+    33→  AlertDialogDescription,
+    34→  AlertDialogAction,
+    35→  AlertDialogCancel,
+    36→} from '@/components/ui/alert-dialog'
+    37→import {
+    38→  Select,
+    39→  SelectContent,
+    40→  SelectItem,
+    41→  SelectTrigger,
+    42→  SelectValue,
+    43→} from '@/components/ui/select'
+    44→import { Switch } from '@/components/ui/switch'
+    45→import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+    46→import { Separator } from '@/components/ui/separator'
+    47→import { ScrollArea } from '@/components/ui/scroll-area'
+    48→import { Plus, Search, Users, DollarSign, Loader2, Receipt, Truck, X, Trash2, Printer, FileText, Mail, Pencil, Phone, MapPin, ShoppingCart, Eye, EyeOff, AlertTriangle, Upload, ChevronLeft, ChevronRight, Filter, UserCheck, UserX, UsersRound, RefreshCw, CalendarCheck, CalendarDays, CheckCircle2, CreditCard, Banknote, ArrowLeftRight, Clock, Smartphone, CircleDollarSign, Ban, type LucideIcon } from 'lucide-react'
+    49→import { ClientBulkImport } from './client-bulk-import'
+    50→import { FALLBACK_METHODS } from '@/lib/payment-methods'
+    51→import { toast } from 'sonner'
+    52→import { useSetting } from '@/stores/use-app-store'
+    53→import { useCurrency } from '@/hooks/use-currency'
+    54→
+    55→interface PaymentMethodOption {
+    56→  code: string
+    57→  name: string
+    58→  icon: string
+    59→  enabled: boolean
+    60→  needsReference: boolean
+    61→  isLocalCurrency: boolean
+    62→  isCash: boolean
+    63→  isCredit: boolean
+    64→}
+    65→
+    66→const RENEW_ICON_MAP: Record<string, LucideIcon> = {
+    67→  Banknote,
+    68→  CreditCard,
+    69→  ArrowLeftRight,
+    70→  Clock,
+    71→  Smartphone,
+    72→  CircleDollarSign,
+    73→}
+    74→
+    75→function getRenewIcon(iconName: string): LucideIcon {
+    76→  return RENEW_ICON_MAP[iconName] || CircleDollarSign
+    77→}
+    78→
+    79→interface Client {
+    80→  id: string
+    81→  name: string
+    82→  cedula: string | null
+    83→  lastName: string | null
+    84→  gender: string | null
+    85→  phone: string | null
+    86→  email: string | null
+    87→  address: string | null
+    88→  note: string | null
+    89→  deletedAt: string | null
+    90→  pendingBalance: number
+    91→  membership: {
+    92→    id: string
+    93→    status: string | null
+    94→    tarifa: string | null
+    95→    endDate: string | null
+    96→    daysRemaining: number
+    97→    ticketsRemaining: number
+    98→  } | null
+    99→  receivables: Array<{ id: string; amount: number; pendingBalance: number; status: string; dueDate: string | null; createdAt: string }>
+   100→  _count: { sales: number }
+   101→}
+   102→
+   103→interface PlanOption {
+   104→  id: string
+   105→  name: string
+   106→  durationType: string
+   107→  durationDays: number | null
+   108→  cost: number
+   109→  active: boolean
+   110→}
+   111→
+   112→interface SaleRecord {
+   113→  id: string
+   114→  date: string
+   115→  total: number
+   116→  status: string
+   117→  user: { name: string }
+   118→  branch: { name: string }
+   119→  payments: Array<{ method: string; amount: number; currency: { symbol: string } }>
+   120→  lines: Array<{ product: { name: string }; quantity: number; unitPrice: number; lineTotal: number }>
+   121→  receivables: Array<{ pendingBalance: number; status: string; dueDate: string | null }>
+   122→}
+   123→
+   124→interface ClientPaymentRecord {
+   125→  id: string
+   126→  amount: number
+   127→  method: string
+   128→  reference: string | null
+   129→  createdAt: string
+   130→  user: { name: string }
+   131→  receivable: {
+   132→    id: string
+   133→    saleId: string
+   134→    amount: number
+   135→    pendingBalance: number
+   136→    status: string
+   137→    sale: {
+   138→      date: string
+   139→      lines: Array<{ product: { name: string }; quantity: number; lineTotal: number }>
+   140→    }
+   141→  }
+   142→}
+   143→
+   144→interface ReceivableRecord {
+   145→  id: string
+   146→  amount: number
+   147→  pendingBalance: number
+   148→  status: string
+   149→  dueDate: string | null
+   150→  createdAt: string
+   151→}
+   152→
+   153→interface ProductOption {
+   154→  id: string
+   155→  name: string
+   156→  price: number
+   157→  currency: { symbol: string }
+   158→  inventories: Array<{ stock: number; branchId: string }>
+   159→}
+   160→
+   161→interface DispatchLine {
+   162→  productId: string
+   163→  productName: string
+   164→  quantity: number
+   165→  unitPrice: number
+   166→  stock: number
+   167→}
+   168→
+   169→export function ClientsTable() {
+   170→  const { user, permissions } = useAuth()
+   171→  const canManage = permissions.canManageClients
+   172→  const selectedBranchId = useAppStore((s) => s.selectedBranchId)
+   173→  const isGym = useSetting('businessType') === 'gym'
+   174→  const [clients, setClients] = useState<Client[]>([])
+   175→  const [search, setSearch] = useState('')
+   176→  const [loading, setLoading] = useState(true)
+   177→  const [dialogOpen, setDialogOpen] = useState(false)
+   178→  const [bulkImportOpen, setBulkImportOpen] = useState(false)
+   179→  const [saving, setSaving] = useState(false)
+   180→
+   181→  const [formName, setFormName] = useState('')
+   182→  const [formLastName, setFormLastName] = useState('')
+   183→  const [formCedula, setFormCedula] = useState('')
+   184→  const [formPhone, setFormPhone] = useState('')
+   185→  const [formEmail, setFormEmail] = useState('')
+   186→  const [formAddress, setFormAddress] = useState('')
+   187→  const [formNote, setFormNote] = useState('')
+   188→
+   189→  // Sales/dispatch history dialog
+   190→  const [historyClient, setHistoryClient] = useState<Client | null>(null)
+   191→  const [sales, setSales] = useState<SaleRecord[]>([])
+   192→  const [loadingHistory, setLoadingHistory] = useState(false)
+   193→  const [showHistoryDialog, setShowHistoryDialog] = useState(false)
+   194→
+   195→  // Client payments (pagos realizados) in history
+   196→  const [clientPayments, setClientPayments] = useState<ClientPaymentRecord[]>([])
+   197→  const [loadingPayments, setLoadingPayments] = useState(false)
+   198→  const [deletingPaymentId, setDeletingPaymentId] = useState<string | null>(null)
+   199→
+   200→  // Remove debt confirmation
+   201→  const [removeDebtTarget, setRemoveDebtTarget] = useState<{ client: Client; receivable: ReceivableRecord } | null>(null)
+   202→  const [removingDebt, setRemovingDebt] = useState(false)
+   203→
+   204→  // Sale lines detail modal
+   205→  const [detailSale, setDetailSale] = useState<SaleRecord | null>(null)
+   206→
+   207→  // Statement email
+   208→  const [sendingStatement, setSendingStatement] = useState<string | null>(null)
+   209→
+   210→  // Payment dialog
+   211→  const [paymentClient, setPaymentClient] = useState<Client | null>(null)
+   212→  const [paymentAmount, setPaymentAmount] = useState('')
+   213→  const [paymentMethod, setPaymentMethod] = useState('')
+   214→  const [paymentReference, setPaymentReference] = useState('')
+   215→  const [showPaymentDialog, setShowPaymentDialog] = useState(false)
+   216→  const [paying, setPaying] = useState(false)
+   217→  const [openCashRegId, setOpenCashRegId] = useState<string | null>(null)
+   218→  const baseCurrencyId = useSetting('baseCurrencyId') || ''
+   219→  const country = useSetting('country') || 'VE'
+   220→  const multiCurrencyEnabled = useSetting('multiCurrencyEnabled')
+   221→  const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>([])
+   222→
+   223→  const referenceCurrency = useSetting('referenceCurrency')
+   224→  const { sym: currencySymbol, baseSym, refCode, rate: exchangeRate, fmt } = useCurrency()
+   225→  const selectedPm = paymentMethods.find(m => m.code === paymentMethod)
+   226→  const isLocalMethod = selectedPm?.isLocalCurrency ?? false
+   227→
+   228→  // Delete confirmation dialog
+   229→  const [deleteTarget, setDeleteTarget] = useState<Client | null>(null)
+   230→  const [deleting, setDeleting] = useState(false)
+   231→
+   232→  const handleConfirmDelete = async () => {
+   233→    if (!deleteTarget) return
+   234→    setDeleting(true)
+   235→    try {
+   236→      await api.del(`/api/clients?id=${deleteTarget.id}`)
+   237→      toast.success('Cliente inactivado')
+   238→      fetchClients()
+   239→    } catch {
+   240→      toast.error('Error al eliminar cliente')
+   241→    } finally {
+   242→      setDeleting(false)
+   243→      setDeleteTarget(null)
+   244→    }
+   245→  }
+   246→
+   247→  // Edit client
+   248→  const [editingClient, setEditingClient] = useState<Client | null>(null)
+   249→
+   250→  // Dispatch dialog
+   251→  const [dispatchClient, setDispatchClient] = useState<Client | null>(null)
+   252→  const [showDispatchDialog, setShowDispatchDialog] = useState(false)
+   253→  const [products, setProducts] = useState<ProductOption[]>([])
+   254→  const [loadingProducts, setLoadingProducts] = useState(false)
+   255→  const [dispatchLines, setDispatchLines] = useState<DispatchLine[]>([])
+   256→  const [savingDispatch, setSavingDispatch] = useState(false)
+   257→
+   258→  // Show deleted clients toggle
+   259→  const [showInactive, setShowInactive] = useState(false)
+   260→  const [membershipFilter, setMembershipFilter] = useState<'todos' | 'activo' | 'vencido' | 'sin'>('activo')
+   261→  const [currentPage, setCurrentPage] = useState(1)
+   262→  const PAGE_SIZE = 20
+   263→
+   264→  const fetchClients = async () => {
+   265→    try {
+   266→      // Check expirations in background (gym only)
+   267→      if (isGym) api.get('/api/clients/check-expirations').catch(() => {})
+   268→
+   269→      const params = showInactive ? '?includeDeleted=true' : ''
+   270→      const data = await api.get<Client[]>(`/api/clients${params}`)
+   271→      setClients(data)
+   272→    } catch {
+   273→      toast.error('Error al cargar clientes')
+   274→    } finally {
+   275→      setLoading(false)
+   276→    }
+   277→  }
+   278→
+   279→  useEffect(() => { fetchClients() }, [showInactive])
+   280→
+   281→  // React to pendingClientId from navigation (e.g. from notification click)
+   282→  const pendingClientId = useAppStore((s) => s.pendingClientId)
+   283→  const clearPendingClient = useAppStore((s) => s.clearPendingClient)
+   284→
+   285→  useEffect(() => {
+   286→    if (!pendingClientId || clients.length === 0) return
+   287→    const client = clients.find(c => c.id === pendingClientId)
+   288→    if (client) {
+   289→      openHistory(client)
+   290→      clearPendingClient()
+   291→    }
+   292→  }, [pendingClientId, clients.length])
+   293→
+   294→  // Fetch open cash register and payment methods
+   295→  useEffect(() => {
+   296→    api.get<Array<{ id: string; status: string }>>('/api/cash-register')
+   297→      .then(regs => {
+   298→        const openReg = regs?.find(r => r.status === 'abierta')
+   299→        if (openReg) setOpenCashRegId(openReg.id)
+   300→      })
+   301→      .catch(() => {})
+   302→    api.get<PaymentMethodOption[]>(`/api/payment-methods?country=${country}`)
+   303→      .then(methods => {
+   304→        if (Array.isArray(methods) && methods.length > 0) {
+   305→          setPaymentMethods(methods.filter(m => m.enabled && !m.isCredit))
+   306→        } else {
+   307→          setPaymentMethods(FALLBACK_METHODS.filter(m => m.enabled && !m.isCredit))
+   308→        }
+   309→      })
+   310→      .catch(() => {
+   311→        setPaymentMethods(FALLBACK_METHODS.filter(m => m.enabled && !m.isCredit))
+   312→      })
+   313→  }, [country])
+   314→
+   315→  // Capitalize helper: "jUAN pEREZ" → "Juan Perez"
+   316→  const cap = (str: string | null | undefined): string => {
+   317→    if (!str) return ''
+   318→    return str
+   319→      .toLowerCase()
+   320→      .replace(/\b\w/g, (c) => c.toUpperCase())
+   321→  }
+   322→
+   323→  const inactiveCount = clients.filter((c) => c.deletedAt !== null).length
+   324→  const activeCount = clients.filter((c) => !c.deletedAt && c.membership?.status === 'Activo').length
+   325→  const expiredCount = clients.filter((c) => !c.deletedAt && c.membership?.status === 'Vencido').length
+   326→  const noMembershipCount = clients.filter((c) => !c.deletedAt && (!c.membership?.status || c.membership?.status === 'Sin membresia')).length
+   327→
+   328→  const searchLower = search.toLowerCase().trim()
+   329→  const filtered = clients.filter((c) => {
+   330→    // Inactive toggle: when ON, show ONLY inactive clients
+   331→    if (showInactive && !c.deletedAt) return false
+   332→
+   333→    // Membership filter (gym only)
+   334→    if (isGym) {
+   335→      if (membershipFilter === 'activo' && c.membership?.status !== 'Activo') return false
+   336→      if (membershipFilter === 'vencido' && c.membership?.status !== 'Vencido') return false
+   337→      if (membershipFilter === 'sin' && c.membership?.status && c.membership?.status !== 'Sin membresia') return false
+   338→    }
+   339→
+   340→    // Search filter
+   341→    if (!searchLower) return true
+   342→    const fullName = `${c.name} ${c.lastName || ''}`.toLowerCase()
+   343→    if (fullName.includes(searchLower)) return true
+   344→    if (isGym && c.cedula && c.cedula.includes(search)) return true
+   345→    if (c.phone && c.phone.includes(search)) return true
+   346→    if (c.email && c.email.toLowerCase().includes(searchLower)) return true
+   347→    return false
+   348→  })
+   349→
+   350→  // Pagination
+   351→  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+   352→  const paginatedClients = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
+   353→  useEffect(() => { setCurrentPage(1) }, [search, membershipFilter, showInactive])
+   354→
+   355→  // Plans state
+   356→  const [plans, setPlans] = useState<PlanOption[]>([])
+   357→  const [formPlanId, setFormPlanId] = useState('')
+   358→
+   359→  // Payment-on-create modal (when creating client with plan)
+   360→  const [showCreatePayment, setShowCreatePayment] = useState(false)
+   361→  const [createPaymentMethod, setCreatePaymentMethod] = useState('')
+   362→  const [createPaymentReference, setCreatePaymentReference] = useState('')
+   363→  const [createPaymentMethods, setCreatePaymentMethods] = useState<PaymentMethodOption[]>([])
+   364→  const [creatingAndPaying, setCreatingAndPaying] = useState(false)
+   365→
+   366→  // Renew dialog
+   367→  const [renewClient, setRenewClient] = useState<Client | null>(null)
+   368→  const [renewPlanId, setRenewPlanId] = useState('')
+   369→  const [showRenewDialog, setShowRenewDialog] = useState(false)
+   370→  const [renewing, setRenewing] = useState(false)
+   371→  const [renewPaymentMethod, setRenewPaymentMethod] = useState('')
+   372→  const [renewPaymentReference, setRenewPaymentReference] = useState('')
+   373→  const [renewMethods, setRenewMethods] = useState<PaymentMethodOption[]>([])
+   374→  const [renewCurrencies, setRenewCurrencies] = useState<{ id: string; code: string; symbol: string; isBase: boolean }[]>([])
+   375→  const [renewSuccess, setRenewSuccess] = useState(false)
+   376→
+   377→  // Attendance dialog
+   378→  const [attClient, setAttClient] = useState<Client | null>(null)
+   379→  const [showAttDialog, setShowAttDialog] = useState(false)
+   380→  const [loadingAtt, setLoadingAtt] = useState(false)
+   381→  const [markingAtt, setMarkingAtt] = useState(false)
+   382→  const [attData, setAttData] = useState<{
+   383→    attendances: Array<{ id: string; date: string }>;
+   384→    stats: {
+   385→      totalPlanDays: number;
+   386→      planName: string | null;
+   387→      daysRemaining: number;
+   388→      totalAttendances: number;
+   389→      monthAttendanceCount: number;
+   390→      monthName: string;
+   391→    };
+   392→  } | null>(null)
+   393→
+   394→  // Fetch plans for selectors
+   395→  useEffect(() => {
+   396→    api.get<PlanOption[]>('/api/plans')
+   397→      .then(data => setPlans(Array.isArray(data) ? data.filter(p => p.active) : []))
+   398→      .catch(() => {})
+   399→  }, [])
+   400→
+   401→  const openCreate = () => {
+   402→    setEditingClient(null)
+   403→    setFormName('')
+   404→    setFormLastName('')
+   405→    setFormCedula('')
+   406→    setFormPhone('')
+   407→    setFormEmail('')
+   408→    setFormAddress('')
+   409→    setFormNote('')
+   410→    setFormPlanId('')
+   411→    setDialogOpen(true)
+   412→  }
+   413→
+   414→  const openEdit = (client: Client) => {
+   415→    setEditingClient(client)
+   416→    setFormName(client.name)
+   417→    setFormLastName(client.lastName || '')
+   418→    setFormCedula(client.cedula || '')
+   419→    setFormPhone(client.phone || '')
+   420→    setFormEmail(client.email || '')
+   421→    setFormAddress(client.address || '')
+   422→    setFormNote(client.note || '')
+   423→    setDialogOpen(true)
+   424→  }
+   425→
+   426→  const handleSave = async () => {
+   427→    // Name validation
+   428→    const trimmedName = formName.trim()
+   429→    if (!trimmedName) {
+   430→      toast.error('El nombre es obligatorio')
+   431→      return
+   432→    }
+   433→    if (trimmedName.length < 2) {
+   434→      toast.error('El nombre debe tener al menos 2 caracteres')
+   435→      return
+   436→    }
+   437→
+   438→    // Last name validation (gym only)
+   439→    const trimmedLastName = formLastName.trim()
+   440→    if (isGym && !trimmedLastName) {
+   441→      toast.error('El apellido es obligatorio')
+   442→      return
+   443→    }
+   444→
+   445→    // Phone validation
+   446→    if (formPhone.trim()) {
+   447→      const digitsOnly = formPhone.trim().replace(/[\s\-()]/g, '')
+   448→      if (!/^\+?\d{7,}$/.test(digitsOnly)) {
+   449→        toast.error('El teléfono debe tener al menos 7 dígitos (solo números, se permite +)')
+   450→        return
+   451→      }
+   452→    }
+   453→
+   454→    // Email validation
+   455→    if (formEmail.trim()) {
+   456→      if (!formEmail.trim().includes('@') || !formEmail.trim().includes('.')) {
+   457→        toast.error('El formato del email no es válido')
+   458→        return
+   459→      }
+   460→    }
+   461→
+   462→    // Address validation
+   463→    if (formAddress.trim() && formAddress.trim().length < 3) {
+   464→      toast.error('La dirección debe tener al menos 3 caracteres')
+   465→      return
+   466→    }
+   467→
+   468→    setSaving(true)
+   469→    try {
+   470→      if (editingClient) {
+   471→        await api.put('/api/clients', {
+   472→          id: editingClient.id,
+   473→          name: trimmedName,
+   474→          lastName: trimmedLastName,
+   475→          cedula: formCedula.trim() || null,
+   476→          phone: formPhone.trim() || null,
+   477→          email: formEmail.trim() || null,
+   478→          address: formAddress.trim() || null,
+   479→          note: formNote.trim() || null,
+   480→        })
+   481→        toast.success('Cliente actualizado')
+   482→        setDialogOpen(false)
+   483→        fetchClients()
+   484→      } else if (formPlanId) {
+   485→        // Plan selected → open payment modal instead of creating immediately
+   486→        try {
+   487→          const [methods, registers, currencies] = await Promise.all([
+   488→            api.get<PaymentMethodOption[]>(
+   489→              `/api/payment-methods?country=${country}&context=subscription`
+   490→            ),
+   491→            api.get<Array<{ id: string; status: string }>>('/api/cash-register'),
+   492→            api.get<{ id: string; code: string; symbol: string; isBase: boolean }[]>('/api/currencies'),
+   493→          ])
+   494→          const list = Array.isArray(methods) && methods.length > 0
+   495→            ? methods
+   496→            : FALLBACK_METHODS.filter(m => m.enabled)
+   497→          setCreatePaymentMethods(list)
+   498→          if (list.length > 0) setCreatePaymentMethod(list[0].code)
+   499→          setCreatePaymentReference('')
+   500→          const openReg = registers?.find((r: { status: string }) => r.status === 'abierta')
+   501→          if (openReg) setOpenCashRegId(openReg.id)
+   502→          if (Array.isArray(currencies)) setRenewCurrencies(currencies)
+   503→          setShowCreatePayment(true)
+   504→        } catch {
+   505→          toast.error('Error al cargar métodos de pago')
+   506→        }
+   507→      } else {
+   508→        // No plan — create client directly
+   509→        await api.post<Client>('/api/clients', {
+   510→          name: trimmedName,
+   511→          lastName: trimmedLastName,
+   512→          cedula: formCedula.trim() || null,
+   513→          phone: formPhone.trim() || null,
+   514→          email: formEmail.trim() || null,
+   515→          address: formAddress.trim() || null,
+   516→          note: formNote.trim() || null,
+   517→        })
+   518→        toast.success('Cliente creado')
+   519→        setDialogOpen(false)
+   520→        fetchClients()
+   521→      }
+   522→    } catch (err) {
+   523→      const msg = err instanceof Error ? err.message : 'Error al crear cliente'
+   524→      toast.error(msg)
+   525→    } finally {
+   526→      setSaving(false)
+   527→    }
+   528→  }
+   529→
+   530→  // Confirm: create client + assign plan with payment
+   531→  const handleCreateWithPayment = async () => {
+   532→    if (!createPaymentMethod) {
+   533→      toast.error('Selecciona un método de pago')
+   534→      return
+   535→    }
+   536→    const selectedPm = createPaymentMethods.find(m => m.code === createPaymentMethod)
+   537→    if (selectedPm?.needsReference && !createPaymentReference.trim()) {
+   538→      toast.error('La referencia es obligatoria para este método de pago')
+   539→      return
+   540→    }
+   541→
+   542→    setCreatingAndPaying(true)
+   543→    try {
+   544→      // 1. Create client
+   545→      const trimmedName = formName.trim()
+   546→      const trimmedLastName = formLastName.trim()
+   547→      const newClient = await api.post<Client>('/api/clients', {
+   548→        name: trimmedName,
+   549→        lastName: trimmedLastName,
+   550→        cedula: formCedula.trim() || null,
+   551→        phone: formPhone.trim() || null,
+   552→        email: formEmail.trim() || null,
+   553→        address: formAddress.trim() || null,
+   554→        note: formNote.trim() || null,
+   555→      })
+   556→
+   557→      // 2. Assign plan with payment
+   558→      const baseCurr = renewCurrencies.find(c => c.isBase)
+   559→      await api.post(`/api/clients/${newClient.id}/renew`, {
+   560→        planId: formPlanId,
+   561→        paymentMethod: createPaymentMethod,
+   562→        paymentReference: createPaymentReference.trim() || undefined,
+   563→        cashRegId: openCashRegId || undefined,
+   564→        branchId: selectedBranchId || undefined,
+   565→        currencyId: baseCurr?.id || baseCurrencyId || '',
+   566→      })
+   567→
+   568→      toast.success('Cliente creado y suscripción activada')
+   569→      setShowCreatePayment(false)
+   570→      setDialogOpen(false)
+   571→      setFormPlanId('')
+   572→      fetchClients()
+   573→    } catch (err) {
+   574→      const msg = err instanceof Error ? err.message : 'Error al crear cliente con suscripción'
+   575→      toast.error(msg)
+   576→    } finally {
+   577→      setCreatingAndPaying(false)
+   578→    }
+   579→  }
+   580→
+   581→  const handleDownloadStatement = async (client: Client) => {
+   582→    try {
+   583→      const res = await fetch(`/api/clients/${client.id}/statement`)
+   584→      if (!res.ok) throw new Error()
+   585→      const blob = await res.blob()
+   586→      const url = URL.createObjectURL(blob)
+   587→      const a = document.createElement('a')
+   588→      a.href = url
+   589→      a.download = `estado_cuenta_${client.name.replace(/\s+/g, '_')}.pdf`
+   590→      a.click()
+   591→      URL.revokeObjectURL(url)
+   592→      toast.success('Estado de cuenta descargado')
+   593→    } catch {
+   594→      toast.error('Error al descargar el estado de cuenta')
+   595→    }
+   596→  }
+   597→
+   598→  const handleSendStatement = async (client: Client) => {
+   599→    if (!client.email) {
+   600→      toast.error('El cliente no tiene email registrado')
+   601→      return
+   602→    }
+   603→    setSendingStatement(client.id)
+   604→    try {
+   605→      const res = await fetch(`/api/clients/${client.id}/send-statement`, { method: 'POST' })
+   606→      const data = await res.json()
+   607→      if (!res.ok) throw new Error(data.error)
+   608→      toast.success(`Estado de cuenta enviado a ${client.email}`)
+   609→    } catch (e: unknown) {
+   610→      const msg = e instanceof Error ? e.message : 'Error al enviar'
+   611→      toast.error(msg)
+   612→    } finally {
+   613→      setSendingStatement(null)
+   614→    }
+   615→  }
+   616→
+   617→  const openHistory = async (client: Client) => {
+   618→    setHistoryClient(client)
+   619→    setShowHistoryDialog(true)
+   620→    setClientPayments([])
+   621→    setLoadingHistory(true)
+   622→    setLoadingPayments(true)
+   623→    try {
+   624→      const [salesData, paymentsData] = await Promise.all([
+   625→        api.get<{ sales: SaleRecord[] }>(`/api/clients/${client.id}/sales`),
+   626→        api.get<{ payments: ClientPaymentRecord[] }>(`/api/clients/${client.id}/payments`),
+   627→      ])
+   628→      setSales(salesData.sales)
+   629→      setClientPayments(paymentsData.payments)
+   630→    } catch {
+   631→      toast.error('Error al cargar historial')
+   632→    } finally {
+   633→      setLoadingHistory(false)
+   634→      setLoadingPayments(false)
+   635→    }
+   636→  }
+   637→
+   638→  const openPayment = (client: Client) => {
+   639→    setPaymentClient(client)
+   640→    // Set default to first available non-credit method
+   641→    const firstNonCredit = paymentMethods.find(m => !m.isCredit)
+   642→    setPaymentMethod(firstNonCredit?.code || paymentMethods[0]?.code || '')
+   643→    setPaymentReference('')
+   644→    // Set amount in reference currency by default
+   645→    setPaymentAmount(client.pendingBalance.toFixed(2))
+   646→    setShowPaymentDialog(true)
+   647→  }
+   648→
+   649→  // When payment method changes, toggle between local and reference currency
+   650→  const handlePaymentMethodChange = (methodCode: string) => {
+   651→    setPaymentMethod(methodCode)
+   652→    setPaymentReference('')
+   653→    if (paymentClient) {
+   654→      const pm = paymentMethods.find(m => m.code === methodCode)
+   655→      const isLocal = pm?.isLocalCurrency ?? false
+   656→      if (isLocal && exchangeRate > 0) {
+   657→        setPaymentAmount((paymentClient.pendingBalance * exchangeRate).toFixed(2))
+   658→      } else {
+   659→        setPaymentAmount(paymentClient.pendingBalance.toFixed(2))
+   660→      }
+   661→    }
+   662→  }
+   663→
+   664→  // Convert displayed amount to reference currency
+   665→  const paymentAmountInRef = (() => {
+   666→    const parsed = parseFloat(paymentAmount) || 0
+   667→    if (isLocalMethod && exchangeRate > 0) {
+   668→      return Math.round((parsed / exchangeRate) * 100) / 100
+   669→    }
+   670→    return parsed
+   671→  })()
+   672→
+   673→  const openDispatch = async (client: Client) => {
+   674→    setDispatchClient(client)
+   675→    setDispatchLines([])
+   676→    setShowDispatchDialog(true)
+   677→    setLoadingProducts(true)
+   678→    try {
+   679→      const branchParam = selectedBranchId ? `?branchId=${selectedBranchId}` : ''
+   680→      const data = await api.get<{ products: ProductOption[] }>(`/api/products?active=true${branchParam}`)
+   681→      setProducts(data.products)
+   682→    } catch {
+   683→      toast.error('Error al cargar productos')
+   684→    } finally {
+   685→      setLoadingProducts(false)
+   686→    }
+   687→  }
+   688→
+   689→  const handlePayment = async () => {
+   690→    if (!paymentClient) return
+   691→    if (!user?.id) {
+   692→      toast.error('No se pudo identificar al usuario. Inicie sesión de nuevo.')
+   693→      return
+   694→    }
+   695→    if (!baseCurrencyId) {
+   696→      toast.error('No hay moneda base configurada. Configure la moneda base en ajustes.')
+   697→      return
+   698→    }
+   699→    const amt = parseFloat(paymentAmount)
+   700→    if (!amt || amt <= 0) {
+   701→      toast.error('El monto debe ser mayor a 0')
+   702→      return
+   703→    }
+   704→    if (paymentAmountInRef > paymentClient.pendingBalance) {
+   705→      toast.error(`El monto no puede ser mayor al saldo pendiente (${fmt(paymentClient.pendingBalance)})`)
+   706→      return
+   707→    }
+   708→    if (selectedPm?.isCash && !openCashRegId) {
+   709→      toast.error('No hay caja abierta. Abra una caja registradora antes de cobrar en efectivo.')
+   710→      return
+   711→    }
+   712→    setPaying(true)
+   713→    try {
+   714→      await api.post(`/api/clients/${paymentClient.id}/payment`, {
+   715→        amount: paymentAmountInRef,
+   716→        method: paymentMethod,
+   717→        reference: paymentReference || undefined,
+   718→        cashRegId: openCashRegId || undefined,
+   719→        userId: user.id,
+   720→        currencyId: baseCurrencyId,
+   721→      })
+   722→      const displayLabel = isLocalMethod ? `Bs. ${parseFloat(paymentAmount).toFixed(2)}` : `${fmt(paymentAmountInRef)}`
+   723→      toast.success(`Cobro de ${displayLabel} registrado exitosamente`)
+   724→      setShowPaymentDialog(false)
+   725→      fetchClients()
+   726→    } catch (error) {
+   727→      const msg = error instanceof Error ? error.message : 'Error al registrar cobro'
+   728→      toast.error(msg)
+   729→    } finally {
+   730→      setPaying(false)
+   731→    }
+   732→  }
+   733→
+   734→  const handleDeletePayment = async (paymentId: string, amount: number) => {
+   735→    if (!historyClient) return
+   736→    if (!window.confirm(`¿Eliminar este cobro de ${fmt(amount)}? La deuda será restaurada.`)) return
+   737→    setDeletingPaymentId(paymentId)
+   738→    try {
+   739→      await api.del(`/api/clients/${historyClient.id}/payments/${paymentId}`)
+   740→      toast.success(`Pago de ${fmt(amount)} eliminado. Deuda restaurada.`)
+   741→      // Refresh payments list and client list
+   742→      setClientPayments(prev => prev.filter(p => p.id !== paymentId))
+   743→      fetchClients()
+   744→    } catch (error) {
+   745→      const msg = error instanceof Error ? error.message : 'Error al eliminar pago'
+   746→      toast.error(msg)
+   747→    } finally {
+   748→      setDeletingPaymentId(null)
+   749→    }
+   750→  }
+   751→
+   752→  const handleConfirmRemoveDebt = async () => {
+   753→    if (!removeDebtTarget) return
+   754→    const { client, receivable } = removeDebtTarget
+   755→    setRemovingDebt(true)
+   756→    try {
+   757→      await api.del(`/api/clients/${client.id}/receivables/${receivable.id}`)
+   758→      toast.success('Deuda eliminada correctamente')
+   759→      setRemoveDebtTarget(null)
+   760→      fetchClients()
+   761→    } catch (error) {
+   762→      const msg = error instanceof Error ? error.message : 'Error al eliminar deuda'
+   763→      toast.error(msg)
+   764→    } finally {
+   765→      setRemovingDebt(false)
+   766→    }
+   767→  }
+   768→
+   769→  const addDispatchLine = (productId: string) => {
+   770→    const product = products.find(p => p.id === productId)
+   771→    if (!product) return
+   772→
+   773→    const existingLine = dispatchLines.find(l => l.productId === productId)
+   774→    if (existingLine) {
+   775→      // Increment quantity
+   776→      if (existingLine.quantity >= existingLine.stock) {
+   777→        toast.error('Stock insuficiente')
+   778→        return
+   779→      }
+   780→      setDispatchLines(dispatchLines.map(l =>
+   781→        l.productId === productId
+   782→          ? { ...l, quantity: l.quantity + 1 }
+   783→          : l
+   784→      ))
+   785→    } else {
+   786→      const branchInv = product.inventories.find(i => i.branchId === selectedBranchId)
+   787→      const stock = branchInv?.stock ?? 0
+   788→      if (stock <= 0) {
+   789→        toast.error('Sin stock disponible')
+   790→        return
+   791→      }
+   792→      setDispatchLines([...dispatchLines, {
+   793→        productId: product.id,
+   794→        productName: product.name,
+   795→        quantity: 1,
+   796→        unitPrice: product.price,
+   797→        stock,
+   798→      }])
+   799→    }
+   800→  }
+   801→
+   802→  const updateDispatchLineQty = (productId: string, qty: number) => {
+   803→    const line = dispatchLines.find(l => l.productId === productId)
+   804→    if (!line) return
+   805→    if (qty > line.stock) {
+   806→      toast.error(`Stock insuficiente. Máximo: ${line.stock}`)
+   807→      return
+   808→    }
+   809→    if (qty <= 0) {
+   810→      setDispatchLines(dispatchLines.filter(l => l.productId !== productId))
+   811→    } else {
+   812→      setDispatchLines(dispatchLines.map(l =>
+   813→        l.productId === productId ? { ...l, quantity: qty } : l
+   814→      ))
+   815→    }
+   816→  }
+   817→
+   818→  const dispatchTotal = dispatchLines.reduce((sum, l) => sum + (l.unitPrice * l.quantity), 0)
+   819→
+   820→  const handleDispatch = async () => {
+   821→    if (!dispatchClient || dispatchLines.length === 0) return
+   822→    setSavingDispatch(true)
+   823→    try {
+   824→      await api.post(`/api/clients/${dispatchClient.id}/dispatch`, {
+   825→        lines: dispatchLines.map(l => ({
+   826→          productId: l.productId,
+   827→          quantity: l.quantity,
+   828→          unitPrice: l.unitPrice,
+   829→        })),
+   830→        userId: user?.id || '',
+   831→        branchId: selectedBranchId || undefined,
+   832→      })
+   833→      toast.success(`Despacho registrado. Total: ${fmt(dispatchTotal)}`)
+   834→      setShowDispatchDialog(false)
+   835→      fetchClients()
+   836→    } catch (error) {
+   837→      const msg = error instanceof Error ? error.message : 'Error al registrar despacho'
+   838→      toast.error(msg)
+   839→    } finally {
+   840→      setSavingDispatch(false)
+   841→    }
+   842→  }
+   843→
+   844→  const openRenew = (client: Client) => {
+   845→    setRenewClient(client)
+   846→    setRenewPlanId('')
+   847→    setRenewPaymentMethod('')
+   848→    setRenewPaymentReference('')
+   849→    setShowRenewDialog(true)
+   850→    // Load subscription-specific payment methods and open cash register
+   851→    const countryVal = country
+   852→    Promise.all([
+   853→      api.get<PaymentMethodOption[]>(`/api/payment-methods?country=${countryVal}&context=subscription`),
+   854→      api.get<Array<{ id: string; status: string }>>('/api/cash-register'),
+   855→      api.get<{ id: string; code: string; symbol: string; isBase: boolean }[]>('/api/currencies'),
+   856→    ]).then(([methods, registers, currencies]) => {
+   857→      const list = Array.isArray(methods) && methods.length > 0 ? methods : FALLBACK_METHODS.filter(m => m.enabled)
+   858→      setRenewMethods(list)
+   859→      if (list.length > 0) setRenewPaymentMethod(list[0].code)
+   860→      const openReg = registers?.find((r: { status: string }) => r.status === 'abierta')
+   861→      if (openReg) setOpenCashRegId(openReg.id)
+   862→      if (Array.isArray(currencies)) setRenewCurrencies(currencies)
+   863→    }).catch(() => {
+   864→      const fallback = FALLBACK_METHODS.filter(m => m.enabled)
+   865→      setRenewMethods(fallback)
+   866→      if (fallback.length > 0) setRenewPaymentMethod(fallback[0].code)
+   867→    })
+   868→  }
+   869→
+   870→  const handleRenew = async () => {
+   871→    if (!renewClient || !renewPlanId) {
+   872→      toast.error('Selecciona un plan')
+   873→      return
+   874→    }
+   875→    if (!renewPaymentMethod) {
+   876→      toast.error('Selecciona un método de pago')
+   877→      return
+   878→    }
+   879→    const selectedMethod = renewMethods.find(m => m.code === renewPaymentMethod)
+   880→    if (selectedMethod?.needsReference && !renewPaymentReference.trim()) {
+   881→      toast.error(`La referencia es obligatoria para ${selectedMethod.name}`)
+   882→      return
+   883→    }
+   884→    setRenewing(true)
+   885→    try {
+   886→      const baseCurr = renewCurrencies.find(c => c.isBase)
+   887→      const res = await api.post<{ message: string }>(`/api/clients/${renewClient.id}/renew`, {
+   888→        planId: renewPlanId,
+   889→        paymentMethod: renewPaymentMethod,
+   890→        paymentReference: renewPaymentReference.trim() || undefined,
+   891→        cashRegId: openCashRegId || undefined,
+   892→        branchId: selectedBranchId || undefined,
+   893→        currencyId: baseCurr?.id || baseCurrencyId || '',
+   894→      })
+   895→      setRenewSuccess(true)
+   896→      toast.success(res.message || 'Suscripción renovada')
+   897→      setTimeout(() => {
+   898→        setShowRenewDialog(false)
+   899→        setRenewSuccess(false)
+   900→        fetchClients()
+   901→      }, 1500)
+   902→    } catch (error) {
+   903→      const msg = error instanceof Error ? error.message : 'Error al renovar'
+   904→      toast.error(msg)
+   905→    } finally {
+   906→      setRenewing(false)
+   907→    }
+   908→  }
+   909→
+   910→  const openAttendance = async (client: Client) => {
+   911→    setAttClient(client)
+   912→    setAttData(null)
+   913→    setShowAttDialog(true)
+   914→    setLoadingAtt(true)
+   915→    try {
+   916→      const data = await api.get<typeof attData>(`/api/clients/${client.id}/attendance`)
+   917→      setAttData(data)
+   918→    } catch {
+   919→      toast.error('Error al cargar asistencia')
+   920→    } finally {
+   921→      setLoadingAtt(false)
+   922→    }
+   923→  }
+   924→
+   925→  const markAttendance = async () => {
+   926→    if (!attClient) return
+   927→    setMarkingAtt(true)
+   928→    try {
+   929→      await api.post(`/api/clients/${attClient.id}/attendance`, {})
+   930→      toast.success('Asistencia marcada correctamente')
+   931→      // Refresh attendance data
+   932→      openAttendance(attClient)
+   933→      fetchClients()
+   934→    } catch (error) {
+   935→      const msg = error instanceof Error ? error.message : 'Error al marcar asistencia'
+   936→      toast.error(msg)
+   937→    } finally {
+   938→      setMarkingAtt(false)
+   939→    }
+   940→  }
+   941→
+   942→  const handleReactivate = async (client: Client) => {
+   943→    try {
+   944→      await api.put('/api/clients', { id: client.id, reactivate: true })
+   945→      toast.success(`Cliente "${client.name}" reactivado`)
+   946→      fetchClients()
+   947→    } catch {
+   948→      toast.error('Error al reactivar cliente')
+   949→    }
+   950→  }
+   951→
+   952→  return (
+   953→    <div className="space-y-4">
+   954→      {/* Top bar: search + filters + actions */}
+   955→      <div className="flex flex-col gap-3">
+   956→        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+   957→          <div className="relative flex-1 max-w-md">
+   958→            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+   959→            <Input placeholder="Buscar por nombre, apellido, cédula o teléfono..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" />
+   960→          </div>
+   961→          <div className="flex items-center gap-2 text-sm">
+   962→            <Switch
+   963→              id="show-inactive-clients"
+   964→              checked={showInactive}
+   965→              onCheckedChange={setShowInactive}
+   966→            />
+   967→            <Label htmlFor="show-inactive-clients" className="cursor-pointer select-none">
+   968→              {showInactive ? <Eye className="inline h-4 w-4 mr-1" /> : <EyeOff className="inline h-4 w-4 mr-1" />}
+   969→              Inactivos ({inactiveCount})
+   970→            </Label>
+   971→          </div>
+   972→          {canManage && (
+   973→            <div className="flex items-center gap-2">
+   974→              {isGym && (
+   975→              <Button variant="outline" onClick={() => setBulkImportOpen(true)} className="text-primary border-primary/30 hover:bg-primary/5">
+   976→                <Upload className="mr-2 h-4 w-4" /> Carga Masiva
+   977→              </Button>
+   978→              )}
+   979→              <Button onClick={openCreate} className="bg-primary hover:bg-primary/90 text-white">
+   980→                <Plus className="mr-2 h-4 w-4" /> Nuevo Cliente
+   981→              </Button>
+   982→            </div>
+   983→          )}
+   984→        </div>
+   985→
+   986→        {/* Membership filter bar (gym only) */}
+   987→        {isGym && (
+   988→        <div className="flex items-center gap-2 flex-wrap">
+   989→          <Filter className="h-4 w-4 text-muted-foreground" />
+   990→          <span className="text-xs text-muted-foreground mr-1">Membresía:</span>
+   991→          {([
+   992→            { key: 'todos' as const, label: 'Todos', count: clients.filter(c => !c.deletedAt).length, icon: <UsersRound className="h-3.5 w-3.5" /> },
+   993→            { key: 'activo' as const, label: 'Activos', count: activeCount, icon: <UserCheck className="h-3.5 w-3.5" /> },
+   994→            { key: 'vencido' as const, label: 'Vencidos', count: expiredCount, icon: <UserX className="h-3.5 w-3.5" /> },
+   995→            { key: 'sin' as const, label: 'Sin membresía', count: noMembershipCount, icon: <Users className="h-3.5 w-3.5" /> },
+   996→          ]).map((opt) => (
+   997→            <button
+   998→              key={opt.key}
+   999→              onClick={() => setMembershipFilter(opt.key)}
+  1000→              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+  1001→                membershipFilter === opt.key
+  1002→                  ? 'bg-primary text-white shadow-sm'
+  1003→                  : 'bg-muted text-muted-foreground hover:bg-muted/80'
+  1004→              }`}
+  1005→            >
+  1006→              {opt.icon}
+  1007→              {opt.label} ({opt.count})
+  1008→            </button>
+  1009→          ))}
+  1010→          <span className="ml-auto text-xs text-muted-foreground">
+  1011→            {filtered.length} resultado{filtered.length !== 1 ? 's' : ''}
+  1012→          </span>
+  1013→        </div>
+  1014→        )}
+  1015→      </div>
+  1016→
+  1017→      {loading ? (
+  1018→        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+  1019→          {Array.from({ length: 8 }).map((_, i) => (
+  1020→            <Card key={i} className="h-52 animate-pulse bg-muted" />
+  1021→          ))}
+  1022→        </div>
+  1023→      ) : paginatedClients.length === 0 ? (
+  1024→        <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+  1025→          <Users className="h-12 w-12 mb-3 opacity-40" />
+  1026→          <p className="text-sm">No se encontraron clientes</p>
+  1027→        </div>
+  1028→      ) : (
+  1029→        <>
+  1030→        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+  1031→          {paginatedClients.map((client) => {
+  1032→            const memStatus = client.membership?.status
+  1033→            const hasMembership = memStatus && memStatus !== 'Sin membresia'
+  1034→            return (
+  1035→            <Card key={client.id} className={`relative overflow-hidden hover:shadow-md transition-shadow ${client.deletedAt ? 'opacity-60' : ''}`}>
+  1036→              {/* Top color bar */}
+  1037→              <div className={`h-1 ${
+  1038→                client.deletedAt ? 'bg-gray-400' :
+  1039→                isGym && memStatus === 'Activo' ? 'bg-emerald-500' :
+  1040→                isGym && memStatus === 'Vencido' ? 'bg-red-500' :
+  1041→                'bg-gray-300 dark:bg-gray-600'
+  1042→              }`} />
+  1043→              <CardContent className="p-4 space-y-3">
+  1044→                <div className="flex items-start justify-between gap-2">
+  1045→                  <div className="min-w-0 flex-1">
+  1046→                    <h3 className="font-semibold text-sm truncate">{cap(client.name)}{isGym && client.lastName ? ` ${cap(client.lastName)}` : ''}</h3>
+  1047→                    {isGym && client.cedula && (
+  1048→                      <p className="text-[11px] text-muted-foreground font-mono">{client.cedula}</p>
+  1049→                    )}
+  1050→                  </div>
+  1051→                  <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
+  1052→                    {client.deletedAt && (
+  1053→                      <Badge variant="outline" className="text-muted-foreground text-[10px] px-1.5 py-0">
+  1054→                        Deshabilitado
+  1055→                      </Badge>
+  1056→                    )}
+  1057→                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${client.pendingBalance > 0
+  1058→                      ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400'
+  1059→                      : 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400'
+  1060→                    }`}>
+  1061→                      {client.pendingBalance > 0
+  1062→                        ? `${fmt(client.pendingBalance)}`
+  1063→                        : 'Sin deuda'
+  1064→                      }
+  1065→                    </span>
+  1066→                  </div>
+  1067→                </div>
+  1068→
+  1069→                <div className="space-y-1 text-xs text-muted-foreground">
+  1070→                  {client.phone && (
+  1071→                    <div className="flex items-center gap-1.5">
+  1072→                      <Phone className="h-3 w-3 shrink-0" />
+  1073→                      <span className="truncate">{client.phone}</span>
+  1074→                    </div>
+  1075→                  )}
+  1076→                  {client.email && (
+  1077→                    <div className="flex items-center gap-1.5">
+  1078→                      <Mail className="h-3 w-3 shrink-0" />
+  1079→                      <span className="truncate">{client.email.toLowerCase()}</span>
+  1080→                    </div>
+  1081→                  )}
+  1082→                  {client.address && (
+  1083→                    <div className="flex items-center gap-1.5">
+  1084→                      <MapPin className="h-3 w-3 shrink-0" />
+  1085→                      <span className="truncate">{cap(client.address)}</span>
+  1086→                    </div>
+  1087→                  )}
+  1088→                </div>
+  1089→
+  1090→                {/* Membership info below contact (gym only) */}
+  1091→                {isGym && (
+  1092→                <div className="flex items-center gap-1.5 flex-wrap">
+  1093→                  <Badge
+  1094→                    className={`text-[10px] px-1.5 py-0 ${
+  1095→                      memStatus === 'Activo'
+  1096→                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400'
+  1097→                        : memStatus === 'Vencido'
+  1098→                        ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400'
+  1099→                        : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
+  1100→                    }`}
+  1101→                  >
+  1102→                    {memStatus === 'Activo' ? 'Activo' : memStatus === 'Vencido' ? 'Vencido' : 'Sin membresia'}
+  1103→                  </Badge>
+  1104→                  {hasMembership && client.membership?.tarifa && (
+  1105→                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-muted-foreground">
+  1106→                      {cap(client.membership.tarifa)}
+  1107→                    </Badge>
+  1108→                  )}
+  1109→                  {hasMembership && client.membership!.endDate && (
+  1110→                    <span className="text-[10px] text-muted-foreground">
+  1111→                      Vence: {new Date(client.membership!.endDate).toLocaleDateString('es-VE')}
+  1112→                    </span>
+  1113→                  )}
+  1114→                  {memStatus === 'Activo' && hasMembership && client.membership!.daysRemaining > 0 && (
+  1115→                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
+  1116→                      {client.membership!.daysRemaining}d restantes
+  1117→                    </span>
+  1118→                  )}
+  1119→                </div>
+  1120→                )}
+  1121→
+  1122→                <div className="flex items-center gap-3 text-xs text-muted-foreground">
+  1123→                  <div className="flex items-center gap-1">
+  1124→                    <ShoppingCart className="h-3 w-3" />
+  1125→                    <span>{client._count.sales} venta{client._count.sales !== 1 ? 's' : ''}</span>
+  1126→                  </div>
+  1127→                  {client.pendingBalance > 0 && (
+  1128→                    <div className="text-red-600 font-medium">
+  1129→                      Debe: {fmt(client.pendingBalance)}
+  1130→                    </div>
+  1131→                  )}
+  1132→                </div>
+  1133→
+  1134→                <div className="flex items-center gap-1 pt-2 border-t">
+  1135→                  {!client.deletedAt && (
+  1136→                    <>
+  1137→                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Ver Historial" onClick={() => openHistory(client)}>
+  1138→                        <Receipt className="h-3.5 w-3.5" />
+  1139→                      </Button>
+  1140→                      {canManage && isGym && (
+  1141→                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-blue-500 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950/40" title="Marcar Asistencia" onClick={() => openAttendance(client)}>
+  1142→                          <CalendarCheck className="h-3.5 w-3.5" />
+  1143→                        </Button>
+  1144→                      )}
+  1145→                      {canManage && isGym && (
+  1146→                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-emerald-500 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40" title="Renovar Suscripción" onClick={() => openRenew(client)}>
+  1147→                          <RefreshCw className="h-3.5 w-3.5" />
+  1148→                        </Button>
+  1149→                      )}
+  1150→                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Estado de Cuenta (PDF)" onClick={() => handleDownloadStatement(client)}>
+  1151→                        <FileText className="h-3.5 w-3.5" />
+  1152→                      </Button>
+  1153→                      {client.email && (
+  1154→                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Enviar por Email" onClick={() => handleSendStatement(client)} disabled={sendingStatement === client.id}>
+  1155→                          {sendingStatement === client.id
+  1156→                            ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+  1157→                            : <Mail className="h-3.5 w-3.5" />
+  1158→                          }
+  1159→                        </Button>
+  1160→                      )}
+  1161→                      {canManage && (
+  1162→                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Despachar" onClick={() => openDispatch(client)}>
+  1163→                          <Truck className="h-3.5 w-3.5" />
+  1164→                        </Button>
+  1165→                      )}
+  1166→                      {client.pendingBalance > 0 && (
+  1167→                        <>
+  1168→                          <Button size="sm" variant="outline" className="h-7 text-xs text-primary hover:text-primary" onClick={() => openPayment(client)}>
+  1169→                            <DollarSign className="mr-1 h-3 w-3" /> Cobrar
+  1170→                          </Button>
+  1171→                          {canManage && (
+  1172→                            <Button size="sm" variant="outline" className="h-7 text-xs text-red-500 border-red-200 hover:text-red-600 hover:bg-red-50 dark:border-red-800 dark:hover:bg-red-950/40" title="Quitar deuda (si fue asignada por error)" onClick={() => {
+  1173→                              // Find the first pending receivable for this client
+  1174→                              const receivable = client.receivables?.[0]
+  1175→                              if (receivable && receivable.pendingBalance > 0) {
+  1176→                                setRemoveDebtTarget({ client, receivable })
+  1177→                              } else {
+  1178→                                toast.error('No hay deuda pendiente para quitar')
+  1179→                              }
+  1180→                            }}>
+  1181→                              <Ban className="mr-1 h-3 w-3" /> Quitar Deuda
+  1182→                            </Button>
+  1183→                          )}
+  1184→                        </>
+  1185→                      )}
+  1186→                      <div className="flex-1" />
+  1187→                      {canManage && (
+  1188→                        <>
+  1189→                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Editar" onClick={() => openEdit(client)}>
+  1190→                            <Pencil className="h-3.5 w-3.5" />
+  1191→                          </Button>
+  1192→                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-400 hover:text-red-600" title="Eliminar" onClick={() => setDeleteTarget(client)}>
+  1193→                            <Trash2 className="h-3.5 w-3.5" />
+  1194→                          </Button>
+  1195→                        </>
+  1196→                      )}
+  1197→                    </>
+  1198→                  )}
+  1199→                  {client.deletedAt && canManage && (
+  1200→                    <>
+  1201→                      <div className="flex-1" />
+  1202→                      <Button size="sm" variant="outline" className="h-7 text-xs" title="Reactivar cliente" onClick={() => handleReactivate(client)}>
+  1203→                        <Eye className="mr-1 h-3 w-3" /> Reactivar
+  1204→                      </Button>
+  1205→                    </>
+  1206→                  )}
+  1207→                </div>
+  1208→              </CardContent>
+  1209→            </Card>
+  1210→            )})}
+  1211→        </div>
+  1212→
+  1213→        {/* Pagination */}
+  1214→        {totalPages > 1 && (
+  1215→          <div className="flex items-center justify-between">
+  1216→            <p className="text-xs text-muted-foreground">
+  1217→              Mostrando {(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, filtered.length)} de {filtered.length}
+  1218→            </p>
+  1219→            <div className="flex items-center gap-1">
+  1220→              <Button
+  1221→                size="sm"
+  1222→                variant="outline"
+  1223→                className="h-8 w-8 p-0"
+  1224→                disabled={currentPage <= 1}
+  1225→                onClick={() => setCurrentPage(1)}
+  1226→              >
+  1227→                «
+  1228→              </Button>
+  1229→              <Button
+  1230→                size="sm"
+  1231→                variant="outline"
+  1232→                className="h-8 w-8 p-0"
+  1233→                disabled={currentPage <= 1}
+  1234→                onClick={() => setCurrentPage(p => p - 1)}
+  1235→              >
+  1236→                <ChevronLeft className="h-4 w-4" />
+  1237→              </Button>
+  1238→              <span className="text-sm font-medium px-2">
+  1239→                {currentPage} / {totalPages}
+  1240→              </span>
+  1241→              <Button
+  1242→                size="sm"
+  1243→                variant="outline"
+  1244→                className="h-8 w-8 p-0"
+  1245→                disabled={currentPage >= totalPages}
+  1246→                onClick={() => setCurrentPage(p => p + 1)}
+  1247→              >
+  1248→                <ChevronRight className="h-4 w-4" />
+  1249→              </Button>
+  1250→              <Button
+  1251→                size="sm"
+  1252→                variant="outline"
+  1253→                className="h-8 w-8 p-0"
+  1254→                disabled={currentPage >= totalPages}
+  1255→                onClick={() => setCurrentPage(totalPages)}
+  1256→              >
+  1257→                »
+  1258→              </Button>
+  1259→            </div>
+  1260→          </div>
+  1261→        )}
+  1262→        </>
+  1263→      )}
+  1264→
+  1265→      {/* Create Client Dialog */}
+  1266→      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+  1267→        <DialogContent>
+  1268→          <DialogHeader>
+  1269→            <DialogTitle>{editingClient ? 'Editar Cliente' : 'Nuevo Cliente'}</DialogTitle>
+  1270→            <DialogDescription>{editingClient ? 'Modifica los datos del cliente' : 'Registra un nuevo cliente en el sistema'}</DialogDescription>
+  1271→          </DialogHeader>
+  1272→          <div className="space-y-4">
+  1273→            <div className="grid grid-cols-2 gap-4">
+  1274→              <div className="space-y-2">
+  1275→                <Label htmlFor="cname">Nombre *</Label>
+  1276→                <Input id="cname" value={formName} onChange={(e) => setFormName(e.target.value)} placeholder="Nombre" />
+  1277→              </div>
+  1278→              {isGym && (
+  1279→              <div className="space-y-2">
+  1280→                <Label htmlFor="clastname">Apellido *</Label>
+  1281→                <Input id="clastname" value={formLastName} onChange={(e) => setFormLastName(e.target.value)} placeholder="Apellido" />
+  1282→              </div>
+  1283→              )}
+  1284→            </div>
+  1285→            {isGym && (
+  1286→            <div className="space-y-2">
+  1287→              <Label htmlFor="ccedula">Cédula</Label>
+  1288→              <Input id="ccedula" value={formCedula} onChange={(e) => setFormCedula(e.target.value)} placeholder="V-00000000" />
+  1289→            </div>
+  1290→            )}
+  1291→            <div className="grid grid-cols-2 gap-4">
+  1292→              <div className="space-y-2">
+  1293→                <Label htmlFor="cphone">Teléfono</Label>
+  1294→                <Input id="cphone" value={formPhone} onChange={(e) => setFormPhone(e.target.value)} placeholder="+58 412-0000000" />
+  1295→              </div>
+  1296→              <div className="space-y-2">
+  1297→                <Label htmlFor="cemail">Email</Label>
+  1298→                <Input id="cemail" type="email" value={formEmail} onChange={(e) => setFormEmail(e.target.value)} placeholder="correo@ejemplo.com" />
+  1299→              </div>
+  1300→            </div>
+  1301→            <div className="space-y-2">
+  1302→              <Label htmlFor="caddress">Dirección</Label>
+  1303→              <Input id="caddress" value={formAddress} onChange={(e) => setFormAddress(e.target.value)} placeholder="Dirección" />
+  1304→            </div>
+  1305→            <div className="space-y-2">
+  1306→              <Label htmlFor="cnote">Notas</Label>
+  1307→              <Input id="cnote" value={formNote} onChange={(e) => setFormNote(e.target.value)} placeholder="Notas internas" />
+  1308→            </div>
+  1309→            {isGym && !editingClient && plans.length > 0 && (
+  1310→              <div className="space-y-2">
+  1311→                <Label>Asignar Plan (opcional)</Label>
+  1312→                <Select value={formPlanId} onValueChange={setFormPlanId}>
+  1313→                  <SelectTrigger>
+  1314→                    <SelectValue placeholder="Sin plan — puedes asignarlo después" />
+  1315→                  </SelectTrigger>
+  1316→                  <SelectContent>
+  1317→                    {plans.map(p => (
+  1318→                      <SelectItem key={p.id} value={p.id}>
+  1319→                        {p.name} — {fmt(p.cost)}
+  1320→                      </SelectItem>
+  1321→                    ))}
+  1322→                  </SelectContent>
+  1323→                </Select>
+  1324→              </div>
+  1325→            )}
+  1326→            <Button className="w-full bg-primary hover:bg-primary/90 text-white" onClick={handleSave} disabled={saving}>
+  1327→              {saving ? 'Cargando métodos...' : editingClient ? 'Actualizar Cliente' : formPlanId ? 'Siguiente — Cobrar Suscripción' : 'Crear Cliente'}
+  1328→            </Button>
+  1329→          </div>
+  1330→        </DialogContent>
+  1331→      </Dialog>
+  1332→
+  1333→      {/* Payment modal on top of create dialog (when plan selected) */}
+  1334→      <Dialog open={showCreatePayment} onOpenChange={(open) => { if (!open) setShowCreatePayment(false) }}>
+  1335→        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+  1336→          <DialogHeader>
+  1337→            <DialogTitle className="flex items-center gap-2">
+  1338→              <CreditCard className="h-5 w-5 text-primary" />
+  1339→              Cobrar Suscripción
+  1340→            </DialogTitle>
+  1341→            <DialogDescription>
+  1342→              {formName}{formLastName ? ` ${formLastName}` : ''} — {plans.find(p => p.id === formPlanId)?.name}
+  1343→            </DialogDescription>
+  1344→          </DialogHeader>
+  1345→
+  1346→          <div className="space-y-4">
+  1347→            {/* Plan cost */}
+  1348→            {formPlanId && (() => {
+  1349→              const selectedPlan = plans.find(p => p.id === formPlanId)
+  1350→              if (!selectedPlan) return null
+  1351→              const showConversion = multiCurrencyEnabled && exchangeRate > 0
+  1352→              return (
+  1353→                <div className="rounded-md bg-primary/5 border border-primary/20 p-3">
+  1354→                  <div className="flex items-center justify-between">
+  1355→                    <div className="flex items-center gap-2">
+  1356→                      <DollarSign className="h-4 w-4 text-primary" />
+  1357→                      <span className="text-sm font-medium">Costo del plan:</span>
+  1358→                    </div>
+  1359→                    <span className="text-lg font-bold text-primary">
+  1360→                      {fmt(selectedPlan.cost)}
+  1361→                    </span>
+  1362→                  </div>
+  1363→                </div>
+  1364→              )
+  1365→            })()}
+  1366→
+  1367→            <Separator />
+  1368→
+  1369→            {/* Payment method selector */}
+  1370→            <div className="space-y-2">
+  1371→              <Label className="flex items-center gap-1.5">
+  1372→                <CreditCard className="h-3.5 w-3.5" />
+  1373→                Método de Pago *
+  1374→              </Label>
+  1375→              {createPaymentMethods.length > 0 ? (
+  1376→                <RadioGroup
+  1377→                  value={createPaymentMethod}
+  1378→                  onValueChange={(v) => { setCreatePaymentMethod(v); setCreatePaymentReference('') }}
+  1379→                  className="grid grid-cols-2 gap-3"
+  1380→                >
+  1381→                  {createPaymentMethods.map((pm) => {
+  1382→                    const Icon = getRenewIcon(pm.icon)
+  1383→                    return (
+  1384→                      <label
+  1385→                        key={pm.code}
+  1386→                        className={`flex cursor-pointer flex-col items-center gap-2 rounded-lg border-2 p-3 transition-colors ${
+  1387→                          createPaymentMethod === pm.code
+  1388→                            ? 'border-primary bg-primary/5 dark:bg-primary/10'
+  1389→                            : 'border-muted hover:border-muted-foreground/30'
+  1390→                        }`}
+  1391→                      >
+  1392→                        <RadioGroupItem value={pm.code} className="sr-only" />
+  1393→                        <Icon className={`h-5 w-5 ${createPaymentMethod === pm.code ? 'text-primary' : 'text-muted-foreground'}`} />
+  1394→                        <span className={`text-xs font-medium ${createPaymentMethod === pm.code ? 'text-primary dark:text-primary' : ''}`}>
+  1395→                          {pm.name}
+  1396→                        </span>
+  1397→                        {pm.isCredit && (
+  1398→                          <span className="text-[9px] text-amber-600 dark:text-amber-400 font-medium">Genera deuda</span>
+  1399→                        )}
+  1400→                      </label>
+  1401→                    )
+  1402→                  })}
+  1403→                </RadioGroup>
+  1404→              ) : (
+  1405→                <p className="text-xs text-center text-muted-foreground py-2">
+  1406→                  No hay métodos de pago activos para suscripciones
+  1407→                </p>
+  1408→              )}
+  1409→            </div>
+  1410→
+  1411→            {/* Reference input */}
+  1412→            {createPaymentMethods.find(m => m.code === createPaymentMethod)?.needsReference && (
+  1413→              <div className="space-y-2 animate-in fade-in slide-in-from-top-2 duration-200">
+  1414→                <Label htmlFor="create-pay-reference">Referencia *</Label>
+  1415→                <Input
+  1416→                  id="create-pay-reference"
+  1417→                  value={createPaymentReference}
+  1418→                  onChange={(e) => setCreatePaymentReference(e.target.value)}
+  1419→                  placeholder="Número de referencia..."
+  1420→                />
+  1421→              </div>
+  1422→            )}
+  1423→
+  1424→            {/* No cash register warning */}
+  1425→            {!openCashRegId && createPaymentMethods.find(m => m.code === createPaymentMethod)?.isCash && (
+  1426→              <div className="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-2.5 text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2">
+  1427→                <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+  1428→                <span>No hay caja abierta. El pago en efectivo no se registrará en caja.</span>
+  1429→              </div>
+  1430→            )}
+  1431→
+  1432→            {/* Credit info */}
+  1433→            {createPaymentMethods.find(m => m.code === createPaymentMethod)?.isCredit && (
+  1434→              <div className="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-2.5 text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2">
+  1435→                <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+  1436→                <span>El pago a crédito generará una cuenta por cobrar para el cliente. No se sumará al saldo de caja.</span>
+  1437→              </div>
+  1438→            )}
+  1439→
+  1440→            {/* Action buttons */}
+  1441→            <div className="flex gap-2">
+  1442→              <Button
+  1443→                variant="outline"
+  1444→                className="flex-1"
+  1445→                onClick={() => setShowCreatePayment(false)}
+  1446→                disabled={creatingAndPaying}
+  1447→              >
+  1448→                Volver
+  1449→              </Button>
+  1450→              <Button
+  1451→                className="flex-1 bg-primary hover:bg-primary/90 text-white"
+  1452→                onClick={handleCreateWithPayment}
+  1453→                disabled={creatingAndPaying || !createPaymentMethod}
+  1454→              >
+  1455→                {creatingAndPaying ? (
+  1456→                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Procesando...</>
+  1457→                ) : (
+  1458→                  <><CheckCircle2 className="mr-2 h-4 w-4" /> Confirmar y Crear</>
+  1459→                )}
+  1460→              </Button>
+  1461→            </div>
+  1462→          </div>
+  1463→        </DialogContent>
+  1464→      </Dialog>
+  1465→
+  1466→      {/* Dispatch Dialog */}
+  1467→      <Dialog open={showDispatchDialog} onOpenChange={setShowDispatchDialog}>
+  1468→        <DialogContent className="sm:max-w-2xl max-h-[80vh]">
+  1469→          <DialogHeader>
+  1470→            <DialogTitle>Despachar a {dispatchClient?.name}</DialogTitle>
+  1471→            <DialogDescription>Selecciona productos y cantidades para despachar</DialogDescription>
+  1472→          </DialogHeader>
+  1473→          <div className="space-y-4 max-h-[60vh] overflow-y-auto">
+  1474→            {/* Product selector */}
+  1475→            <div className="space-y-2">
+  1476→              <Label>Agregar Producto</Label>
+  1477→              <Select onValueChange={(v) => { addDispatchLine(v); }}>
+  1478→                <SelectTrigger>
+  1479→                  <SelectValue placeholder="Seleccionar producto..." />
+  1480→                </SelectTrigger>
+  1481→                <SelectContent>
+  1482→                  {products.map((p) => {
+  1483→                    const branchInv = p.inventories.find(i => i.branchId === selectedBranchId)
+  1484→                    const stock = branchInv?.stock ?? 0
+  1485→                    return (
+  1486→                      <SelectItem key={p.id} value={p.id} disabled={stock <= 0}>
+  1487→                        {p.name} — {p.currency.symbol}{p.price.toFixed(2)} (Stock: {stock})
+  1488→                      </SelectItem>
+  1489→                    )
+  1490→                  })}
+  1491→                </SelectContent>
+  1492→              </Select>
+  1493→            </div>
+  1494→
+  1495→            {/* Lines */}
+  1496→            {dispatchLines.length > 0 ? (
+  1497→              <Card>
+  1498→                <CardHeader className="pb-2">
+  1499→                  <CardTitle className="text-sm">Productos a Despachar</CardTitle>
+  1500→                </CardHeader>
+  1501→                <CardContent>
+  1502→                  <div className="space-y-3">
+  1503→                    {dispatchLines.map((line) => (
+  1504→                      <div key={line.productId} className="flex items-center gap-3">
+  1505→                        <div className="flex-1 min-w-0">
+  1506→                          <p className="text-sm font-medium truncate">{line.productName}</p>
+  1507→                          <p className="text-xs text-muted-foreground">
+  1508→                            {fmt(line.unitPrice)} c/u · Stock: {line.stock}
+  1509→                          </p>
+  1510→                        </div>
+  1511→                        <div className="flex items-center gap-2">
+  1512→                          <Button
+  1513→                            size="sm"
+  1514→                            variant="outline"
+  1515→                            className="h-7 w-7 p-0"
+  1516→                            onClick={() => updateDispatchLineQty(line.productId, line.quantity - 1)}
+  1517→                          >
+  1518→                            -
+  1519→                          </Button>
+  1520→                          <span className="text-sm font-medium w-8 text-center">{line.quantity}</span>
+  1521→                          <Button
+  1522→                            size="sm"
+  1523→                            variant="outline"
+  1524→                            className="h-7 w-7 p-0"
+  1525→                            onClick={() => updateDispatchLineQty(line.productId, line.quantity + 1)}
+  1526→                          >
+  1527→                            +
+  1528→                          </Button>
+  1529→                        </div>
+  1530→                        <div className="text-right w-20">
+  1531→                          <p className="text-sm font-semibold">{fmt(line.unitPrice * line.quantity)}</p>
+  1532→                        </div>
+  1533→                        <Button
+  1534→                          size="sm"
+  1535→                          variant="ghost"
+  1536→                          className="h-7 w-7 p-0 text-red-600"
+  1537→                          onClick={() => setDispatchLines(dispatchLines.filter(l => l.productId !== line.productId))}
+  1538→                        >
+  1539→                          <X className="h-3 w-3" />
+  1540→                        </Button>
+  1541→                      </div>
+  1542→                    ))}
+  1543→
+  1544→                    <div className="flex justify-between items-center pt-2 border-t">
+  1545→                      <span className="text-sm font-medium">Total del Despacho:</span>
+  1546→                      <span className="text-lg font-bold text-primary">{fmt(dispatchTotal)}</span>
+  1547→                    </div>
+  1548→                  </div>
+  1549→                </CardContent>
+  1550→              </Card>
+  1551→            ) : (
+  1552→              <div className="rounded-md border border-dashed p-6 text-center">
+  1553→                <Truck className="mx-auto mb-2 h-8 w-8 text-muted-foreground opacity-50" />
+  1554→                <p className="text-sm text-muted-foreground">Selecciona productos arriba para agregar al despacho</p>
+  1555→              </div>
+  1556→            )}
+  1557→
+  1558→            <div className="rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 p-2 text-xs text-amber-700 dark:text-amber-400">
+  1559→              El despacho genera una venta a credito con vencimiento a 30 dias. El cliente podra pagar la factura desde la opcion &quot;Cobrar&quot;.
+  1560→            </div>
+  1561→
+  1562→            <Button
+  1563→              className="w-full bg-primary hover:bg-primary/90 text-white"
+  1564→              onClick={handleDispatch}
+  1565→              disabled={savingDispatch || dispatchLines.length === 0}
+  1566→            >
+  1567→              {savingDispatch ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Truck className="mr-2 h-4 w-4" />}
+  1568→              {savingDispatch ? 'Procesando...' : `Confirmar Despacho (${fmt(dispatchTotal)})`}
+  1569→            </Button>
+  1570→          </div>
+  1571→        </DialogContent>
+  1572→      </Dialog>
+  1573→
+  1574→      {/* Sales/Dispatch History Dialog */}
+  1575→      <Dialog open={showHistoryDialog} onOpenChange={setShowHistoryDialog}>
+  1576→        <DialogContent className="sm:max-w-2xl max-h-[80vh]">
+  1577→          <DialogHeader>
+  1578→            <DialogTitle>Historial de {historyClient?.name}</DialogTitle>
+  1579→            <DialogDescription>Ventas y despachos realizados a este cliente</DialogDescription>
+  1580→          </DialogHeader>
+  1581→          {loadingHistory ? (
+  1582→            <div className="h-48 rounded-lg bg-muted animate-pulse" />
+  1583→          ) : (
+  1584→            <div className="space-y-4 max-h-[60vh] overflow-y-auto">
+  1585→              {/* Summary */}
+  1586→              <div className="grid grid-cols-2 gap-3">
+  1587→                <Card>
+  1588→                  <CardContent className="p-3 text-center">
+  1589→                    <p className="text-xs text-muted-foreground">Total Ventas</p>
+  1590→                    <p className="text-xl font-bold">{sales.length}</p>
+  1591→                  </CardContent>
+  1592→                </Card>
+  1593→                <Card>
+  1594→                  <CardContent className="p-3 text-center">
+  1595→                    <p className="text-xs text-muted-foreground">Total Comprado</p>
+  1596→                    <p className="text-xl font-bold">
+  1597→                      {fmt(sales.reduce((s, sale) => s + sale.total, 0))}
+  1598→                    </p>
+  1599→                  </CardContent>
+  1600→                </Card>
+  1601→              </div>
+  1602→
+  1603→              <Card>
+  1604→                <CardHeader className="pb-2">
+  1605→                  <CardTitle className="text-sm">Detalle de Ventas</CardTitle>
+  1606→                </CardHeader>
+  1607→                <CardContent className="p-0">
+  1608→                  {sales.length === 0 ? (
+  1609→                    <p className="text-sm text-muted-foreground p-4 text-center">Sin ventas registradas</p>
+  1610→                  ) : (
+  1611→                    <div className="overflow-x-auto">
+  1612→                      <Table>
+  1613→                        <TableHeader>
+  1614→                          <TableRow>
+  1615→                            <TableHead>N° Factura</TableHead>
+  1616→                            <TableHead>Fecha</TableHead>
+  1617→                            <TableHead className="hidden md:table-cell">Productos</TableHead>
+  1618→                            <TableHead className="text-right">Total</TableHead>
+  1619→                            <TableHead className="hidden lg:table-cell">Método</TableHead>
+  1620→                            <TableHead>Estado</TableHead>
+  1621→                            <TableHead className="w-10"></TableHead>
+  1622→                          </TableRow>
+  1623→                        </TableHeader>
+  1624→                        <TableBody>
+  1625→                          {sales.map((sale) => {
+  1626→                            const isCredit = sale.payments.some(p => {
+  1627→                              const pm = paymentMethods.find(m => m.code === p.method)
+  1628→                              return pm?.isCredit
+  1629→                            }) || sale.receivables.some(r => r.status === 'pendiente')
+  1630→                            return (
+  1631→                              <TableRow key={sale.id}>
+  1632→                                <TableCell className="text-xs font-mono whitespace-nowrap">
+  1633→                                  {sale.id.slice(0, 8)}
+  1634→                                </TableCell>
+  1635→                                <TableCell className="text-xs whitespace-nowrap pr-4">
+  1636→                                  {new Date(sale.date).toLocaleDateString('es-VE')}
+  1637→                                </TableCell>
+  1638→                                <TableCell className="hidden md:table-cell">
+  1639→                                  <Button
+  1640→                                    size="sm"
+  1641→                                    variant="ghost"
+  1642→                                    className="h-6 px-2 text-xs text-muted-foreground hover:text-primary gap-1"
+  1643→                                    title="Ver productos"
+  1644→                                    onClick={() => setDetailSale(sale)}
+  1645→                                  >
+  1646→                                    <Eye className="h-3 w-3" />
+  1647→                                    {sale.lines.length}
+  1648→                                  </Button>
+  1649→                                </TableCell>
+  1650→                                <TableCell className="text-sm font-medium text-right whitespace-nowrap">
+  1651→                                  {fmt(sale.total)}
+  1652→                                </TableCell>
+  1653→                                <TableCell className="text-xs hidden lg:table-cell">
+  1654→                                  {sale.payments.map(p => p.method).join(', ') || '—'}
+  1655→                                </TableCell>
+  1656→                                <TableCell>
+  1657→                                  {isCredit ? (
+  1658→                                    <Badge variant="outline" className="text-amber-600 border-amber-300">
+  1659→                                      {sale.receivables[0]?.pendingBalance > 0
+  1660→                                        ? `Pendiente: ${fmt(sale.receivables[0].pendingBalance)}`
+  1661→                                        : 'Credito'}
+  1662→                                    </Badge>
+  1663→                                  ) : (
+  1664→                                    <Badge variant={sale.status === 'completada' ? 'default' : 'secondary'}>
+  1665→                                      {sale.status}
+  1666→                                    </Badge>
+  1667→                                  )}
+  1668→                                </TableCell>
+  1669→                                <TableCell>
+  1670→                                  <Button
+  1671→                                    size="sm"
+  1672→                                    variant="ghost"
+  1673→                                    className="h-7 w-7 p-0"
+  1674→                                    title="Imprimir Factura"
+  1675→                                    onClick={async () => {
+  1676→                                      try {
+  1677→                                        const res = await fetch(`/api/sales/${sale.id}/invoice`)
+  1678→                                        if (!res.ok) throw new Error()
+  1679→                                        const blob = await res.blob()
+  1680→                                        const url = URL.createObjectURL(blob)
+  1681→                                        const a = document.createElement('a')
+  1682→                                        a.href = url
+  1683→                                        a.download = `factura_${sale.id.slice(0, 8)}.pdf`
+  1684→                                        a.click()
+  1685→                                        URL.revokeObjectURL(url)
+  1686→                                      } catch {
+  1687→                                        toast.error('Error al generar factura')
+  1688→                                      }
+  1689→                                    }}
+  1690→                                  >
+  1691→                                    <Printer className="h-3.5 w-3.5" />
+  1692→                                  </Button>
+  1693→                                </TableCell>
+  1694→                              </TableRow>
+  1695→                            )
+  1696→                          })}
+  1697→                        </TableBody>
+  1698→                      </Table>
+  1699→                    </div>
+  1700→                  )}
+  1701→                </CardContent>
+  1702→              </Card>
+  1703→
+  1704→              {/* Pagos Realizados */}
+  1705→              <Card>
+  1706→                <CardHeader className="pb-2">
+  1707→                  <CardTitle className="text-sm flex items-center gap-2">
+  1708→                    <DollarSign className="h-4 w-4 text-emerald-600" />
+  1709→                    Pagos Realizados
+  1710→                  </CardTitle>
+  1711→                </CardHeader>
+  1712→                <CardContent className="p-0">
+  1713→                  {loadingPayments ? (
+  1714→                    <div className="h-24 rounded-lg bg-muted animate-pulse m-4" />
+  1715→                  ) : clientPayments.length === 0 ? (
+  1716→                    <p className="text-sm text-muted-foreground p-4 text-center">Sin pagos registrados</p>
+  1717→                  ) : (
+  1718→                    <div className="overflow-x-auto">
+  1719→                      <Table>
+  1720→                        <TableHeader>
+  1721→                          <TableRow>
+  1722→                            <TableHead>Fecha</TableHead>
+  1723→                            <TableHead>Monto</TableHead>
+  1724→                            <TableHead className="hidden md:table-cell">Método</TableHead>
+  1725→                            <TableHead className="hidden md:table-cell">Referencia</TableHead>
+  1726→                            <TableHead className="hidden lg:table-cell">Registró</TableHead>
+  1727→                            <TableHead>Concepto</TableHead>
+  1728→                            {canManage && <TableHead className="w-10"></TableHead>}
+  1729→                          </TableRow>
+  1730→                        </TableHeader>
+  1731→                        <TableBody>
+  1732→                          {clientPayments.map((payment) => {
+  1733→                            const saleProducts = payment.receivable.sale.lines
+  1734→                              .map(l => l.product.name)
+  1735→                              .join(', ')
+  1736→                            return (
+  1737→                              <TableRow key={payment.id}>
+  1738→                                <TableCell className="text-xs whitespace-nowrap">
+  1739→                                  {new Date(payment.createdAt).toLocaleDateString('es-VE')}
+  1740→                                </TableCell>
+  1741→                                <TableCell className="text-sm font-medium text-emerald-600 whitespace-nowrap">
+  1742→                                  {fmt(payment.amount)}
+  1743→                                </TableCell>
+  1744→                                <TableCell className="text-xs hidden md:table-cell">
+  1745→                                  {payment.method}
+  1746→                                </TableCell>
+  1747→                                <TableCell className="text-xs hidden md:table-cell">
+  1748→                                  {payment.reference || '—'}
+  1749→                                </TableCell>
+  1750→                                <TableCell className="text-xs hidden lg:table-cell">
+  1751→                                  {payment.user.name}
+  1752→                                </TableCell>
+  1753→                                <TableCell className="text-xs text-muted-foreground max-w-[150px] truncate" title={saleProducts}>
+  1754→                                  {saleProducts || `Factura ${payment.receivable.saleId.slice(0, 8)}`}
+  1755→                                </TableCell>
+  1756→                                {canManage && (
+  1757→                                  <TableCell>
+  1758→                                    <Button
+  1759→                                      size="sm"
+  1760→                                      variant="ghost"
+  1761→                                      className="h-7 w-7 p-0 text-red-400 hover:text-red-600"
+  1762→                                      title="Eliminar pago y restaurar deuda"
+  1763→                                      disabled={deletingPaymentId === payment.id}
+  1764→                                      onClick={() => handleDeletePayment(payment.id, payment.amount)}
+  1765→                                    >
+  1766→                                      {deletingPaymentId === payment.id
+  1767→                                        ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+  1768→                                        : <Trash2 className="h-3.5 w-3.5" />
+  1769→                                      }
+  1770→                                    </Button>
+  1771→                                  </TableCell>
+  1772→                                )}
+  1773→                              </TableRow>
+  1774→                            )
+  1775→                          })}
+  1776→                        </TableBody>
+  1777→                      </Table>
+  1778→                    </div>
+  1779→                  )}
+  1780→                </CardContent>
+  1781→              </Card>
+  1782→            </div>
+  1783→          )}
+  1784→        </DialogContent>
+  1785→      </Dialog>
+  1786→
+  1787→      {/* Sale Lines Detail Modal */}
+  1788→      <Dialog open={!!detailSale} onOpenChange={(open) => { if (!open) setDetailSale(null) }}>
+  1789→        <DialogContent className="sm:max-w-lg">
+  1790→          <DialogHeader>
+  1791→            <DialogTitle className="text-base flex items-center gap-2">
+  1792→              <Receipt className="h-4 w-4" />
+  1793→              Productos — Factura {detailSale?.id.slice(0, 8)}
+  1794→            </DialogTitle>
+  1795→            <DialogDescription>
+  1796→              {detailSale ? new Date(detailSale.date).toLocaleDateString('es-VE', { day: '2-digit', month: 'long', year: 'numeric' }) : ''}
+  1797→            </DialogDescription>
+  1798→          </DialogHeader>
+  1799→          {detailSale && (
+  1800→            <div className="space-y-3">
+  1801→              <div className="rounded-md border">
+  1802→                <Table>
+  1803→                  <TableHeader>
+  1804→                    <TableRow>
+  1805→                      <TableHead>Producto</TableHead>
+  1806→                      <TableHead className="text-center">Cant.</TableHead>
+  1807→                      <TableHead className="text-right">Precio</TableHead>
+  1808→                      <TableHead className="text-right">Subtotal</TableHead>
+  1809→                    </TableRow>
+  1810→                  </TableHeader>
+  1811→                  <TableBody>
+  1812→                    {detailSale.lines.map((line, i) => (
+  1813→                      <TableRow key={i}>
+  1814→                        <TableCell className="text-sm font-medium">{line.product.name}</TableCell>
+  1815→                        <TableCell className="text-sm text-center">{line.quantity}</TableCell>
+  1816→                        <TableCell className="text-sm text-right">{fmt(line.unitPrice)}</TableCell>
+  1817→                        <TableCell className="text-sm text-right font-medium">{fmt(line.lineTotal)}</TableCell>
+  1818→                      </TableRow>
+  1819→                    ))}
+  1820→                  </TableBody>
+  1821→                </Table>
+  1822→              </div>
+  1823→              <div className="flex items-center justify-between px-1">
+  1824→                <span className="text-sm text-muted-foreground">
+  1825→                  {detailSale.lines.length} producto{detailSale.lines.length !== 1 ? 's' : ''}
+  1826→                </span>
+  1827→                <span className="text-base font-bold">
+  1828→                  Total: {fmt(detailSale.total)}
+  1829→                </span>
+  1830→              </div>
+  1831→              {detailSale.receivables.length > 0 && detailSale.receivables[0].pendingBalance > 0 && (
+  1832→                <div className="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-2 text-xs text-amber-700 dark:text-amber-400">
+  1833→                  Saldo pendiente: {fmt(detailSale.receivables[0].pendingBalance)}
+  1834→                  {detailSale.receivables[0].dueDate && ` — Vence: ${new Date(detailSale.receivables[0].dueDate).toLocaleDateString('es-VE')}`}
+  1835→                </div>
+  1836→              )}
+  1837→            </div>
+  1838→          )}
+  1839→        </DialogContent>
+  1840→      </Dialog>
+  1841→
+  1842→      {/* Payment Dialog — POS-style */}
+  1843→      <Dialog open={showPaymentDialog} onOpenChange={setShowPaymentDialog}>
+  1844→        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+  1845→          <DialogHeader>
+  1846→            <DialogTitle>Cobrar</DialogTitle>
+  1847→            <DialogDescription>
+  1848→              Deuda pendiente: <span className="text-red-600 font-medium">{paymentClient ? fmt(paymentClient.pendingBalance) : ''}</span>
+  1849→            </DialogDescription>
+  1850→          </DialogHeader>
+  1851→          <div className="space-y-4">
+  1852→            {paymentClient && (
+  1853→              <div className="rounded-md bg-muted p-3 space-y-1 text-sm">
+  1854→                <div className="flex justify-between">
+  1855→                  <span className="text-muted-foreground">Cliente:</span>
+  1856→                  <span className="font-medium">{paymentClient.name}{paymentClient.lastName ? ` ${paymentClient.lastName}` : ''}</span>
+  1857→                </div>
+  1858→              </div>
+  1859→            )}
+  1860→
+  1861→            {!openCashRegId && (
+  1862→              <div className="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-2 text-xs text-amber-700 dark:text-amber-400">
+  1863→                No hay caja abierta. Las ventas no se asociarán a un registro de caja.
+  1864→              </div>
+  1865→            )}
+  1866→
+  1867→            {/* Method Selection — POS RadioGroup style */}
+  1868→            <RadioGroup value={paymentMethod} onValueChange={handlePaymentMethodChange} className="grid grid-cols-2 gap-3">
+  1869→              {paymentMethods.filter(m => !m.isCredit).map((pm) => {
+  1870→                const Icon = getRenewIcon(pm.icon)
+  1871→                return (
+  1872→                  <label
+  1873→                    key={pm.code}
+  1874→                    className={`flex cursor-pointer flex-col items-center gap-2 rounded-lg border-2 p-3 transition-colors ${
+  1875→                      paymentMethod === pm.code
+  1876→                        ? 'border-primary bg-primary/5 dark:bg-primary/10'
+  1877→                        : 'border-muted hover:border-muted-foreground/30'
+  1878→                    }`}
+  1879→                  >
+  1880→                    <RadioGroupItem value={pm.code} className="sr-only" />
+  1881→                    <Icon className={`h-5 w-5 ${paymentMethod === pm.code ? 'text-primary' : 'text-muted-foreground'}`} />
+  1882→                    <span className={`text-xs font-medium ${paymentMethod === pm.code ? 'text-primary dark:text-primary' : ''}`}>
+  1883→                      {pm.name}
+  1884→                    </span>
+  1885→                  </label>
+  1886→                )
+  1887→              })}
+  1888→            </RadioGroup>
+  1889→
+  1890→            {paymentMethods.filter(m => !m.isCredit).length === 0 && (
+  1891→              <p className="text-xs text-center text-muted-foreground py-2">
+  1892→                No hay métodos de pago disponibles (se excluyen métodos de crédito)
+  1893→              </p>
+  1894→            )}
+  1895→
+  1896→            <Separator />
+  1897→
+  1898→            {/* Amount */}
+  1899→            <div className="space-y-2">
+  1900→              <Label htmlFor="cpaymentAmt">{isLocalMethod ? `Monto (${baseSym})` : 'Monto'}</Label>
+  1901→              <Input
+  1902→                id="cpaymentAmt"
+  1903→                type="number"
+  1904→                step="0.01"
+  1905→                min="0"
+  1906→                value={paymentAmount}
+  1907→                onChange={(e) => setPaymentAmount(e.target.value)}
+  1908→                placeholder="0.00"
+  1909→              />
+  1910→              {multiCurrencyEnabled && isLocalMethod && exchangeRate > 0 && (
+  1911→                <p className="text-xs text-muted-foreground">
+  1912→                  Equivale a {currencySymbol}{paymentAmountInRef.toFixed(2)} (Tasa: {exchangeRate.toFixed(2)} {baseSym}/{refCode})
+  1913→                </p>
+  1914→              )}
+  1915→              <p className="text-xs text-muted-foreground">
+  1916→                Saldo después del cobro: {fmt((paymentClient?.pendingBalance || 0) - paymentAmountInRef)}
+  1917→              </p>
+  1918→            </div>
+  1919→
+  1920→            {/* Reference */}
+  1921→            {selectedPm?.needsReference && (
+  1922→              <div className="space-y-2">
+  1923→                <Label htmlFor="cpaymentRef">Referencia</Label>
+  1924→                <Input
+  1925→                  id="cpaymentRef"
+  1926→                  value={paymentReference}
+  1927→                  onChange={(e) => setPaymentReference(e.target.value)}
+  1928→                  placeholder="Número de referencia"
+  1929→                />
+  1930→              </div>
+  1931→            )}
+  1932→
+  1933→            {selectedPm?.isCash && !openCashRegId && (
+  1934→              <div className="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-3 text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2">
+  1935→                <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+  1936→                <div>
+  1937→                  <p className="font-semibold">No hay caja registradora abierta</p>
+  1938→                  <p>Debe abrir una caja antes de registrar pagos en efectivo. El cobro no quedará registrado como entrada de caja.</p>
+  1939→                </div>
+  1940→              </div>
+  1941→            )}
+  1942→
+  1943→            <Button
+  1944→              className="w-full bg-primary hover:bg-primary/90 text-white"
+  1945→              size="lg"
+  1946→              onClick={handlePayment}
+  1947→              disabled={paying || !parseFloat(paymentAmount) || parseFloat(paymentAmount) <= 0 || !paymentMethod}
+  1948→            >
+  1949→              {paying ? (
+  1950→                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Procesando...</>
+  1951→              ) : (
+  1952→                <>Confirmar Pago {isLocalMethod ? baseSym : currencySymbol}{parseFloat(paymentAmount || '0').toFixed(2)}</>
+  1953→              )}
+  1954→            </Button>
+  1955→          </div>
+  1956→        </DialogContent>
+  1957→      </Dialog>
+  1958→
+  1959→      {/* Renew Subscription Dialog — POS-style payment */}
+  1960→      <Dialog open={showRenewDialog} onOpenChange={(open) => { if (!open) { setShowRenewDialog(false); setRenewSuccess(false) } }}>
+  1961→        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+  1962→          <DialogHeader>
+  1963→            <DialogTitle className="flex items-center gap-2">
+  1964→              <RefreshCw className="h-5 w-5 text-emerald-600" />
+  1965→              Renovar Suscripción
+  1966→            </DialogTitle>
+  1967→            <DialogDescription>
+  1968→              {renewClient?.name}{renewClient?.lastName ? ` ${renewClient.lastName}` : ''}
+  1969→            </DialogDescription>
+  1970→          </DialogHeader>
+  1971→
+  1972→          {renewSuccess ? (
+  1973→            <div className="flex flex-col items-center justify-center gap-4 py-8">
+  1974→              <div className="rounded-full bg-emerald-100 dark:bg-emerald-950/30 p-4">
+  1975→                <CheckCircle2 className="h-12 w-12 text-emerald-600" />
+  1976→              </div>
+  1977→              <h3 className="text-xl font-bold text-emerald-700 dark:text-emerald-400">¡Suscripción Renovada!</h3>
+  1978→              <p className="text-sm text-muted-foreground">Cerrando automáticamente...</p>
+  1979→            </div>
+  1980→          ) : (
+  1981→            <div className="space-y-4">
+  1982→              {/* Current membership info */}
+  1983→              {renewClient?.membership && (
+  1984→                <div className="rounded-md bg-muted p-3 space-y-1 text-sm">
+  1985→                  <div className="flex justify-between">
+  1986→                    <span className="text-muted-foreground">Estado actual:</span>
+  1987→                    <Badge className={`text-[10px] ${
+  1988→                      renewClient.membership.status === 'Activo'
+  1989→                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400'
+  1990→                        : 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400'
+  1991→                    }`}>
+  1992→                      {renewClient.membership.status === 'Activo' ? 'Activo' : 'Vencido'}
+  1993→                    </Badge>
+  1994→                  </div>
+  1995→                  {renewClient.membership.tarifa && (
+  1996→                    <div className="flex justify-between">
+  1997→                      <span className="text-muted-foreground">Plan actual:</span>
+  1998→                      <span className="font-medium">{renewClient.membership.tarifa}</span>
+  1999→                    </div>
+  2000→                  )}
+
+[showing lines 1-2000 of 2315; use offset=2001 with limit to continue reading]

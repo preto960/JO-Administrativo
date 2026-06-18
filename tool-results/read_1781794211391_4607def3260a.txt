@@ -1,0 +1,881 @@
+     1→import jsPDF from 'jspdf'
+     2→import autoTable from 'jspdf-autotable'
+     3→import type { Prisma } from '@prisma/client'
+     4→
+     5→// ─── Types ────────────────────────────────────────────────────────────────────
+     6→
+     7→export interface SaleDetail {
+     8→  id: string
+     9→  date: Date
+    10→  clientName: string | null
+    11→  total: number
+    12→  lines: {
+    13→    productName: string
+    14→    quantity: number
+    15→    unitPrice: number
+    16→    lineTotal: number
+    17→  }[]
+    18→  payments: {
+    19→    method: string
+    20→    amount: number
+    21→    currencyCode: string
+    22→    reference: string | null
+    23→  }[]
+    24→}
+    25→
+    26→export interface CashCloseReport {
+    27→  businessName: string
+    28→  businessRif: string
+    29→  businessAddress: string
+    30→  businessPhone: string
+    31→  registerId: string
+    32→  registerName: string | null
+    33→  branchName: string
+    34→  cashierName: string
+    35→  openingDate: Date
+    36→  closingDate: Date
+    37→  initialAmt: number
+    38→  totalSales: number
+    39→  totalExpenses: number
+    40→  totalEntries: number
+    41→  totalRetiros: number
+    42→  expected: number
+    43→  actual: number
+    44→  difference: number
+    45→  sales: SaleDetail[]
+    46→  expenses: { concept: string; amount: number; date: Date }[]
+    47→  entries: { concept: string; amount: number; date: Date }[]
+    48→  exchangeRate: number
+    49→  referenceCurrency: string
+    50→  ivaEnabled: boolean
+    51→  ivaRate: number
+    52→}
+    53→
+    54→// ─── Colors ───────────────────────────────────────────────────────────────────
+    55→
+    56→const C = {
+    57→  primary: [30, 64, 175] as [number, number, number],
+    58→  primaryLight: [59, 130, 246] as [number, number, number],
+    59→  green: [22, 163, 74] as [number, number, number],
+    60→  red: [220, 38, 38] as [number, number, number],
+    61→  amber: [180, 83, 9] as [number, number, number],
+    62→  gray: [107, 114, 128] as [number, number, number],
+    63→  grayLight: [243, 244, 246] as [number, number, number],
+    64→  grayMedium: [229, 231, 235] as [number, number, number],
+    65→  dark: [17, 24, 39] as [number, number, number],
+    66→  white: [255, 255, 255] as [number, number, number],
+    67→  blueBg: [224, 231, 255] as [number, number, number],
+    68→  yellowBg: [255, 251, 235] as [number, number, number],
+    69→}
+    70→
+    71→// ─── Helpers ──────────────────────────────────────────────────────────────────
+    72→
+    73→function fmt(amount: number, decimals = 2): string {
+    74→  return amount.toLocaleString('es-VE', {
+    75→    minimumFractionDigits: decimals,
+    76→    maximumFractionDigits: decimals,
+    77→  })
+    78→}
+    79→
+    80→function fmtDate(d: Date): string {
+    81→  return d.toLocaleString('es-VE', {
+    82→    day: '2-digit',
+    83→    month: '2-digit',
+    84→    year: 'numeric',
+    85→    hour: '2-digit',
+    86→    minute: '2-digit',
+    87→    second: '2-digit',
+    88→  })
+    89→}
+    90→
+    91→function fmtDateShort(d: Date): string {
+    92→  return d.toLocaleString('es-VE', {
+    93→    day: '2-digit',
+    94→    month: '2-digit',
+    95→    hour: '2-digit',
+    96→    minute: '2-digit',
+    97→  })
+    98→}
+    99→
+   100→function cs(refCurrency: string): string {
+   101→  return refCurrency === 'EUR' ? '\u20ac' : '$'
+   102→}
+   103→
+   104→// ─── Drawing helpers ──────────────────────────────────────────────────────────
+   105→
+   106→/**
+   107→ * Draws the clean header bar: "Cierre de Caja" title on a blue background.
+   108→ * No logos, no images, no business info band.
+   109→ */
+   110→function drawHeader(doc: jsPDF): number {
+   111→  const pw = doc.internal.pageSize.getWidth()
+   112→
+   113→  doc.setFillColor(...C.primary)
+   114→  doc.rect(0, 0, pw, 40, 'F')
+   115→
+   116→  doc.setFontSize(16)
+   117→  doc.setTextColor(...C.white)
+   118→  doc.setFont('helvetica', 'bold')
+   119→  doc.text('Cierre de Caja', pw / 2, 27, { align: 'center' })
+   120→
+   121→  return 52 // y position after header
+   122→}
+   123→
+   124→/**
+   125→ * Info card: Cajero, Caja, Sucursal, Apertura, Cierre
+   126→ */
+   127→function drawInfoCard(doc: jsPDF, report: CashCloseReport, startY: number): number {
+   128→  const pw = doc.internal.pageSize.getWidth()
+   129→  const margin = 36
+   130→  const cardW = pw - margin * 2
+   131→  let y = startY
+   132→
+   133→  autoTable(doc, {
+   134→    startY: y,
+   135→    theme: 'grid',
+   136→    margin: { left: margin, right: margin },
+   137→    body: [
+   138→      [
+   139→        { content: 'Cajero:', styles: { fontStyle: 'bold', textColor: C.gray, cellPadding: 5 } },
+   140→        { content: report.cashierName, styles: { textColor: C.dark, cellPadding: 5 } },
+   141→        { content: 'Sucursal:', styles: { fontStyle: 'bold', textColor: C.gray, cellPadding: 5 } },
+   142→        { content: report.branchName, styles: { textColor: C.dark, cellPadding: 5 } },
+   143→      ],
+   144→      [
+   145→        { content: 'Caja:', styles: { fontStyle: 'bold', textColor: C.gray, cellPadding: 5 } },
+   146→        { content: report.registerName || 'Sin nombre', styles: { textColor: C.dark, cellPadding: 5 } },
+   147→        { content: 'Cierre:', styles: { fontStyle: 'bold', textColor: C.gray, cellPadding: 5 } },
+   148→        { content: fmtDate(report.closingDate), styles: { textColor: C.dark, cellPadding: 5 } },
+   149→      ],
+   150→    ],
+   151→    styles: {
+   152→      fillColor: [248, 250, 252],
+   153→      lineWidth: 0.3,
+   154→      lineColor: C.grayMedium,
+   155→      fontSize: 9,
+   156→    },
+   157→    columnStyles: {
+   158→      0: { cellWidth: 'auto' },
+   159→      1: { cellWidth: '35%' },
+   160→      2: { cellWidth: 'auto' },
+   161→      3: { cellWidth: '35%' },
+   162→    },
+   163→  })
+   164→
+   165→  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   166→  return (doc as any).lastAutoTable.finalY + 14
+   167→}
+   168→
+   169→/**
+   170→ * Financial summary: clean table with all breakdown rows + total en caja + Bs conversion
+   171→ */
+   172→function drawFinancialSummary(doc: jsPDF, report: CashCloseReport, startY: number): number {
+   173→  const symbol = cs(report.referenceCurrency)
+   174→  let y = startY
+   175→
+   176→  // Section title
+   177→  doc.setFontSize(11)
+   178→  doc.setTextColor(...C.primary)
+   179→  doc.setFont('helvetica', 'bold')
+   180→  doc.text('Resumen Financiero', 36, y)
+   181→  y += 4
+   182→
+   183→  // Build rows
+   184→  const summaryBody: any[][] = [
+   185→    [
+   186→      { content: 'Monto Inicial', styles: { textColor: C.dark, cellPadding: { top: 6, bottom: 6 } } },
+   187→      { content: `${symbol}${fmt(report.initialAmt)}`, styles: { halign: 'right', fontStyle: 'bold', textColor: C.dark, cellPadding: { top: 6, bottom: 6 } } },
+   188→    ],
+   189→    [
+   190→      { content: '+ Total Ventas (efectivo)', styles: { textColor: C.green, cellPadding: { top: 4, bottom: 4 } } },
+   191→      { content: `+${symbol}${fmt(report.totalSales)}`, styles: { halign: 'right', fontStyle: 'bold', textColor: C.green, cellPadding: { top: 4, bottom: 4 } } },
+   192→    ],
+   193→  ]
+   194→
+   195→  // IVA row
+   196→  if (report.ivaEnabled && report.ivaRate > 0) {
+   197→    const ivaAmount = report.totalSales * (report.ivaRate / 100)
+   198→    summaryBody.push([
+   199→      { content: `+ I.V.A. Recaudado (${report.ivaRate}%)`, styles: { textColor: C.primaryLight, cellPadding: { top: 4, bottom: 4 } } },
+   200→      { content: `+${symbol}${fmt(ivaAmount)}`, styles: { halign: 'right', fontStyle: 'bold', textColor: C.primaryLight, cellPadding: { top: 4, bottom: 4 } } },
+   201→    ])
+   202→  }
+   203→
+   204→  // Expenses
+   205→  if (report.totalExpenses > 0) {
+   206→    summaryBody.push([
+   207→      { content: '- Total Gastos', styles: { textColor: C.red, cellPadding: { top: 4, bottom: 4 } } },
+   208→      { content: `-${symbol}${fmt(report.totalExpenses)}`, styles: { halign: 'right', fontStyle: 'bold', textColor: C.red, cellPadding: { top: 4, bottom: 4 } } },
+   209→    ])
+   210→  }
+   211→
+   212→  // Entries
+   213→  if (report.totalEntries > 0) {
+   214→    summaryBody.push([
+   215→      { content: '+ Entradas de Efectivo', styles: { textColor: C.green, cellPadding: { top: 4, bottom: 4 } } },
+   216→      { content: `+${symbol}${fmt(report.totalEntries)}`, styles: { halign: 'right', fontStyle: 'bold', textColor: C.green, cellPadding: { top: 4, bottom: 4 } } },
+   217→    ])
+   218→  }
+   219→
+   220→  // Retiros
+   221→  if (report.totalRetiros > 0) {
+   222→    summaryBody.push([
+   223→      { content: '- Retiros de Excedente', styles: { textColor: C.red, cellPadding: { top: 4, bottom: 4 } } },
+   224→      { content: `-${symbol}${fmt(report.totalRetiros)}`, styles: { halign: 'right', fontStyle: 'bold', textColor: C.red, cellPadding: { top: 4, bottom: 4 } } },
+   225→    ])
+   226→  }
+   227→
+   228→  // Separator + Total en Caja
+   229→  summaryBody.push([
+   230→    { content: '', styles: { cellPadding: { top: 1, bottom: 1 } } },
+   231→    { content: '', styles: { cellPadding: { top: 1, bottom: 1 } } },
+   232→  ])
+   233→  summaryBody.push([
+   234→    { content: 'Total en Caja', styles: { fontStyle: 'bold', textColor: C.dark, cellPadding: { top: 8, bottom: 8 } } },
+   235→    { content: `${symbol}${fmt(report.actual)}`, styles: { halign: 'right', fontStyle: 'bold', textColor: C.primary, fontSize: 11, cellPadding: { top: 8, bottom: 8 } } },
+   236→  ])
+   237→
+   238→  autoTable(doc, {
+   239→    startY: y,
+   240→    theme: 'plain',
+   241→    margin: { left: 36, right: 36 },
+   242→    body: summaryBody,
+   243→    columnStyles: {
+   244→      0: { cellWidth: '70%' },
+   245→      1: { cellWidth: '30%' },
+   246→    },
+   247→    didParseCell: (data) => {
+   248→      if (data.section === 'body') {
+   249→        const rowIdx = data.row.index
+   250→        // Separator row - draw a line via top/bottom border
+   251→        if (summaryBody[rowIdx][0].content === '') {
+   252→          data.cell.styles.cellPadding = { top: 0, bottom: 0, left: 0, right: 0 }
+   253→          data.cell.styles.lineWidth = 0.5
+   254→          data.cell.styles.lineColor = C.grayMedium
+   255→          data.cell.styles.borders = { top: { width: 0.5, color: C.grayMedium }, bottom: { width: 0.5, color: C.grayMedium }, left: { width: 0 }, right: { width: 0 } }
+   256→        }
+   257→        // Total row highlight
+   258→        if (rowIdx === summaryBody.length - 1) {
+   259→          data.cell.styles.fillColor = C.blueBg
+   260→        }
+   261→      }
+   262→    },
+   263→  })
+   264→
+   265→  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   266→  y = (doc as any).lastAutoTable.finalY + 8
+   267→
+   268→  // Exchange rate + Bs conversion
+   269→  if (report.exchangeRate > 0) {
+   270→    const totalBs = report.actual * report.exchangeRate
+   271→    const pw = doc.internal.pageSize.getWidth()
+   272→
+   273→    // Exchange rate info
+   274→    doc.setFontSize(8)
+   275→    doc.setTextColor(...C.gray)
+   276→    doc.setFont('helvetica', 'normal')
+   277→    doc.text(`Tasa de cambio: 1 ${report.referenceCurrency} = ${fmt(report.exchangeRate)} Bs  |  Total en caja: ${fmt(totalBs, 2)} Bs`, pw / 2, y + 6, { align: 'center' })
+   278→
+   279→    y += 18
+   280→  }
+   281→
+   282→  return y
+   283→}
+   284→
+   285→function drawPaymentMethods(doc: jsPDF, report: CashCloseReport, startY: number): number {
+   286→  const symbol = cs(report.referenceCurrency)
+   287→  const paymentMap = new Map<string, { amount: number; count: number }>()
+   288→  let totalAllPayments = 0
+   289→
+   290→  for (const sale of report.sales) {
+   291→    for (const p of sale.payments) {
+   292→      const key = p.method
+   293→      const current = paymentMap.get(key) || { amount: 0, count: 0 }
+   294→      current.amount += p.amount
+   295→      current.count++
+   296→      paymentMap.set(key, current)
+   297→      totalAllPayments += p.amount
+   298→    }
+   299→  }
+   300→
+   301→  if (paymentMap.size === 0) return startY
+   302→
+   303→  let y = startY
+   304→
+   305→  doc.setFontSize(11)
+   306→  doc.setTextColor(...C.primary)
+   307→  doc.setFont('helvetica', 'bold')
+   308→  doc.text('Desglose por Metodo de Pago', 36, y)
+   309→  y += 4
+   310→
+   311→  const bodyRows = Array.from(paymentMap.entries()).map(([method, data]) => [
+   312→    method.charAt(0).toUpperCase() + method.slice(1),
+   313→    String(data.count),
+   314→    `${symbol}${fmt(data.amount)}`,
+   315→  ])
+   316→
+   317→  bodyRows.push(['TOTAL', String(bodyRows.reduce((s, r) => s + parseInt(r[1]), 0)), `${symbol}${fmt(totalAllPayments)}`])
+   318→
+   319→  autoTable(doc, {
+   320→    startY: y,
+   321→    theme: 'grid',
+   322→    margin: { left: 36, right: 36 },
+   323→    head: [['Metodo', 'Cantidad', 'Monto Total']],
+   324→    body: bodyRows,
+   325→    styles: {
+   326→      fontSize: 9,
+   327→      cellPadding: 3,
+   328→    },
+   329→    headStyles: {
+   330→      fillColor: C.primary,
+   331→      textColor: C.white,
+   332→      fontStyle: 'bold',
+   333→    },
+   334→    columnStyles: {
+   335→      0: { fontStyle: 'normal' },
+   336→      1: { halign: 'center' },
+   337→      2: { halign: 'right', fontStyle: 'bold' },
+   338→    },
+   339→    didParseCell: (data) => {
+   340→      if (data.section === 'body' && data.row.index === bodyRows.length - 1) {
+   341→        data.cell.styles.fillColor = C.blueBg
+   342→        data.cell.styles.fontStyle = 'bold'
+   343→        data.cell.styles.textColor = C.primary
+   344→      }
+   345→    },
+   346→  })
+   347→
+   348→  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   349→  return (doc as any).lastAutoTable.finalY + 8
+   350→}
+   351→
+   352→function drawExpenses(doc: jsPDF, report: CashCloseReport, startY: number, type: 'salida' | 'entrada'): number {
+   353→  const items = type === 'salida' ? report.expenses : report.entries
+   354→  const symbol = cs(report.referenceCurrency)
+   355→  const title = type === 'salida' ? 'Gastos y Salidas' : 'Entradas de Efectivo'
+   356→  const color = type === 'salida' ? C.red : C.green
+   357→  const prefix = type === 'salida' ? '-' : '+'
+   358→
+   359→  if (items.length === 0) return startY
+   360→
+   361→  let y = startY
+   362→
+   363→  doc.setFontSize(11)
+   364→  doc.setTextColor(...color)
+   365→  doc.setFont('helvetica', 'bold')
+   366→  doc.text(title, 36, y)
+   367→  y += 4
+   368→
+   369→  const bodyRows = items.map(exp => [
+   370→    exp.concept,
+   371→    fmtDateShort(exp.date),
+   372→    `${prefix}${symbol}${fmt(exp.amount)}`,
+   373→  ])
+   374→
+   375→  autoTable(doc, {
+   376→    startY: y,
+   377→    theme: 'grid',
+   378→    margin: { left: 36, right: 36 },
+   379→    head: [['Concepto', 'Fecha', 'Monto']],
+   380→    body: bodyRows,
+   381→    styles: {
+   382→      fontSize: 8,
+   383→      cellPadding: 3,
+   384→    },
+   385→    headStyles: {
+   386→      fillColor: color,
+   387→      textColor: C.white,
+   388→      fontStyle: 'bold',
+   389→    },
+   390→    columnStyles: {
+   391→      0: { fontStyle: 'normal', textColor: C.dark },
+   392→      1: { halign: 'right', textColor: C.gray, fontSize: 7 },
+   393→      2: { halign: 'right', fontStyle: 'bold', textColor: color },
+   394→    },
+   395→  })
+   396→
+   397→  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   398→  return (doc as any).lastAutoTable.finalY + 8
+   399→}
+   400→
+   401→function drawSalesDetail(doc: jsPDF, report: CashCloseReport, startY: number): number {
+   402→  if (report.sales.length === 0) return startY
+   403→
+   404→  const symbol = cs(report.referenceCurrency)
+   405→  let y = startY
+   406→
+   407→  doc.setFontSize(11)
+   408→  doc.setTextColor(...C.primary)
+   409→  doc.setFont('helvetica', 'bold')
+   410→  doc.text(`Detalle de Ventas (${report.sales.length} venta${report.sales.length !== 1 ? 's' : ''})`, 36, y)
+   411→  y += 6
+   412→
+   413→  for (let si = 0; si < report.sales.length; si++) {
+   414→    const sale = report.sales[si]
+   415→
+   416→    doc.setFillColor(...C.blueBg)
+   417→    doc.rect(36, y, doc.internal.pageSize.getWidth() - 72, 16, 'F')
+   418→    doc.setFontSize(8)
+   419→    doc.setTextColor(...C.primary)
+   420→    doc.setFont('helvetica', 'bold')
+   421→    doc.text(
+   422→      `Venta #${si + 1}  |  ${fmtDate(sale.date)}  |  Cliente: ${sale.clientName || 'General'}`,
+   423→      42, y + 11
+   424→    )
+   425→    y += 20
+   426→
+   427→    const linesBody = sale.lines.map(l => [
+   428→      l.productName,
+   429→      String(l.quantity),
+   430→      `${symbol}${fmt(l.unitPrice)}`,
+   431→      `${symbol}${fmt(l.lineTotal)}`,
+   432→    ])
+   433→
+   434→    // Total row
+   435→    linesBody.push(['', '', 'TOTAL:', `${symbol}${fmt(sale.total)}`])
+   436→
+   437→    autoTable(doc, {
+   438→      startY: y,
+   439→      theme: 'grid',
+   440→      margin: { left: 36, right: 36 },
+   441→      head: [['Producto', 'Cant.', 'P. Unit.', 'Total']],
+   442→      body: linesBody,
+   443→      styles: {
+   444→        fontSize: 7.5,
+   445→        cellPadding: 2,
+   446→        overflow: 'linebreak',
+   447→      },
+   448→      headStyles: {
+   449→        fillColor: C.grayLight,
+   450→        textColor: C.gray,
+   451→        fontStyle: 'bold',
+   452→        fontSize: 7,
+   453→      },
+   454→      columnStyles: {
+   455→        0: { textColor: C.dark, cellWidth: 'auto', overflow: 'linebreak' },
+   456→        1: { halign: 'center', cellWidth: 20 },
+   457→        2: { halign: 'right', cellWidth: 35 },
+   458→        3: { halign: 'right', fontStyle: 'bold', textColor: C.primary },
+   459→      },
+   460→      didParseCell: (data) => {
+   461→        if (data.section === 'body' && data.row.index === linesBody.length - 1) {
+   462→          data.cell.styles.fillColor = [240, 245, 255]
+   463→          data.cell.styles.fontStyle = 'bold'
+   464→        }
+   465→      },
+   466→    })
+   467→
+   468→    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   469→    y = (doc as any).lastAutoTable.finalY + 6
+   470→
+   471→    // Payment methods for this sale
+   472→    if (sale.payments.length > 0) {
+   473→      doc.setFontSize(6.5)
+   474→      doc.setTextColor(...C.gray)
+   475→      doc.setFont('helvetica', 'normal')
+   476→      const payStr = sale.payments.map(p =>
+   477→        `${p.method} ${symbol}${fmt(p.amount)}${p.reference ? ` (Ref: ${p.reference})` : ''}`
+   478→      ).join('  |  ')
+   479→      doc.text(payStr, 42, y, { maxWidth: doc.internal.pageSize.getWidth() - 84 })
+   480→      y += 10
+   481→    }
+   482→
+   483→    y += 4
+   484→  }
+   485→
+   486→  return y
+   487→}
+   488→
+   489→function drawFooter(doc: jsPDF, totalPages: number, info: { businessName: string; businessRif: string }) {
+   490→  const pw = doc.internal.pageSize.getWidth()
+   491→  const ph = doc.internal.pageSize.getHeight()
+   492→
+   493→  for (let i = 1; i <= totalPages; i++) {
+   494→    doc.setPage(i)
+   495→
+   496→    doc.setDrawColor(...C.grayMedium)
+   497→    doc.setLineWidth(0.5)
+   498→    doc.line(36, ph - 40, pw - 36, ph - 40)
+   499→
+   500→    doc.setFontSize(7)
+   501→    doc.setTextColor(...C.gray)
+   502→    doc.setFont('helvetica', 'normal')
+   503→    doc.text(
+   504→      `${info.businessName}  |  RIF: ${info.businessRif}  |  Generado por JO-Administrativo`,
+   505→      pw / 2, ph - 32, { align: 'center' }
+   506→    )
+   507→
+   508→    if (totalPages > 1) {
+   509→      doc.text(`Pagina ${i} de ${totalPages}`, pw / 2, ph - 24, { align: 'center' })
+   510→    }
+   511→  }
+   512→}
+   513→
+   514→// ─── PDF Generator ────────────────────────────────────────────────────────────
+   515→
+   516→export async function generateCashClosePDF(report: CashCloseReport): Promise<Buffer> {
+   517→  const doc = new jsPDF({
+   518→    orientation: 'portrait',
+   519→    unit: 'pt',
+   520→    format: 'letter',
+   521→  })
+   522→
+   523→  doc.setProperties({
+   524→    title: `Cierre de Caja - ${report.registerName || 'Sin nombre'} - ${fmtDateShort(report.closingDate)}`,
+   525→    author: report.businessName,
+   526→    subject: 'Reporte de cierre de caja',
+   527→  })
+   528→
+   529→  // Clean header (no logo, no business info band)
+   530→  let y = drawHeader(doc)
+   531→
+   532→  // Info card
+   533→  y = drawInfoCard(doc, report, y)
+   534→
+   535→  // Financial summary with full breakdown
+   536→  y = drawFinancialSummary(doc, report, y)
+   537→
+   538→  // Payment methods
+   539→  y = drawPaymentMethods(doc, report, y)
+   540→
+   541→  // Expenses
+   542→  y = drawExpenses(doc, report, y, 'salida')
+   543→
+   544→  // Entries
+   545→  y = drawExpenses(doc, report, y, 'entrada')
+   546→
+   547→  // Sales detail
+   548→  y = drawSalesDetail(doc, report, y)
+   549→
+   550→  // Footer
+   551→  const totalPages = doc.getNumberOfPages()
+   552→  drawFooter(doc, totalPages, { businessName: report.businessName, businessRif: report.businessRif })
+   553→
+   554→  return Buffer.from(doc.output('arraybuffer'))
+   555→}
+   556→
+   557→// ─── Multi-register PDF (for close-all) ───────────────────────────────────────
+   558→
+   559→export async function generateMultiCashClosePDF(reports: CashCloseReport[]): Promise<Buffer> {
+   560→  if (reports.length === 1) {
+   561→    return generateCashClosePDF(reports[0])
+   562→  }
+   563→
+   564→  const doc = new jsPDF({
+   565→    orientation: 'portrait',
+   566→    unit: 'pt',
+   567→    format: 'letter',
+   568→  })
+   569→
+   570→  doc.setProperties({
+   571→    title: `Cierre Masivo de Cajas - ${fmtDateShort(new Date())}`,
+   572→    author: reports[0]?.businessName || 'JO-Administrativo',
+   573→    subject: 'Reporte de cierre masivo de cajas',
+   574→  })
+   575→
+   576→  const info = reports[0]
+   577→  const symbol = cs(info?.referenceCurrency || 'USD')
+   578→  const pw = doc.internal.pageSize.getWidth()
+   579→
+   580→  // ─── Cover page ──────────────────────────────────────────────────────────
+   581→  // Clean header
+   582→  doc.setFillColor(...C.primary)
+   583→  doc.rect(0, 0, pw, 40, 'F')
+   584→
+   585→  doc.setFontSize(16)
+   586→  doc.setTextColor(...C.white)
+   587→  doc.setFont('helvetica', 'bold')
+   588→  doc.text('Cierre Masivo de Cajas', pw / 2, 27, { align: 'center' })
+   589→
+   590→  doc.setFontSize(9)
+   591→  doc.setTextColor(...C.gray)
+   592→  doc.setFont('helvetica', 'normal')
+   593→  doc.text(`${reports.length} caja(s) cerradas  |  ${fmtDate(new Date())}`, pw / 2, 56, { align: 'center' })
+   594→
+   595→  // Summary table
+   596→  let y = 70
+   597→
+   598→  let grandTotalSales = 0
+   599→  let grandTotalActual = 0
+   600→
+   601→  const bodyRows = reports.map(r => {
+   602→    grandTotalSales += r.totalSales
+   603→    grandTotalActual += r.actual
+   604→    return [
+   605→      r.cashierName,
+   606→      r.registerName || '\u2014',
+   607→      `${symbol}${fmt(r.totalSales)}`,
+   608→      `${symbol}${fmt(r.actual)}`,
+   609→    ]
+   610→  })
+   611→
+   612→  bodyRows.push([
+   613→    'TOTAL GENERAL',
+   614→    '',
+   615→    `${symbol}${fmt(grandTotalSales)}`,
+   616→    `${symbol}${fmt(grandTotalActual)}`,
+   617→  ])
+   618→
+   619→  autoTable(doc, {
+   620→    startY: y,
+   621→    theme: 'grid',
+   622→    margin: { left: 36, right: 36 },
+   623→    head: [['Cajero/a', 'Caja', 'Ventas', 'Total en Caja']],
+   624→    body: bodyRows,
+   625→    styles: {
+   626→      fontSize: 9,
+   627→      cellPadding: 4,
+   628→    },
+   629→    headStyles: {
+   630→      fillColor: C.primary,
+   631→      textColor: C.white,
+   632→      fontStyle: 'bold',
+   633→    },
+   634→    columnStyles: {
+   635→      2: { halign: 'right' },
+   636→      3: { halign: 'right', fontStyle: 'bold' },
+   637→    },
+   638→    didParseCell: (data) => {
+   639→      if (data.section === 'body' && data.row.index === bodyRows.length - 1) {
+   640→        data.cell.styles.fillColor = C.blueBg
+   641→        data.cell.styles.fontStyle = 'bold'
+   642→        data.cell.styles.textColor = C.primary
+   643→      }
+   644→    },
+   645→  })
+   646→
+   647→  // ─── Individual reports ──────────────────────────────────────────────────
+   648→  for (let i = 0; i < reports.length; i++) {
+   649→    doc.addPage()
+   650→    const r = reports[i]
+   651→
+   652→    // Compact header
+   653→    doc.setFillColor(...C.primary)
+   654→    doc.rect(0, 0, pw, 30, 'F')
+   655→
+   656→    doc.setFontSize(12)
+   657→    doc.setTextColor(...C.white)
+   658→    doc.setFont('helvetica', 'bold')
+   659→    doc.text(`Caja ${i + 1}: ${r.registerName || 'Sin nombre'}  |  ${r.branchName}  |  Cajero: ${r.cashierName}`, 36, 21)
+   660→
+   661→    // Financial summary compact
+   662→    const sym = cs(r.referenceCurrency)
+   663→    y = 40
+   664→
+   665→    const summaryBody: any[][] = [
+   666→      [
+   667→        { content: 'Monto Inicial', styles: { textColor: C.dark, cellPadding: { top: 5, bottom: 5 } } },
+   668→        { content: `${sym}${fmt(r.initialAmt)}`, styles: { halign: 'right', fontStyle: 'bold', textColor: C.dark, cellPadding: { top: 5, bottom: 5 } } },
+   669→      ],
+   670→      [
+   671→        { content: '+ Total Ventas (efectivo)', styles: { textColor: C.green, cellPadding: { top: 3, bottom: 3 } } },
+   672→        { content: `+${sym}${fmt(r.totalSales)}`, styles: { halign: 'right', fontStyle: 'bold', textColor: C.green, cellPadding: { top: 3, bottom: 3 } } },
+   673→      ],
+   674→    ]
+   675→
+   676→    if (r.ivaEnabled && r.ivaRate > 0) {
+   677→      const ivaAmount = r.totalSales * (r.ivaRate / 100)
+   678→      summaryBody.push([
+   679→        { content: `+ I.V.A. Recaudado (${r.ivaRate}%)`, styles: { textColor: C.primaryLight, cellPadding: { top: 3, bottom: 3 } } },
+   680→        { content: `+${sym}${fmt(ivaAmount)}`, styles: { halign: 'right', fontStyle: 'bold', textColor: C.primaryLight, cellPadding: { top: 3, bottom: 3 } } },
+   681→      ])
+   682→    }
+   683→
+   684→    if (r.totalExpenses > 0) {
+   685→      summaryBody.push([
+   686→        { content: '- Total Gastos', styles: { textColor: C.red, cellPadding: { top: 3, bottom: 3 } } },
+   687→        { content: `-${sym}${fmt(r.totalExpenses)}`, styles: { halign: 'right', fontStyle: 'bold', textColor: C.red, cellPadding: { top: 3, bottom: 3 } } },
+   688→      ])
+   689→    }
+   690→
+   691→    if (r.totalEntries > 0 || r.totalRetiros > 0) {
+   692→      summaryBody.push([
+   693→        { content: `Entradas / Retiros`, styles: { textColor: C.gray, cellPadding: { top: 3, bottom: 3 } } },
+   694→        { content: `${r.totalEntries > 0 ? `+${sym}${fmt(r.totalEntries)}` : ''} ${r.totalRetiros > 0 ? `/ -${sym}${fmt(r.totalRetiros)}` : ''}`, styles: { halign: 'right', fontStyle: 'bold', textColor: C.gray, cellPadding: { top: 3, bottom: 3 } } },
+   695→      ])
+   696→    }
+   697→
+   698→    summaryBody.push([
+   699→      { content: '', styles: { cellPadding: { top: 1, bottom: 1 } } },
+   700→      { content: '', styles: { cellPadding: { top: 1, bottom: 1 } } },
+   701→    ])
+   702→    summaryBody.push([
+   703→      { content: 'Total en Caja', styles: { fontStyle: 'bold', textColor: C.dark, cellPadding: { top: 6, bottom: 6 } } },
+   704→      { content: `${sym}${fmt(r.actual)}`, styles: { halign: 'right', fontStyle: 'bold', textColor: C.primary, fontSize: 10, cellPadding: { top: 6, bottom: 6 } } },
+   705→    ])
+   706→
+   707→    autoTable(doc, {
+   708→      startY: y,
+   709→      theme: 'plain',
+   710→      margin: { left: 36, right: 36 },
+   711→      body: summaryBody,
+   712→      columnStyles: {
+   713→        0: { cellWidth: '70%' },
+   714→        1: { cellWidth: '30%' },
+   715→      },
+   716→      didParseCell: (data) => {
+   717→        if (data.section === 'body') {
+   718→          const rowIdx = data.row.index
+   719→          if (summaryBody[rowIdx][0].content === '') {
+   720→            data.cell.styles.cellPadding = { top: 0, bottom: 0, left: 0, right: 0 }
+   721→            data.cell.styles.lineWidth = 0.5
+   722→            data.cell.styles.lineColor = C.grayMedium
+   723→            data.cell.styles.borders = { top: { width: 0.5, color: C.grayMedium }, bottom: { width: 0.5, color: C.grayMedium }, left: { width: 0 }, right: { width: 0 } }
+   724→          }
+   725→          if (rowIdx === summaryBody.length - 1) {
+   726→            data.cell.styles.fillColor = C.blueBg
+   727→          }
+   728→        }
+   729→      },
+   730→    })
+   731→
+   732→    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   733→    y = (doc as any).lastAutoTable.finalY + 6
+   734→
+   735→    // Bs conversion
+   736→    if (r.exchangeRate > 0) {
+   737→      const totalBs = r.actual * r.exchangeRate
+   738→      doc.setFontSize(8)
+   739→      doc.setTextColor(...C.gray)
+   740→      doc.setFont('helvetica', 'normal')
+   741→      doc.text(`Tasa: 1 ${r.referenceCurrency} = ${fmt(r.exchangeRate)} Bs  |  Total: ${fmt(totalBs, 2)} Bs`, pw / 2, y, { align: 'center' })
+   742→      y += 14
+   743→    }
+   744→
+   745→    // Payment methods
+   746→    y = drawPaymentMethods(doc, r, y)
+   747→
+   748→    // Sales detail
+   749→    y = drawSalesDetail(doc, r, y)
+   750→  }
+   751→
+   752→  // Footer
+   753→  const totalPages = doc.getNumberOfPages()
+   754→  drawFooter(doc, totalPages, { businessName: info.businessName, businessRif: info.businessRif })
+   755→
+   756→  return Buffer.from(doc.output('arraybuffer'))
+   757→}
+   758→
+   759→// ─── Data builder ─────────────────────────────────────────────────────────────
+   760→
+   761→export interface RegisterWithDetails {
+   762→  id: string
+   763→  name: string | null
+   764→  userId: string
+   765→  branchId: string
+   766→  openingDate: Date
+   767→  closingDate: Date
+   768→  initialAmt: number
+   769→  currentAmt: number
+   770→  status: string
+   771→  user: { id: string; name: string; email: string }
+   772→  branch: { id: string; name: string }
+   773→  sales: {
+   774→    id: string
+   775→    date: Date
+   776→    total: number
+   777→    status: string
+   778→    clientId: string | null
+   779→    client?: { id: string; name: string } | null
+   780→    payments: {
+   781→      id: string
+   782→      method: string
+   783→      amount: number
+   784→      currencyId: string
+   785→      reference: string | null
+   786→      currency: { id: string; code: string; name: string }
+   787→    }[]
+   788→    lines: {
+   789→      id: string
+   790→      quantity: number
+   791→      unitPrice: number
+   792→      unitCost: number
+   793→      lineTotal: number
+   794→      lineProfit: number
+   795→      product: { id: string; name: string }
+   796→    }[]
+   797→  }[]
+   798→  movements: {
+   799→    id: string
+   800→    type: string
+   801→    amount: number
+   802→    concept: string
+   803→    createdAt: Date
+   804→  }[]
+   805→}
+   806→
+   807→export async function buildReportFromRegister(
+   808→  register: RegisterWithDetails,
+   809→  closingDate: Date,
+   810→  actual: number,
+   811→  expected: number,
+   812→  difference: number,
+   813→  totalSales: number,
+   814→  totalExpenses: number,
+   815→  totalEntries: number,
+   816→  totalRetiros: number,
+   817→  businessName: string,
+   818→  businessRif: string,
+   819→  businessAddress: string,
+   820→  businessPhone: string,
+   821→  exchangeRate: number,
+   822→  referenceCurrency: string,
+   823→  ivaEnabled: boolean,
+   824→  ivaRate: number,
+   825→): Promise<CashCloseReport> {
+   826→  const sales: SaleDetail[] = register.sales.map(s => ({
+   827→    id: s.id,
+   828→    date: s.date,
+   829→    clientName: s.client?.name || null,
+   830→    total: s.total,
+   831→    lines: s.lines.map(l => ({
+   832→      productName: l.product.name,
+   833→      quantity: l.quantity,
+   834→      unitPrice: l.unitPrice,
+   835→      lineTotal: l.lineTotal,
+   836→    })),
+   837→    payments: s.payments.map(p => ({
+   838→      method: p.method,
+   839→      amount: p.amount,
+   840→      currencyCode: p.currency.code,
+   841→      reference: p.reference,
+   842→    })),
+   843→  }))
+   844→
+   845→  const expenses = register.movements
+   846→    .filter(m => m.type === 'salida')
+   847→    .map(m => ({ concept: m.concept, amount: m.amount, date: m.createdAt }))
+   848→
+   849→  const entries = register.movements
+   850→    .filter(m => m.type === 'entrada')
+   851→    .map(m => ({ concept: m.concept, amount: m.amount, date: m.createdAt }))
+   852→
+   853→  return {
+   854→    businessName,
+   855→    businessRif,
+   856→    businessAddress,
+   857→    businessPhone,
+   858→    registerId: register.id,
+   859→    registerName: register.name,
+   860→    branchName: register.branch.name,
+   861→    cashierName: register.user.name,
+   862→    openingDate: register.openingDate,
+   863→    closingDate,
+   864→    initialAmt: register.initialAmt,
+   865→    totalSales,
+   866→    totalExpenses,
+   867→    totalEntries,
+   868→    totalRetiros,
+   869→    expected,
+   870→    actual,
+   871→    difference,
+   872→    sales,
+   873→    expenses,
+   874→    entries,
+   875→    exchangeRate,
+   876→    referenceCurrency,
+   877→    ivaEnabled,
+   878→    ivaRate,
+   879→  }
+   880→}
+   881→
