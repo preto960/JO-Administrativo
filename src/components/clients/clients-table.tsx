@@ -197,7 +197,8 @@ export function ClientsTable() {
   const [loadingPayments, setLoadingPayments] = useState(false)
   const [deletingPaymentId, setDeletingPaymentId] = useState<string | null>(null)
 
-  // Remove debt confirmation
+  // Remove debt: open dialog to select which debt
+  const [removeDebtClient, setRemoveDebtClient] = useState<Client | null>(null)
   const [removeDebtTarget, setRemoveDebtTarget] = useState<{ client: Client; receivable: ReceivableRecord } | null>(null)
   const [removingDebt, setRemovingDebt] = useState(false)
 
@@ -214,6 +215,7 @@ export function ClientsTable() {
   const [paymentReference, setPaymentReference] = useState('')
   const [showPaymentDialog, setShowPaymentDialog] = useState(false)
   const [paying, setPaying] = useState(false)
+  const [paymentSuccess, setPaymentSuccess] = useState(false)
   const [openCashRegId, setOpenCashRegId] = useState<string | null>(null)
   const baseCurrencyId = useSetting('baseCurrencyId') || ''
   const country = useSetting('country') || 'VE'
@@ -637,6 +639,7 @@ export function ClientsTable() {
 
   const openPayment = (client: Client) => {
     setPaymentClient(client)
+    setPaymentSuccess(false)
     // Set default to first available non-credit method
     const firstNonCredit = paymentMethods.find(m => !m.isCredit)
     setPaymentMethod(firstNonCredit?.code || paymentMethods[0]?.code || '')
@@ -721,8 +724,12 @@ export function ClientsTable() {
       })
       const displayLabel = isLocalMethod ? `Bs. ${parseFloat(paymentAmount).toFixed(2)}` : `${fmt(paymentAmountInRef)}`
       toast.success(`Cobro de ${displayLabel} registrado exitosamente`)
-      setShowPaymentDialog(false)
-      fetchClients()
+      setPaymentSuccess(true)
+      setTimeout(() => {
+        setPaymentSuccess(false)
+        setShowPaymentDialog(false)
+        fetchClients()
+      }, 2000)
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Error al registrar cobro'
       toast.error(msg)
@@ -757,6 +764,7 @@ export function ClientsTable() {
       await api.del(`/api/clients/${client.id}/receivables/${receivable.id}`)
       toast.success('Deuda eliminada correctamente')
       setRemoveDebtTarget(null)
+      setRemoveDebtClient(null)
       fetchClients()
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Error al eliminar deuda'
@@ -1170,10 +1178,10 @@ export function ClientsTable() {
                           </Button>
                           {canManage && (
                             <Button size="sm" variant="outline" className="h-7 text-xs text-red-500 border-red-200 hover:text-red-600 hover:bg-red-50 dark:border-red-800 dark:hover:bg-red-950/40" title="Quitar deuda (si fue asignada por error)" onClick={() => {
-                              // Find the first pending receivable for this client
-                              const receivable = client.receivables?.[0]
-                              if (receivable && receivable.pendingBalance > 0) {
-                                setRemoveDebtTarget({ client, receivable })
+                              const pendingReceivables = client.receivables?.filter(r => r.pendingBalance > 0) || []
+                              if (pendingReceivables.length > 0) {
+                                setRemoveDebtClient(client)
+                                setRemoveDebtTarget(null)
                               } else {
                                 toast.error('No hay deuda pendiente para quitar')
                               }
@@ -1840,14 +1848,25 @@ export function ClientsTable() {
       </Dialog>
 
       {/* Payment Dialog — POS-style */}
-      <Dialog open={showPaymentDialog} onOpenChange={setShowPaymentDialog}>
+      <Dialog open={showPaymentDialog} onOpenChange={(open) => { if (!open && !paymentSuccess) setShowPaymentDialog(false) }}>
         <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Cobrar</DialogTitle>
             <DialogDescription>
-              Deuda pendiente: <span className="text-red-600 font-medium">{paymentClient ? fmt(paymentClient.pendingBalance) : ''}</span>
+              Deuda pendiente: {paymentClient ? fmt(paymentClient.pendingBalance) : ''}
+              {multiCurrencyEnabled && <span className="ml-2">· {baseSym} {paymentClient ? (paymentClient.pendingBalance * exchangeRate).toFixed(2) : '0.00'}</span>}
             </DialogDescription>
           </DialogHeader>
+
+          {paymentSuccess ? (
+            <div className="flex flex-col items-center justify-center gap-4 py-8">
+              <div className="rounded-full bg-primary/10 p-4 dark:bg-primary/10">
+                <CheckCircle2 className="h-12 w-12 text-primary" />
+              </div>
+              <h3 className="text-xl font-bold text-primary dark:text-primary">¡Cobro Exitoso!</h3>
+              <p className="text-sm text-muted-foreground">Cerrando automáticamente...</p>
+            </div>
+          ) : (
           <div className="space-y-4">
             {paymentClient && (
               <div className="rounded-md bg-muted p-3 space-y-1 text-sm">
@@ -1953,6 +1972,7 @@ export function ClientsTable() {
               )}
             </Button>
           </div>
+          )}
         </DialogContent>
       </Dialog>
 
@@ -2281,6 +2301,53 @@ export function ClientsTable() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Select Debt to Remove Dialog */}
+      <Dialog open={!!removeDebtClient && !removeDebtTarget} onOpenChange={(open) => { if (!open) setRemoveDebtClient(null) }}>
+        <DialogContent className="sm:max-w-md max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <Ban className="h-5 w-5" />
+              Quitar Deuda
+            </DialogTitle>
+            <DialogDescription>
+              Selecciona la deuda que deseas eliminar de <b>{removeDebtClient?.name}{removeDebtClient?.lastName ? ` ${removeDebtClient.lastName}` : ''}</b>
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            {removeDebtClient?.receivables?.filter(r => r.pendingBalance > 0).map((receivable) => (
+              <div key={receivable.id} className="flex items-center justify-between rounded-md border p-3 gap-3">
+                <div className="min-w-0 flex-1 space-y-1">
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-sm font-semibold text-red-600">{fmt(receivable.pendingBalance)}</span>
+                    {receivable.amount !== receivable.pendingBalance && (
+                      <span className="text-[10px] text-muted-foreground">de {fmt(receivable.amount)}</span>
+                    )}
+                  </div>
+                  <div className="text-[10px] text-muted-foreground space-x-2">
+                    <span>Creada: {new Date(receivable.createdAt).toLocaleDateString('es-VE')}</span>
+                    {receivable.dueDate && <span>· Vence: {new Date(receivable.dueDate).toLocaleDateString('es-VE')}</span>}
+                  </div>
+                  <Badge className={`text-[9px] ${receivable.status === 'pendiente' ? 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-400'}`}>
+                    {receivable.status === 'pendiente' ? 'Pendiente' : 'Parcial'}
+                  </Badge>
+                </div>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  className="h-8 text-xs shrink-0"
+                  onClick={() => setRemoveDebtTarget({ client: removeDebtClient!, receivable })}
+                >
+                  <Ban className="mr-1 h-3 w-3" /> Quitar
+                </Button>
+              </div>
+            ))}
+            {(removeDebtClient?.receivables?.filter(r => r.pendingBalance > 0).length || 0) === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-4">No hay deudas pendientes</p>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Remove Debt Confirmation */}
       <AlertDialog open={!!removeDebtTarget} onOpenChange={(open) => { if (!open) setRemoveDebtTarget(null) }}>

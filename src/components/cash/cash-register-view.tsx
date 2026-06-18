@@ -919,11 +919,20 @@ export function CashRegisterView() {
                           {(breakdownData.subscriptionSales.length > 0 || breakdownData.legacySubscriptions.length > 0) && (
                             <div className="space-y-1">
                               <p className="text-[10px] font-semibold text-muted-foreground uppercase">Suscripciones</p>
-                              {breakdownData.subscriptionSales.map(s => (
+                              {breakdownData.subscriptionSales.map(s => {
+                                const planChanged = s.planName.includes('->')
+                                const planDisplay = planChanged
+                                  ? s.planName.replace('->', ' → ')
+                                  : s.planName
+                                return (
                                 <div key={s.id} className="flex items-center justify-between text-xs py-1 border-b last:border-b-0 border-muted">
                                   <div className="min-w-0 flex-1">
                                     <span className="font-medium truncate block">
-                                      Renovación{s.planName ? ` plan "${s.planName}"` : ' de suscripción'}
+                                      {s.planName ? (
+                                        <>
+                                          Renovación plan "<span className={planChanged ? 'text-amber-600' : ''}>{planDisplay}</span>"
+                                        </>
+                                      ) : 'Renovación de suscripción'}
                                     </span>
                                     {s.clientName && <span className="text-muted-foreground">{s.clientName}</span>}
                                     {s.description && <span className="text-muted-foreground block">{s.description}</span>}
@@ -933,17 +942,28 @@ export function CashRegisterView() {
                                     <span className="text-muted-foreground ml-1">{s.method}</span>
                                   </div>
                                 </div>
-                              ))}
-                              {breakdownData.legacySubscriptions.map(m => (
+                                )
+                              })}
+                              {breakdownData.legacySubscriptions.map(m => {
+                                const planChanged = m.planName.includes('->')
+                                const planDisplay = planChanged
+                                  ? m.planName.replace('->', ' → ')
+                                  : m.planName
+                                return (
                                 <div key={m.id} className="flex items-center justify-between text-xs py-1 border-b last:border-b-0 border-muted">
                                   <div className="min-w-0 flex-1">
                                     <span className="font-medium truncate block">
-                                      {m.planName ? `Renovación plan "${m.planName}"` : m.description}
+                                      {m.planName ? (
+                                        <>
+                                          Renovación plan "<span className={planChanged ? 'text-amber-600' : ''}>{planDisplay}</span>"
+                                        </>
+                                      ) : m.description}
                                     </span>
                                   </div>
                                   <span className="font-semibold text-emerald-700 dark:text-emerald-400 shrink-0 ml-2">{fmtBase(m.total)}</span>
                                 </div>
-                              ))}
+                                )
+                              })}
                             </div>
                           )}
 
