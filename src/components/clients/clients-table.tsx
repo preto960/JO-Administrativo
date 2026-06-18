@@ -194,7 +194,7 @@ export function ClientsTable() {
     setDeleting(true)
     try {
       await api.del(`/api/clients?id=${deleteTarget.id}`)
-      toast.success('Cliente eliminado')
+      toast.success('Cliente inactivado')
       fetchClients()
     } catch {
       toast.error('Error al eliminar cliente')
@@ -313,6 +313,13 @@ export function ClientsTable() {
   const [plans, setPlans] = useState<PlanOption[]>([])
   const [formPlanId, setFormPlanId] = useState('')
 
+  // Payment-on-create modal (when creating client with plan)
+  const [showCreatePayment, setShowCreatePayment] = useState(false)
+  const [createPaymentMethod, setCreatePaymentMethod] = useState('')
+  const [createPaymentReference, setCreatePaymentReference] = useState('')
+  const [createPaymentMethods, setCreatePaymentMethods] = useState<PaymentMethodOption[]>([])
+  const [creatingAndPaying, setCreatingAndPaying] = useState(false)
+
   // Renew dialog
   const [renewClient, setRenewClient] = useState<Client | null>(null)
   const [renewPlanId, setRenewPlanId] = useState('')
@@ -429,8 +436,34 @@ export function ClientsTable() {
           note: formNote.trim() || null,
         })
         toast.success('Cliente actualizado')
+        setDialogOpen(false)
+        fetchClients()
+      } else if (formPlanId) {
+        // Plan selected → open payment modal instead of creating immediately
+        try {
+          const [methods, registers, currencies] = await Promise.all([
+            api.get<PaymentMethodOption[]>(
+              `/api/payment-methods?country=${country}&context=subscription`
+            ),
+            api.get<Array<{ id: string; status: string }>>('/api/cash-register'),
+            api.get<{ id: string; code: string; symbol: string; isBase: boolean }[]>('/api/currencies'),
+          ])
+          const list = Array.isArray(methods) && methods.length > 0
+            ? methods
+            : FALLBACK_METHODS.filter(m => m.enabled)
+          setCreatePaymentMethods(list)
+          if (list.length > 0) setCreatePaymentMethod(list[0].code)
+          setCreatePaymentReference('')
+          const openReg = registers?.find((r: { status: string }) => r.status === 'abierta')
+          if (openReg) setOpenCashRegId(openReg.id)
+          if (Array.isArray(currencies)) setRenewCurrencies(currencies)
+          setShowCreatePayment(true)
+        } catch {
+          toast.error('Error al cargar métodos de pago')
+        }
       } else {
-        const newClient = await api.post<Client>('/api/clients', {
+        // No plan — create client directly
+        await api.post<Client>('/api/clients', {
           name: trimmedName,
           lastName: trimmedLastName,
           cedula: formCedula.trim() || null,
@@ -439,22 +472,66 @@ export function ClientsTable() {
           address: formAddress.trim() || null,
           note: formNote.trim() || null,
         })
-        // If plan selected, assign it via renew endpoint
-        if (formPlanId) {
-          try {
-            await api.post(`/api/clients/${newClient.id}/renew`, { planId: formPlanId })
-          } catch {
-            toast.warning('Cliente creado pero no se pudo asignar el plan')
-          }
-        }
         toast.success('Cliente creado')
+        setDialogOpen(false)
+        fetchClients()
       }
-      setDialogOpen(false)
-      fetchClients()
-    } catch {
-      toast.error(editingClient ? 'Error al actualizar cliente' : 'Error al crear cliente')
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Error al crear cliente'
+      toast.error(msg)
     } finally {
       setSaving(false)
+    }
+  }
+
+  // Confirm: create client + assign plan with payment
+  const handleCreateWithPayment = async () => {
+    if (!createPaymentMethod) {
+      toast.error('Selecciona un método de pago')
+      return
+    }
+    const selectedPm = createPaymentMethods.find(m => m.code === createPaymentMethod)
+    if (selectedPm?.needsReference && !createPaymentReference.trim()) {
+      toast.error('La referencia es obligatoria para este método de pago')
+      return
+    }
+
+    setCreatingAndPaying(true)
+    try {
+      // 1. Create client
+      const trimmedName = formName.trim()
+      const trimmedLastName = formLastName.trim()
+      const newClient = await api.post<Client>('/api/clients', {
+        name: trimmedName,
+        lastName: trimmedLastName,
+        cedula: formCedula.trim() || null,
+        phone: formPhone.trim() || null,
+        email: formEmail.trim() || null,
+        address: formAddress.trim() || null,
+        note: formNote.trim() || null,
+      })
+
+      // 2. Assign plan with payment
+      const baseCurr = renewCurrencies.find(c => c.isBase)
+      await api.post(`/api/clients/${newClient.id}/renew`, {
+        planId: formPlanId,
+        paymentMethod: createPaymentMethod,
+        paymentReference: createPaymentReference.trim() || undefined,
+        cashRegId: openCashRegId || undefined,
+        branchId: selectedBranchId || undefined,
+        currencyId: baseCurr?.id || baseCurrencyId || '',
+      })
+
+      toast.success('Cliente creado y suscripción activada')
+      setShowCreatePayment(false)
+      setDialogOpen(false)
+      setFormPlanId('')
+      fetchClients()
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Error al crear cliente con suscripción'
+      toast.error(msg)
+    } finally {
+      setCreatingAndPaying(false)
     }
   }
 
@@ -1147,8 +1224,155 @@ export function ClientsTable() {
               </div>
             )}
             <Button className="w-full bg-primary hover:bg-primary/90 text-white" onClick={handleSave} disabled={saving}>
-              {saving ? 'Guardando...' : editingClient ? 'Actualizar Cliente' : 'Crear Cliente'}
+              {saving ? 'Cargando métodos...' : editingClient ? 'Actualizar Cliente' : formPlanId ? 'Siguiente — Cobrar Suscripción' : 'Crear Cliente'}
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Payment modal on top of create dialog (when plan selected) */}
+      <Dialog open={showCreatePayment} onOpenChange={(open) => { if (!open) setShowCreatePayment(false) }}>
+        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CreditCard className="h-5 w-5 text-primary" />
+              Cobrar Suscripción
+            </DialogTitle>
+            <DialogDescription>
+              {formName}{formLastName ? ` ${formLastName}` : ''} — {plans.find(p => p.id === formPlanId)?.name}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {/* Plan cost */}
+            {formPlanId && (() => {
+              const selectedPlan = plans.find(p => p.id === formPlanId)
+              const selPm = createPaymentMethods.find(m => m.code === createPaymentMethod)
+              const isLocal = selPm?.isLocalCurrency ?? false
+              if (!selectedPlan) return null
+              const costInLocal = isLocal && exchangeRate > 0
+                ? Math.round(selectedPlan.cost * exchangeRate * 100) / 100
+                : null
+              return (
+                <div className="rounded-md bg-primary/5 border border-primary/20 p-3 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <DollarSign className="h-4 w-4 text-primary" />
+                      <span className="text-sm font-medium">
+                        {isLocal ? `Costo del plan (${baseSym}):` : 'Costo del plan:'}
+                      </span>
+                    </div>
+                    <span className="text-lg font-bold text-primary">
+                      {isLocal && costInLocal !== null
+                        ? `${baseSym}${costInLocal.toFixed(2)}`
+                        : fmt(selectedPlan.cost)
+                      }
+                    </span>
+                  </div>
+                  {isLocal && costInLocal !== null && (
+                    <p className="text-xs text-muted-foreground text-right">
+                      Equivale a {currencySymbol}{selectedPlan.cost.toFixed(2)} (Tasa: {exchangeRate.toFixed(2)} {baseSym}/{referenceCurrency || 'USD'})
+                    </p>
+                  )}
+                </div>
+              )
+            })()}
+
+            <Separator />
+
+            {/* Payment method selector */}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1.5">
+                <CreditCard className="h-3.5 w-3.5" />
+                Método de Pago *
+              </Label>
+              {createPaymentMethods.length > 0 ? (
+                <RadioGroup
+                  value={createPaymentMethod}
+                  onValueChange={(v) => { setCreatePaymentMethod(v); setCreatePaymentReference('') }}
+                  className="grid grid-cols-2 gap-3"
+                >
+                  {createPaymentMethods.map((pm) => {
+                    const Icon = getRenewIcon(pm.icon)
+                    return (
+                      <label
+                        key={pm.code}
+                        className={`flex cursor-pointer flex-col items-center gap-2 rounded-lg border-2 p-3 transition-colors ${
+                          createPaymentMethod === pm.code
+                            ? 'border-primary bg-primary/5 dark:bg-primary/10'
+                            : 'border-muted hover:border-muted-foreground/30'
+                        }`}
+                      >
+                        <RadioGroupItem value={pm.code} className="sr-only" />
+                        <Icon className={`h-5 w-5 ${createPaymentMethod === pm.code ? 'text-primary' : 'text-muted-foreground'}`} />
+                        <span className={`text-xs font-medium ${createPaymentMethod === pm.code ? 'text-primary dark:text-primary' : ''}`}>
+                          {pm.name}
+                        </span>
+                        {pm.isCredit && (
+                          <span className="text-[9px] text-amber-600 dark:text-amber-400 font-medium">Genera deuda</span>
+                        )}
+                      </label>
+                    )
+                  })}
+                </RadioGroup>
+              ) : (
+                <p className="text-xs text-center text-muted-foreground py-2">
+                  No hay métodos de pago activos para suscripciones
+                </p>
+              )}
+            </div>
+
+            {/* Reference input */}
+            {createPaymentMethods.find(m => m.code === createPaymentMethod)?.needsReference && (
+              <div className="space-y-2 animate-in fade-in slide-in-from-top-2 duration-200">
+                <Label htmlFor="create-pay-reference">Referencia *</Label>
+                <Input
+                  id="create-pay-reference"
+                  value={createPaymentReference}
+                  onChange={(e) => setCreatePaymentReference(e.target.value)}
+                  placeholder="Número de referencia..."
+                />
+              </div>
+            )}
+
+            {/* No cash register warning */}
+            {!openCashRegId && createPaymentMethods.find(m => m.code === createPaymentMethod)?.isCash && (
+              <div className="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-2.5 text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2">
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                <span>No hay caja abierta. El pago en efectivo no se registrará en caja.</span>
+              </div>
+            )}
+
+            {/* Credit info */}
+            {createPaymentMethods.find(m => m.code === createPaymentMethod)?.isCredit && (
+              <div className="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-2.5 text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2">
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                <span>El pago a crédito generará una cuenta por cobrar para el cliente. No se sumará al saldo de caja.</span>
+              </div>
+            )}
+
+            {/* Action buttons */}
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => setShowCreatePayment(false)}
+                disabled={creatingAndPaying}
+              >
+                Volver
+              </Button>
+              <Button
+                className="flex-1 bg-primary hover:bg-primary/90 text-white"
+                onClick={handleCreateWithPayment}
+                disabled={creatingAndPaying || !createPaymentMethod}
+              >
+                {creatingAndPaying ? (
+                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Procesando...</>
+                ) : (
+                  <><CheckCircle2 className="mr-2 h-4 w-4" /> Confirmar y Crear</>
+                )}
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
@@ -1866,15 +2090,15 @@ export function ClientsTable() {
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}>
         <AlertDialogContent size="sm">
           <AlertDialogHeader>
-            <AlertDialogTitle>Eliminar Cliente</AlertDialogTitle>
+            <AlertDialogTitle>Inactivar Cliente</AlertDialogTitle>
             <AlertDialogDescription>
-              ¿Estás seguro de eliminar el cliente "{deleteTarget?.name}"? Esta acción no se puede deshacer.
+              El cliente "{deleteTarget?.name}" será marcado como inactivo y no aparecerá en el listado principal. Podrás reactivarlo después con el filtro "Inactivos".
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
             <AlertDialogAction variant="destructive" onClick={handleConfirmDelete} disabled={deleting}>
-              {deleting ? 'Eliminando...' : 'Eliminar'}
+              {deleting ? 'Inactivando...' : 'Inactivar'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
