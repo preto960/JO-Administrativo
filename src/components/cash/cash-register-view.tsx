@@ -282,8 +282,8 @@ export function CashRegisterView() {
   const [expandedBreakdown, setExpandedBreakdown] = useState<string | null>(null)
   const [breakdownData, setBreakdownData] = useState<{
     posSales: Array<{ id: string; date: string; total: number; method: string; clientName: string | null; description: string }>
-    subscriptionSales: Array<{ id: string; date: string; total: number; method: string; clientName: string | null; description: string }>
-    legacySubscriptions: Array<{ id: string; date: string; total: number; method: string; clientName: string; description: string }>
+    subscriptionSales: Array<{ id: string; date: string; total: number; method: string; clientName: string | null; planName: string; description: string }>
+    legacySubscriptions: Array<{ id: string; date: string; total: number; method: string; clientName: string; planName: string; description: string }>
     posTotal: number
     subTotal: number
     legacyTotal: number
@@ -922,7 +922,9 @@ export function CashRegisterView() {
                               {breakdownData.subscriptionSales.map(s => (
                                 <div key={s.id} className="flex items-center justify-between text-xs py-1 border-b last:border-b-0 border-muted">
                                   <div className="min-w-0 flex-1">
-                                    <span className="font-medium truncate block">Renovación de suscripción</span>
+                                    <span className="font-medium truncate block">
+                                      Renovación{s.planName ? ` plan "${s.planName}"` : ' de suscripción'}
+                                    </span>
                                     {s.clientName && <span className="text-muted-foreground">{s.clientName}</span>}
                                     {s.description && <span className="text-muted-foreground block">{s.description}</span>}
                                   </div>
@@ -935,7 +937,9 @@ export function CashRegisterView() {
                               {breakdownData.legacySubscriptions.map(m => (
                                 <div key={m.id} className="flex items-center justify-between text-xs py-1 border-b last:border-b-0 border-muted">
                                   <div className="min-w-0 flex-1">
-                                    <span className="font-medium truncate block">{m.description}</span>
+                                    <span className="font-medium truncate block">
+                                      {m.planName ? `Renovación plan "${m.planName}"` : m.description}
+                                    </span>
                                   </div>
                                   <span className="font-semibold text-emerald-700 dark:text-emerald-400 shrink-0 ml-2">{fmtBase(m.total)}</span>
                                 </div>

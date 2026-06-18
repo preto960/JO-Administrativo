@@ -1,0 +1,1623 @@
+     1→'use client'
+     2→
+     3→import { useEffect, useState, useMemo } from 'react'
+     4→import { api } from '@/lib/api'
+     5→import { useAuth } from '@/hooks/use-auth'
+     6→import { useCurrency } from '@/hooks/use-currency'
+     7→import { useAppStore, useSetting } from '@/stores/use-app-store'
+     8→import { getCurrencyForCountry } from '@/lib/country-currency'
+     9→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    10→import { Textarea } from '@/components/ui/textarea'
+    11→import { Badge } from '@/components/ui/badge'
+    12→import { Button } from '@/components/ui/button'
+    13→import { Input } from '@/components/ui/input'
+    14→import { Label } from '@/components/ui/label'
+    15→import { Separator } from '@/components/ui/separator'
+    16→import {
+    17→  Dialog,
+    18→  DialogContent,
+    19→  DialogHeader,
+    20→  DialogTitle,
+    21→  DialogDescription,
+    22→} from '@/components/ui/dialog'
+    23→import {
+    24→  Select,
+    25→  SelectContent,
+    26→  SelectItem,
+    27→  SelectTrigger,
+    28→  SelectValue,
+    29→} from '@/components/ui/select'
+    30→import {
+    31→  Table,
+    32→  TableBody,
+    33→  TableCell,
+    34→  TableHead,
+    35→  TableHeader,
+    36→  TableRow,
+    37→} from '@/components/ui/table'
+    38→import {
+    39→  Tooltip,
+    40→  TooltipContent,
+    41→  TooltipProvider,
+    42→  TooltipTrigger,
+    43→} from '@/components/ui/tooltip'
+    44→import {
+    45→  AlertDialog,
+    46→  AlertDialogAction,
+    47→  AlertDialogCancel,
+    48→  AlertDialogContent,
+    49→  AlertDialogDescription,
+    50→  AlertDialogFooter,
+    51→  AlertDialogHeader,
+    52→  AlertDialogTitle,
+    53→} from '@/components/ui/alert-dialog'
+    54→import {
+    55→  Wallet, Plus, ArrowUpCircle, ArrowDownCircle, Lock, Eye, Loader2,
+    56→  UserCircle, AlertTriangle, Banknote, ClipboardCheck, CheckCircle2,
+    57→  Clock, ShoppingCart, Building2, TrendingUp, CircleDollarSign,
+    58→  ChevronDown, ChevronRight,
+    59→} from 'lucide-react'
+    60→import { toast } from 'sonner'
+    61→
+    62→interface CashRegister {
+    63→  id: string
+    64→  name: string | null
+    65→  openingDate: string
+    66→  closingDate: string | null
+    67→  initialAmt: number
+    68→  currentAmt: number
+    69→  status: string
+    70→  user: { id: string; name: string }
+    71→  branch: { id: string; name: string }
+    72→  _count: { sales: number; movements: number }
+    73→}
+    74→
+    75→interface BranchItem {
+    76→  id: string
+    77→  name: string
+    78→  isMain: boolean
+    79→  active: boolean
+    80→}
+    81→
+    82→// Denominaciones por país (billetes y monedas más comunes)
+    83→const DENOMINATIONS_BY_COUNTRY: Record<string, Array<{ value: number; label: string; type: string }>> = {
+    84→  VE: [
+    85→    { value: 100, label: 'Bs 100', type: 'billete' },
+    86→    { value: 50, label: 'Bs 50', type: 'billete' },
+    87→    { value: 20, label: 'Bs 20', type: 'billete' },
+    88→    { value: 10, label: 'Bs 10', type: 'billete' },
+    89→    { value: 5, label: 'Bs 5', type: 'billete' },
+    90→    { value: 1, label: 'Bs 1', type: 'billete' },
+    91→    { value: 0.5, label: 'Bs 0,50', type: 'moneda' },
+    92→    { value: 0.25, label: 'Bs 0,25', type: 'moneda' },
+    93→  ],
+    94→  CO: [
+    95→    { value: 100000, label: '$100.000', type: 'billete' },
+    96→    { value: 50000, label: '$50.000', type: 'billete' },
+    97→    { value: 20000, label: '$20.000', type: 'billete' },
+    98→    { value: 10000, label: '$10.000', type: 'billete' },
+    99→    { value: 5000, label: '$5.000', type: 'billete' },
+   100→    { value: 2000, label: '$2.000', type: 'billete' },
+   101→    { value: 1000, label: '$1.000', type: 'billete' },
+   102→    { value: 500, label: '$500', type: 'moneda' },
+   103→    { value: 200, label: '$200', type: 'moneda' },
+   104→    { value: 100, label: '$100', type: 'moneda' },
+   105→    { value: 50, label: '$50', type: 'moneda' },
+   106→  ],
+   107→  MX: [
+   108→    { value: 1000, label: '$1.000', type: 'billete' },
+   109→    { value: 500, label: '$500', type: 'billete' },
+   110→    { value: 200, label: '$200', type: 'billete' },
+   111→    { value: 100, label: '$100', type: 'billete' },
+   112→    { value: 50, label: '$50', type: 'billete' },
+   113→    { value: 20, label: '$20', type: 'billete' },
+   114→    { value: 10, label: '$10', type: 'moneda' },
+   115→    { value: 5, label: '$5', type: 'moneda' },
+   116→    { value: 2, label: '$2', type: 'moneda' },
+   117→    { value: 1, label: '$1', type: 'moneda' },
+   118→  ],
+   119→  AR: [
+   120→    { value: 100000, label: '$100.000', type: 'billete' },
+   121→    { value: 50000, label: '$50.000', type: 'billete' },
+   122→    { value: 20000, label: '$20.000', type: 'billete' },
+   123→    { value: 10000, label: '$10.000', type: 'billete' },
+   124→    { value: 5000, label: '$5.000', type: 'billete' },
+   125→    { value: 2000, label: '$2.000', type: 'billete' },
+   126→    { value: 1000, label: '$1.000', type: 'billete' },
+   127→    { value: 500, label: '$500', type: 'moneda' },
+   128→    { value: 200, label: '$200', type: 'moneda' },
+   129→    { value: 100, label: '$100', type: 'moneda' },
+   130→  ],
+   131→  PE: [
+   132→    { value: 200, label: 'S/ 200', type: 'billete' },
+   133→    { value: 100, label: 'S/ 100', type: 'billete' },
+   134→    { value: 50, label: 'S/ 50', type: 'billete' },
+   135→    { value: 20, label: 'S/ 20', type: 'billete' },
+   136→    { value: 10, label: 'S/ 10', type: 'billete' },
+   137→    { value: 5, label: 'S/ 5', type: 'moneda' },
+   138→    { value: 2, label: 'S/ 2', type: 'moneda' },
+   139→    { value: 1, label: 'S/ 1', type: 'moneda' },
+   140→  ],
+   141→  CL: [
+   142→    { value: 20000, label: '$20.000', type: 'billete' },
+   143→    { value: 10000, label: '$10.000', type: 'billete' },
+   144→    { value: 5000, label: '$5.000', type: 'billete' },
+   145→    { value: 2000, label: '$2.000', type: 'billete' },
+   146→    { value: 1000, label: '$1.000', type: 'billete' },
+   147→    { value: 500, label: '$500', type: 'moneda' },
+   148→    { value: 100, label: '$100', type: 'moneda' },
+   149→    { value: 50, label: '$50', type: 'moneda' },
+   150→    { value: 10, label: '$10', type: 'moneda' },
+   151→    { value: 5, label: '$5', type: 'moneda' },
+   152→    { value: 1, label: '$1', type: 'moneda' },
+   153→  ],
+   154→  BR: [
+   155→    { value: 200, label: 'R$ 200', type: 'billete' },
+   156→    { value: 100, label: 'R$ 100', type: 'billete' },
+   157→    { value: 50, label: 'R$ 50', type: 'billete' },
+   158→    { value: 20, label: 'R$ 20', type: 'billete' },
+   159→    { value: 10, label: 'R$ 10', type: 'billete' },
+   160→    { value: 5, label: 'R$ 5', type: 'moneda' },
+   161→    { value: 2, label: 'R$ 2', type: 'moneda' },
+   162→    { value: 1, label: 'R$ 1', type: 'moneda' },
+   163→    { value: 0.50, label: 'R$ 0,50', type: 'moneda' },
+   164→    { value: 0.25, label: 'R$ 0,25', type: 'moneda' },
+   165→    { value: 0.10, label: 'R$ 0,10', type: 'moneda' },
+   166→  ],
+   167→  // Default for USD-using countries (US, EC, PA, SV)
+   168→  US: [
+   169→    { value: 100, label: '$100', type: 'billete' },
+   170→    { value: 50, label: '$50', type: 'billete' },
+   171→    { value: 20, label: '$20', type: 'billete' },
+   172→    { value: 10, label: '$10', type: 'billete' },
+   173→    { value: 5, label: '$5', type: 'billete' },
+   174→    { value: 2, label: '$2', type: 'billete' },
+   175→    { value: 1, label: '$1', type: 'billete' },
+   176→    { value: 0.50, label: '$0,50', type: 'moneda' },
+   177→    { value: 0.25, label: '$0,25', type: 'moneda' },
+   178→    { value: 0.10, label: '$0,10', type: 'moneda' },
+   179→    { value: 0.05, label: '$0,05', type: 'moneda' },
+   180→    { value: 0.01, label: '$0,01', type: 'moneda' },
+   181→  ],
+   182→  // Euro zone
+   183→  ES: [
+   184→    { value: 500, label: '€500', type: 'billete' },
+   185→    { value: 200, label: '€200', type: 'billete' },
+   186→    { value: 100, label: '€100', type: 'billete' },
+   187→    { value: 50, label: '€50', type: 'billete' },
+   188→    { value: 20, label: '€20', type: 'billete' },
+   189→    { value: 10, label: '€10', type: 'billete' },
+   190→    { value: 5, label: '€5', type: 'billete' },
+   191→    { value: 2, label: '€2', type: 'moneda' },
+   192→    { value: 1, label: '€1', type: 'moneda' },
+   193→    { value: 0.50, label: '€0,50', type: 'moneda' },
+   194→    { value: 0.20, label: '€0,20', type: 'moneda' },
+   195→    { value: 0.10, label: '€0,10', type: 'moneda' },
+   196→    { value: 0.05, label: '€0,05', type: 'moneda' },
+   197→    { value: 0.02, label: '€0,02', type: 'moneda' },
+   198→    { value: 0.01, label: '€0,01', type: 'moneda' },
+   199→  ],
+   200→}
+   201→
+   202→// Fallback denominations for countries not explicitly listed
+   203→const DEFAULT_DENOMINATIONS = [
+   204→  { value: 1000, label: '$1.000', type: 'billete' },
+   205→  { value: 500, label: '$500', type: 'billete' },
+   206→  { value: 200, label: '$200', type: 'billete' },
+   207→  { value: 100, label: '$100', type: 'billete' },
+   208→  { value: 50, label: '$50', type: 'billete' },
+   209→  { value: 20, label: '$20', type: 'billete' },
+   210→  { value: 10, label: '$10', type: 'moneda' },
+   211→  { value: 5, label: '$5', type: 'moneda' },
+   212→  { value: 1, label: '$1', type: 'moneda' },
+   213→]
+   214→
+   215→function getDenominations(country: string): Array<{ value: number; label: string; type: string }> {
+   216→  // Map USD-based countries to US denominations
+   217→  const usdCountries = ['EC', 'PA', 'SV']
+   218→  const eurCountries = ['DE', 'FR', 'IT', 'ES']
+   219→  const key = usdCountries.includes(country) ? 'US' 
+   220→    : eurCountries.includes(country) ? 'ES' 
+   221→    : country
+   222→  return DENOMINATIONS_BY_COUNTRY[key] || DEFAULT_DENOMINATIONS
+   223→}
+   224→
+   225→const MAX_INITIAL = 500000
+   226→
+   227→/** Helper to filter numeric input (digits, comma, period only) and enforce max */
+   228→const numericFilter = (value: string) => {
+   229→  const cleaned = value.replace(/[^0-9.,]/g, '')
+   230→  const num = parseFloat(cleaned.replace(/,/g, '')) || 0
+   231→  if (num > MAX_INITIAL) {
+   232→    // If exceeds max, clamp to max
+   233→    return MAX_INITIAL.toString()
+   234→  }
+   235→  return cleaned
+   236→}
+   237→
+   238→export function CashRegisterView() {
+   239→  const { user, permissions } = useAuth()
+   240→  const { branches, selectedBranchId, setSelectedBranchId } = useAppStore()
+   241→  const canManageCash = permissions.canManageCash
+   242→  const { fmtBase } = useCurrency()
+   243→  const country = useSetting('country')
+   244→
+   245→  const denominations = useMemo(() => getDenominations(country || 'VE'), [country])
+   246→
+   247→  /** Format number with thousands separator for display */
+   248→  const fmt = (val: number) => val.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+   249→
+   250→  const [registers, setRegisters] = useState<CashRegister[]>([])
+   251→  const [loading, setLoading] = useState(true)
+   252→  const [filterBranchId, setFilterBranchId] = useState<string>(selectedBranchId || '')
+   253→  const [showOpen, setShowOpen] = useState(false)
+   254→  const [showMovement, setShowMovement] = useState(false)
+   255→  const [movementRegId, setMovementRegId] = useState<string | null>(null)
+   256→  const [showClose, setShowClose] = useState(false)
+   257→  const [closeRegId, setCloseRegId] = useState<string | null>(null)
+   258→  const [initialAmt, setInitialAmt] = useState('100')
+   259→  const [registerName, setRegisterName] = useState('')
+   260→  const [selectedUserId, setSelectedUserId] = useState('')
+   261→  const [availableUsers, setAvailableUsers] = useState<{ id: string; name: string; role: string }[]>([])
+   262→  const [moveType, setMoveType] = useState('entrada')
+   263→  const [moveAmount, setMoveAmount] = useState('')
+   264→  const [moveConcept, setMoveConcept] = useState('')
+   265→  const [saving, setSaving] = useState(false)
+   266→  const [closeActual, setCloseActual] = useState('')
+   267→  const [closingAll, setClosingAll] = useState(false)
+   268→  const [expandedHistory, setExpandedHistory] = useState<string | null>(null)
+   269→  const [showCloseAllConfirm, setShowCloseAllConfirm] = useState(false)
+   270→
+   271→  // Retiro de Excedente state
+   272→  const [showWithdrawal, setShowWithdrawal] = useState(false)
+   273→  const [withdrawalRegId, setWithdrawalRegId] = useState<string | null>(null)
+   274→  const [withdrawalAmount, setWithdrawalAmount] = useState('')
+   275→  const [withdrawalConcept, setWithdrawalConcept] = useState('')
+   276→
+   277→  // Arqueo de Caja state
+   278→  const [showAudit, setShowAudit] = useState(false)
+   279→  const [auditRegId, setAuditRegId] = useState<string | null>(null)
+   280→
+   281→  // Sales breakdown state
+   282→  const [expandedBreakdown, setExpandedBreakdown] = useState<string | null>(null)
+   283→  const [breakdownData, setBreakdownData] = useState<{
+   284→    posSales: Array<{ id: string; date: string; total: number; method: string; clientName: string | null; description: string }>
+   285→    subscriptionSales: Array<{ id: string; date: string; total: number; method: string; clientName: string | null; description: string }>
+   286→    legacySubscriptions: Array<{ id: string; date: string; total: number; method: string; clientName: string; description: string }>
+   287→    posTotal: number
+   288→    subTotal: number
+   289→    legacyTotal: number
+   290→    totalCount: number
+   291→  } | null>(null)
+   292→  const [loadingBreakdown, setLoadingBreakdown] = useState(false)
+   293→  const [auditBreakdown, setAuditBreakdown] = useState<Record<string, string>>({})
+   294→  const [auditNotes, setAuditNotes] = useState('')
+   295→  const [auditResult, setAuditResult] = useState<{ counted: number; expected: number; difference: number } | null>(null)
+   296→
+   297→  // Register closure alert for cashiers
+   298→  const [showClosedAlert, setShowClosedAlert] = useState(false)
+   299→  const [closedInfo, setClosedInfo] = useState<{ name: string | null; branchName: string; actual: number; cutDate: string } | null>(null)
+   300→
+   301→  const fetchData = async (branchOverride?: string) => {
+   302→    try {
+   303→      const branchParam = branchOverride || filterBranchId || selectedBranchId || ''
+   304→      const url = branchParam
+   305→        ? `/api/cash-register?branchId=${branchParam}`
+   306→        : '/api/cash-register'
+   307→      const regs = await api.get<CashRegister[]>(url)
+   308→      setRegisters(regs)
+   309→
+   310→      if (canManageCash) {
+   311→        const users = await api.get<{ id: string; name: string; role: string; active: boolean }[]>('/api/users?role=cajero')
+   312→        setAvailableUsers(users.filter(u => u.active))
+   313→      }
+   314→    } catch {
+   315→      toast.error('Error al cargar caja')
+   316→    } finally {
+   317→      setLoading(false)
+   318→    }
+   319→  }
+   320→
+   321→  useEffect(() => {
+   322→    const mainBranch = branches.find(b => b.isMain && b.active)
+   323→    const targetBranch = selectedBranchId || mainBranch?.id || ''
+   324→    if (targetBranch && targetBranch !== filterBranchId) {
+   325→      setFilterBranchId(targetBranch)
+   326→    }
+   327→  }, [selectedBranchId, branches])
+   328→
+   329→  useEffect(() => {
+   330→    const mainBranch = branches.find(b => b.isMain && b.active)
+   331→    const defaultBranch = selectedBranchId || mainBranch?.id || ''
+   332→    setFilterBranchId(defaultBranch)
+   333→  }, [])
+   334→
+   335→  useEffect(() => {
+   336→    if (filterBranchId) {
+   337→      fetchData(filterBranchId)
+   338→    }
+   339→  }, [filterBranchId])
+   340→
+   341→  useEffect(() => {
+   342→    if (canManageCash || !user?.id) return
+   343→    api.get<{ wasClosed: boolean; register?: { name: string | null; branchName: string; closingDate: string; actual: number; cutDate: string } }>(`/api/cash-register/check?userId=${user.id}`)
+   344→      .then((result) => {
+   345→        if (result.wasClosed && result.register) {
+   346→          setClosedInfo(result.register)
+   347→          setShowClosedAlert(true)
+   348→        }
+   349→      })
+   350→      .catch(() => {})
+   351→  }, [canManageCash, user?.id])
+   352→
+   353→  const openRegisters = registers.filter(r => r.status === 'abierta')
+   354→  const closedRegisters = registers.filter(r => r.status === 'cerrada')
+   355→  const totalOpenAmt = openRegisters.reduce((sum, r) => sum + r.currentAmt, 0)
+   356→  const totalSales = openRegisters.reduce((sum, r) => sum + r._count.sales, 0)
+   357→
+   358→  // Fix 6: Filter out users that already have an open register
+   359→  const usersWithOpenBox = new Set(openRegisters.map(r => r.user.id))
+   360→  const filteredUsers = availableUsers.filter(u => !usersWithOpenBox.has(u.id))
+   361→
+   362→  // Fix 14/19: Auto-refresh every 30s when there are open registers
+   363→  useEffect(() => {
+   364→    if (openRegisters.length === 0) return
+   365→    const interval = setInterval(() => { fetchData(filterBranchId) }, 30000)
+   366→    return () => clearInterval(interval)
+   367→  }, [openRegisters.length, filterBranchId])
+   368→
+   369→  // Fix 14/19: Refresh when user returns to the tab
+   370→  useEffect(() => {
+   371→    const onFocus = () => { if (openRegisters.length > 0) fetchData(filterBranchId) }
+   372→    window.addEventListener('focus', onFocus)
+   373→    return () => window.removeEventListener('focus', onFocus)
+   374→  }, [openRegisters.length, filterBranchId])
+   375→
+   376→  const toggleBreakdown = async (regId: string) => {
+   377→    if (expandedBreakdown === regId) {
+   378→      setExpandedBreakdown(null)
+   379→      setBreakdownData(null)
+   380→      return
+   381→    }
+   382→    setExpandedBreakdown(regId)
+   383→    setLoadingBreakdown(true)
+   384→    try {
+   385→      const data = await api.get<any>(`/api/cash-register/${regId}/sales-breakdown`)
+   386→      setBreakdownData(data)
+   387→    } catch {
+   388→      toast.error('Error al cargar desglose de ventas')
+   389→      setExpandedBreakdown(null)
+   390→    } finally {
+   391→      setLoadingBreakdown(false)
+   392→    }
+   393→  }
+   394→
+   395→  const openCreateDialog = () => {
+   396→    setInitialAmt('')
+   397→    setRegisterName('')
+   398→    setSelectedUserId('')
+   399→    setShowOpen(true)
+   400→  }
+   401→
+   402→  const openRegister = async () => {
+   403→    setSaving(true)
+   404→    try {
+   405→      const effectiveUserId = selectedUserId || user?.id || ''
+   406→      if (!effectiveUserId) {
+   407→        toast.error('Debe seleccionar un cajero')
+   408→        setSaving(false)
+   409→        return
+   410→      }
+   411→      const targetBranch = filterBranchId || selectedBranchId || ''
+   412→      if (!targetBranch) {
+   413→        toast.error('No hay sucursal seleccionada')
+   414→        setSaving(false)
+   415→        return
+   416→      }
+   417→      const amt = parseFloat(initialAmt) || 0
+   418→      // Fix 1: Cap initial amount at MAX_INITIAL
+   419→      if (amt > MAX_INITIAL) {
+   420→        toast.error(`El monto inicial no puede exceder ${fmtBase(MAX_INITIAL)}`)
+   421→        setSaving(false)
+   422→        return
+   423→      }
+   424→      await api.post('/api/cash-register/open', {
+   425→        userId: effectiveUserId,
+   426→        initialAmt: amt,
+   427→        name: registerName.trim() || undefined,
+   428→        branchId: targetBranch,
+   429→      })
+   430→      toast.success('Caja abierta exitosamente')
+   431→      setShowOpen(false)
+   432→      setRegisterName('')
+   433→      setSelectedUserId('')
+   434→      setInitialAmt('') // Fix 5: Reset initial amount after success
+   435→      fetchData(targetBranch)
+   436→    } catch (error) {
+   437→      const msg = error instanceof Error ? error.message : 'Error al abrir caja'
+   438→      toast.error(msg)
+   439→    } finally {
+   440→      setSaving(false)
+   441→    }
+   442→  }
+   443→
+   444→  const addMovement = async () => {
+   445→    if (!moveAmount || !moveConcept) {
+   446→      toast.error('Monto y concepto son obligatorios')
+   447→      return
+   448→    }
+   449→    if (!movementRegId) {
+   450→      toast.error('No se seleccionó caja')
+   451→      return
+   452→    }
+   453→    setSaving(true)
+   454→    try {
+   455→      const currencies = await api.get<Array<{ id: string; isBase: boolean }>>('/api/currencies')
+   456→      const baseCurrency = currencies.find(c => c.isBase)
+   457→      await api.post('/api/cash-register/movement', {
+   458→        cashRegId: movementRegId,
+   459→        type: moveType,
+   460→        amount: parseFloat(moveAmount),
+   461→        concept: moveConcept,
+   462→        currencyId: baseCurrency?.id || currencies[0]?.id || '',
+   463→        userId: user?.id || '',
+   464→      })
+   465→      toast.success('Movimiento registrado')
+   466→      setShowMovement(false)
+   467→      setMoveAmount('')
+   468→      setMoveConcept('')
+   469→      setMovementRegId(null)
+   470→      fetchData(filterBranchId)
+   471→    } catch {
+   472→      toast.error('Error al registrar movimiento')
+   473→    } finally {
+   474→      setSaving(false)
+   475→    }
+   476→  }
+   477→
+   478→  const closeRegister = async () => {
+   479→    if (!closeRegId) return
+   480→    // Fix 17: Validate closeActual is provided
+   481→    if (!closeActual || parseFloat(closeActual) < 0) {
+   482→      toast.error('Debe ingresar el monto real en caja')
+   483→      return
+   484→    }
+   485→    setSaving(true)
+   486→    try {
+   487→      await api.post('/api/cash-register/close', {
+   488→        cashRegId: closeRegId,
+   489→        actual: parseFloat(closeActual),
+   490→      })
+   491→      toast.success('Caja cerrada exitosamente')
+   492→      setShowClose(false)
+   493→      setCloseRegId(null)
+   494→      setCloseActual('')
+   495→      fetchData(filterBranchId)
+   496→    } catch {
+   497→      toast.error('Error al cerrar caja')
+   498→    } finally {
+   499→      setSaving(false)
+   500→    }
+   501→  }
+   502→
+   503→  const handleWithdrawal = async () => {
+   504→    if (!withdrawalAmount || parseFloat(withdrawalAmount) <= 0) {
+   505→      toast.error('El monto debe ser mayor a cero')
+   506→      return
+   507→    }
+   508→    if (!withdrawalRegId) {
+   509→      toast.error('No se seleccionó caja')
+   510→      return
+   511→    }
+   512→    setSaving(true)
+   513→    try {
+   514→      const currencies = await api.get<Array<{ id: string; isBase: boolean }>>('/api/currencies')
+   515→      const baseCurrency = currencies.find(c => c.isBase)
+   516→      const result = await api.post<{ amount: number }>('/api/cash-register/withdrawal', {
+   517→        cashRegId: withdrawalRegId,
+   518→        amount: parseFloat(withdrawalAmount),
+   519→        concept: withdrawalConcept.trim() || undefined,
+   520→        currencyId: baseCurrency?.id || currencies[0]?.id || '',
+   521→        userId: user?.id || '',
+   522→      })
+   523→      // Fix 9: Use fmt() in withdrawal toast
+   524→      toast.success(`Retiro de excedente por ${fmtBase(result.amount)} registrado`)
+   525→      setShowWithdrawal(false)
+   526→      setWithdrawalAmount('')
+   527→      setWithdrawalConcept('')
+   528→      setWithdrawalRegId(null)
+   529→      fetchData(filterBranchId)
+   530→    } catch (error) {
+   531→      const msg = error instanceof Error ? error.message : 'Error al registrar retiro'
+   532→      toast.error(msg)
+   533→    } finally {
+   534→      setSaving(false)
+   535→    }
+   536→  }
+   537→
+   538→  const handleAudit = async () => {
+   539→    if (!auditRegId) {
+   540→      toast.error('No se seleccionó caja')
+   541→      return
+   542→    }
+   543→    setSaving(true)
+   544→    try {
+   545→      const numericBreakdown: Record<string, number> = {}
+   546→      for (const [key, val] of Object.entries(auditBreakdown)) {
+   547→        const num = parseFloat(val) || 0
+   548→        if (num > 0) numericBreakdown[key] = num
+   549→      }
+   550→      if (Object.keys(numericBreakdown).length === 0) {
+   551→        toast.error('Debe ingresar al menos una denominación')
+   552→        setSaving(false)
+   553→        return
+   554→      }
+   555→      const result = await api.post<{ counted: number; expected: number; difference: number }>(
+   556→        '/api/cash-register/audit',
+   557→        {
+   558→          cashRegId: auditRegId,
+   559→          userId: user?.id || '',
+   560→          breakdown: numericBreakdown,
+   561→          notes: auditNotes.trim() || undefined,
+   562→        }
+   563→      )
+   564→      setAuditResult(result)
+   565→      toast.success('Arqueo de caja registrado')
+   566→      // Fix 12: Refresh main view after audit
+   567→      fetchData(filterBranchId)
+   568→      // Fix 11: Auto-close audit dialog after 3 seconds
+   569→      setTimeout(() => { resetAuditDialog() }, 3000)
+   570→    } catch (error) {
+   571→      const msg = error instanceof Error ? error.message : 'Error al registrar arqueo'
+   572→      toast.error(msg)
+   573→    } finally {
+   574→      setSaving(false)
+   575→    }
+   576→  }
+   577→
+   578→  const resetAuditDialog = () => {
+   579→    setShowAudit(false)
+   580→    setAuditRegId(null)
+   581→    setAuditBreakdown({})
+   582→    setAuditNotes('')
+   583→    setAuditResult(null)
+   584→  }
+   585→
+   586→  const closeAllRegisters = async () => {
+   587→    setClosingAll(true)
+   588→    setShowCloseAllConfirm(false)
+   589→    try {
+   590→      const result = await api.post<{ message: string }>('/api/cash-register/close-all', {
+   591→        branchId: filterBranchId || undefined,
+   592→      })
+   593→      toast.success(result.message)
+   594→      fetchData(filterBranchId)
+   595→    } catch {
+   596→      toast.error('Error al cerrar todas las cajas')
+   597→    } finally {
+   598→      setClosingAll(false)
+   599→    }
+   600→  }
+   601→
+   602→  const formatTime = (dateStr: string) => {
+   603→    return new Date(dateStr).toLocaleString('es-VE', {
+   604→      day: '2-digit',
+   605→      month: '2-digit',
+   606→      year: 'numeric',
+   607→      hour: '2-digit',
+   608→      minute: '2-digit',
+   609→    })
+   610→  }
+   611→
+   612→  const formatTimeShort = (dateStr: string) => {
+   613→    return new Date(dateStr).toLocaleString('es-VE', {
+   614→      hour: '2-digit',
+   615→      minute: '2-digit',
+   616→    })
+   617→  }
+   618→
+   619→  if (loading) {
+   620→    return <div className="h-64 rounded-lg bg-muted animate-pulse" />
+   621→  }
+   622→
+   623→  return (
+   624→    <TooltipProvider delayDuration={300}>
+   625→    <div className="space-y-5">
+   626→
+   627→      {/* Register Closure Alert for Cashiers */}
+   628→      {showClosedAlert && closedInfo && (
+   629→        <Card className="border-red-300 bg-red-50 dark:bg-red-950/30 dark:border-red-800">
+   630→          <CardContent className="p-6 flex flex-col items-center justify-center text-center gap-4">
+   631→            <div className="rounded-full bg-red-100 dark:bg-red-900/50 p-4">
+   632→              <AlertTriangle className="h-10 w-10 text-red-600 dark:text-red-400" />
+   633→            </div>
+   634→            <div>
+   635→              <h2 className="text-lg font-bold text-red-700 dark:text-red-400">Tu Caja Ha Sido Cerrada</h2>
+   636→              <p className="text-sm text-red-600 dark:text-red-400 mt-2">
+   637→                La caja &quot;{closedInfo.name || 'Sin nombre'}&quot; en la sucursal &quot;{closedInfo.branchName}&quot;
+   638→                ha sido cerrada por un administrador.
+   639→              </p>
+   640→              <div className="mt-3 rounded-md bg-white dark:bg-gray-900 p-3 text-sm">
+   641→                {/* Fix 9: Use fmt() in cashier alert */}
+   642→                <p className="text-muted-foreground">Monto final: <span className="font-bold">{fmtBase(closedInfo.actual)}</span></p>
+   643→                <p className="text-muted-foreground">Fecha de cierre: {new Date(closedInfo.cutDate).toLocaleString('es-VE')}</p>
+   644→              </div>
+   645→            </div>
+   646→            <Button variant="outline" onClick={() => {
+   647→              setShowClosedAlert(false)
+   648→              setClosedInfo(null)
+   649→              fetchData(filterBranchId)
+   650→            }}>
+   651→              Entendido
+   652→            </Button>
+   653→          </CardContent>
+   654→        </Card>
+   655→      )}
+   656→
+   657→      {/* ===== MAIN HEADER: Summary + Actions ===== */}
+   658→      <Card className="overflow-hidden">
+   659→        <div className="flex flex-col lg:flex-row">
+   660→          {/* Left: Main summary */}
+   661→          <div className="flex-1 bg-gradient-to-br from-primary/5 via-primary/[0.02] to-transparent p-5 lg:p-6">
+   662→            <div className="flex items-center gap-3 mb-4">
+   663→              <div className="rounded-xl bg-primary/10 p-2.5">
+   664→                <Wallet className="h-6 w-6 text-primary" />
+   665→              </div>
+   666→              <div className="min-w-0 max-w-full">
+   667→                {/* Fix 7: Changed label to "Efectivo Global en Cajas" */}
+   668→                <p className="text-sm text-muted-foreground font-medium">Efectivo Global en Cajas</p>
+   669→                {/* Fix 3: Use fmt() + Fix 4: tabular-nums truncate */}
+   670→                <p className="text-3xl font-bold tracking-tight text-primary tabular-nums truncate max-w-full">
+   671→                  {fmtBase(totalOpenAmt)}
+   672→                </p>
+   673→              </div>
+   674→            </div>
+   675→            <div className="flex flex-wrap gap-4 text-sm">
+   676→              <div className="flex items-center gap-1.5 text-muted-foreground">
+   677→                <CircleDollarSign className="h-4 w-4" />
+   678→                <span>
+   679→                  {openRegisters.length > 0
+   680→                    ? `${openRegisters.length} caja${openRegisters.length > 1 ? 's' : ''} abierta${openRegisters.length > 1 ? 's' : ''}`
+   681→                    : 'Sin cajas abiertas'}
+   682→                </span>
+   683→              </div>
+   684→              <div className="flex items-center gap-1.5 text-muted-foreground">
+   685→                <ShoppingCart className="h-4 w-4" />
+   686→                <span>{totalSales} venta{totalSales !== 1 ? 's' : ''}</span>
+   687→              </div>
+   688→              {openRegisters.length > 0 && (
+   689→                <div className={`flex items-center gap-1.5 font-medium ${openRegisters.length > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}`}>
+   690→                  <div className={`h-2 w-2 rounded-full ${openRegisters.length > 0 ? 'bg-emerald-500 animate-pulse' : 'bg-muted-foreground'}`} />
+   691→                  Operativa
+   692→                </div>
+   693→              )}
+   694→            </div>
+   695→            {/* Fix 7: Breakdown when multiple open registers */}
+   696→            {openRegisters.length > 1 && (
+   697→              <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs text-muted-foreground">
+   698→                {openRegisters.map(r => (
+   699→                  <span key={r.id}>{r.name || r.user.name}: {fmtBase(r.currentAmt)}</span>
+   700→                ))}
+   701→              </div>
+   702→            )}
+   703→          </div>
+   704→
+   705→          {/* Right: Actions */}
+   706→          <div className="border-t lg:border-t-0 lg:border-l p-4 lg:p-6 bg-muted/30 flex flex-col gap-2 justify-center min-w-[200px]">
+   707→            {canManageCash && (
+   708→              <>
+   709→                <Button data-tutorial="cash-open-btn" className="w-full justify-start gap-2 bg-primary hover:bg-primary/90 text-white" onClick={openCreateDialog}>
+   710→                  <Plus className="h-4 w-4" /> Abrir Caja
+   711→                </Button>
+   712→                {openRegisters.length > 0 && (
+   713→                  <>
+   714→                    <Button variant="outline" className="w-full justify-start gap-2" onClick={() => {
+   715→                      if (openRegisters.length === 1) setMovementRegId(openRegisters[0].id)
+   716→                      setShowMovement(true)
+   717→                    }}>
+   718→                      <ArrowDownCircle className="h-4 w-4" /> Movimiento
+   719→                    </Button>
+   720→                    {/* Fix 18: Show AlertDialog confirmation before closing all */}
+   721→                    <Button variant="outline" className="w-full justify-start gap-2 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30" onClick={() => setShowCloseAllConfirm(true)} disabled={closingAll}>
+   722→                      {closingAll ? <Loader2 className="h-4 w-4 animate-spin" /> : <Lock className="h-4 w-4" />}
+   723→                      Cerrar Todas
+   724→                    </Button>
+   725→                  </>
+   726→                )}
+   727→              </>
+   728→            )}
+   729→            {!canManageCash && (
+   730→              <div className="flex items-center gap-2 text-sm text-muted-foreground py-1">
+   731→                <UserCircle className="h-4 w-4" />
+   732→                Modo cajero - solo lectura
+   733→              </div>
+   734→            )}
+   735→          </div>
+   736→        </div>
+   737→      </Card>
+   738→
+   739→      {/* ===== OPEN REGISTERS (Card layout) ===== */}
+   740→      {openRegisters.length > 0 && (
+   741→        <div className="space-y-3">
+   742→          <div className="flex items-center justify-between">
+   743→            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+   744→              Cajas Abiertas
+   745→            </h2>
+   746→          </div>
+   747→          <div className="grid gap-3 grid-cols-1 md:grid-cols-2 xl:grid-cols-3">
+   748→            {openRegisters.map((reg) => {
+   749→              const earnings = reg.currentAmt - reg.initialAmt
+   750→              const isPositive = earnings >= 0
+   751→              return (
+   752→                <Card key={reg.id} className="relative overflow-hidden border-l-4 border-l-emerald-500">
+   753→                  <CardContent className="p-4 space-y-3">
+   754→                    {/* Header */}
+   755→                    <div className="flex items-start justify-between">
+   756→                      <div className="min-w-0 flex-1">
+   757→                        <h3 className="font-semibold text-base truncate">
+   758→                          {reg.name || 'Sin nombre'}
+   759→                        </h3>
+   760→                        <div className="flex items-center gap-1.5 mt-1 text-sm text-muted-foreground">
+   761→                          <UserCircle className="h-3.5 w-3.5 shrink-0" />
+   762→                          <span className="truncate">{reg.user.name}</span>
+   763→                        </div>
+   764→                      </div>
+   765→                      <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-800 shrink-0">
+   766→                        Abierta
+   767→                      </Badge>
+   768→                    </div>
+   769→
+   770→                    {/* Amounts - Fix 3: Use fmt() + Fix 4: tabular-nums */}
+   771→                    <div className="grid grid-cols-3 gap-3">
+   772→                      <div className="text-center">
+   773→                        <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Inicial</p>
+   774→                        <p className="text-sm font-semibold tabular-nums">{fmtBase(reg.initialAmt)}</p>
+   775→                      </div>
+   776→                      <div className="text-center">
+   777→                        <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Actual</p>
+   778→                        <p className="text-lg font-bold text-primary tabular-nums">{fmtBase(reg.currentAmt)}</p>
+   779→                      </div>
+   780→                      <div className="text-center">
+   781→                        <p className="text-[11px] text-muted-foreground uppercase tracking-wide">
+   782→                          <TrendingUp className="h-3 w-3 inline" />
+   783→                        </p>
+   784→                        <p className={`text-sm font-semibold tabular-nums ${isPositive ? 'text-emerald-600' : 'text-red-600'}`}>
+   785→                          {isPositive ? '+' : ''}{fmt(earnings)}
+   786→                        </p>
+   787→                      </div>
+   788→                    </div>
+   789→
+   790→                    {/* Meta info - Fix 8: Added movements count */}
+   791→                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+   792→                      <div className="flex items-center gap-1">
+   793→                        <Clock className="h-3 w-3" />
+   794→                        Apertura: {formatTimeShort(reg.openingDate)}
+   795→                      </div>
+   796→                      <div className="flex items-center gap-1">
+   797→                        <Building2 className="h-3 w-3" />
+   798→                        {reg.branch.name}
+   799→                      </div>
+   800→                      <div className="flex items-center gap-1">
+   801→                        <ShoppingCart className="h-3 w-3" />
+   802→                        {reg._count.sales} venta{reg._count.sales !== 1 ? 's' : ''}
+   803→                      </div>
+   804→                      <div className="flex items-center gap-1">
+   805→                        <ArrowUpCircle className="h-3 w-3" />
+   806→                        {reg._count.movements} movimiento{reg._count.movements !== 1 ? 's' : ''}
+   807→                      </div>
+   808→                    </div>
+   809→
+   810→                    {/* Action buttons */}
+   811→                    <Separator />
+   812→                    <div className="flex items-center gap-1.5 flex-wrap">
+   813→                      {canManageCash && (
+   814→                        <>
+   815→                          <Tooltip>
+   816→                            <TooltipTrigger asChild>
+   817→                              <Button size="sm" variant="ghost" className="h-8 px-2.5 text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950/30" onClick={() => {
+   818→                                setMovementRegId(reg.id)
+   819→                                setShowMovement(true)
+   820→                              }}>
+   821→                                <ArrowDownCircle className="h-4 w-4" />
+   822→                              </Button>
+   823→                            </TooltipTrigger>
+   824→                            <TooltipContent>Movimiento</TooltipContent>
+   825→                          </Tooltip>
+   826→                          <Tooltip>
+   827→                            <TooltipTrigger asChild>
+   828→                              <Button size="sm" variant="ghost" className="h-8 px-2.5 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30" onClick={() => {
+   829→                                setCloseRegId(reg.id)
+   830→                                setCloseActual('')
+   831→                                setShowClose(true)
+   832→                              }}>
+   833→                                <Lock className="h-4 w-4" />
+   834→                              </Button>
+   835→                            </TooltipTrigger>
+   836→                            <TooltipContent>Cerrar Caja</TooltipContent>
+   837→                          </Tooltip>
+   838→                        </>
+   839→                      )}
+   840→                      <Tooltip>
+   841→                        <TooltipTrigger asChild>
+   842→                          <Button size="sm" variant="ghost" className="h-8 px-2.5 text-orange-600 hover:text-orange-700 hover:bg-orange-50 dark:hover:bg-orange-950/30" onClick={() => {
+   843→                            setWithdrawalRegId(reg.id)
+   844→                            setShowWithdrawal(true)
+   845→                          }}>
+   846→                            <Banknote className="h-4 w-4" />
+   847→                          </Button>
+   848→                        </TooltipTrigger>
+   849→                        <TooltipContent>Retiro de Excedente</TooltipContent>
+   850→                      </Tooltip>
+   851→                      <Tooltip>
+   852→                        <TooltipTrigger asChild>
+   853→                          <Button size="sm" variant="ghost" className="h-8 px-2.5 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/30" onClick={() => {
+   854→                            setAuditRegId(reg.id)
+   855→                            setShowAudit(true)
+   856→                          }}>
+   857→                            <ClipboardCheck className="h-4 w-4" />
+   858→                          </Button>
+   859→                        </TooltipTrigger>
+   860→                        <TooltipContent>Arqueo de Caja</TooltipContent>
+   861→                      </Tooltip>
+   862→                      <Tooltip>
+   863→                        <TooltipTrigger asChild>
+   864→                          <Button size="sm" variant="ghost" className="h-8 px-2.5 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 dark:hover:bg-indigo-950/30" onClick={() => toggleBreakdown(reg.id)}>
+   865→                            <Eye className="h-4 w-4" />
+   866→                          </Button>
+   867→                        </TooltipTrigger>
+   868→                        <TooltipContent>Desglose de Ventas</TooltipContent>
+   869→                      </Tooltip>
+   870→                    </div>
+   871→                  </CardContent>
+   872→
+   873→                  {/* Sales Breakdown (expandable) */}
+   874→                  {expandedBreakdown === reg.id && (
+   875→                    <div className="border-t px-4 py-3 bg-muted/30 space-y-3">
+   876→                      {loadingBreakdown ? (
+   877→                        <div className="flex items-center justify-center py-4">
+   878→                          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+   879→                        </div>
+   880→                      ) : breakdownData ? (
+   881→                        <>
+   882→                          {/* Summary cards */}
+   883→                          <div className="grid grid-cols-2 gap-2">
+   884→                            <div className="rounded-md bg-blue-50 dark:bg-blue-950/30 p-2 text-center">
+   885→                              <p className="text-[10px] text-blue-600 dark:text-blue-400 uppercase font-medium">Punto de Venta</p>
+   886→                              <p className="text-sm font-bold text-blue-700 dark:text-blue-300">{fmtBase(breakdownData.posTotal)}</p>
+   887→                              <p className="text-[10px] text-muted-foreground">{breakdownData.posSales.length} venta{breakdownData.posSales.length !== 1 ? 's' : ''}</p>
+   888→                            </div>
+   889→                            <div className="rounded-md bg-emerald-50 dark:bg-emerald-950/30 p-2 text-center">
+   890→                              <p className="text-[10px] text-emerald-600 dark:text-emerald-400 uppercase font-medium">Suscripciones</p>
+   891→                              <p className="text-sm font-bold text-emerald-700 dark:text-emerald-300">{fmtBase(breakdownData.subTotal + breakdownData.legacyTotal)}</p>
+   892→                              <p className="text-[10px] text-muted-foreground">{breakdownData.subscriptionSales.length + breakdownData.legacySubscriptions.length} renovación(es)</p>
+   893→                            </div>
+   894→                          </div>
+   895→
+   896→                          {/* POS Sales list */}
+   897→                          {breakdownData.posSales.length > 0 && (
+   898→                            <div className="space-y-1">
+   899→                              <p className="text-[10px] font-semibold text-muted-foreground uppercase">Ventas Punto de Venta</p>
+   900→                              {breakdownData.posSales.slice(0, 10).map(s => (
+   901→                                <div key={s.id} className="flex items-center justify-between text-xs py-1 border-b last:border-b-0 border-muted">
+   902→                                  <div className="min-w-0 flex-1">
+   903→                                    <span className="font-medium truncate block">{s.description}</span>
+   904→                                    {s.clientName && <span className="text-muted-foreground">{s.clientName}</span>}
+   905→                                  </div>
+   906→                                  <div className="text-right shrink-0 ml-2">
+   907→                                    <span className="font-semibold">{fmtBase(s.total)}</span>
+   908→                                    <span className="text-muted-foreground ml-1">{s.method}</span>
+   909→                                  </div>
+   910→                                </div>
+   911→                              ))}
+   912→                              {breakdownData.posSales.length > 10 && (
+   913→                                <p className="text-[10px] text-muted-foreground text-center">...y {breakdownData.posSales.length - 10} más</p>
+   914→                              )}
+   915→                            </div>
+   916→                          )}
+   917→
+   918→                          {/* Subscription Sales list */}
+   919→                          {(breakdownData.subscriptionSales.length > 0 || breakdownData.legacySubscriptions.length > 0) && (
+   920→                            <div className="space-y-1">
+   921→                              <p className="text-[10px] font-semibold text-muted-foreground uppercase">Suscripciones</p>
+   922→                              {breakdownData.subscriptionSales.map(s => (
+   923→                                <div key={s.id} className="flex items-center justify-between text-xs py-1 border-b last:border-b-0 border-muted">
+   924→                                  <div className="min-w-0 flex-1">
+   925→                                    <span className="font-medium truncate block">Renovación de suscripción</span>
+   926→                                    {s.clientName && <span className="text-muted-foreground">{s.clientName}</span>}
+   927→                                    {s.description && <span className="text-muted-foreground block">{s.description}</span>}
+   928→                                  </div>
+   929→                                  <div className="text-right shrink-0 ml-2">
+   930→                                    <span className="font-semibold text-emerald-700 dark:text-emerald-400">{fmtBase(s.total)}</span>
+   931→                                    <span className="text-muted-foreground ml-1">{s.method}</span>
+   932→                                  </div>
+   933→                                </div>
+   934→                              ))}
+   935→                              {breakdownData.legacySubscriptions.map(m => (
+   936→                                <div key={m.id} className="flex items-center justify-between text-xs py-1 border-b last:border-b-0 border-muted">
+   937→                                  <div className="min-w-0 flex-1">
+   938→                                    <span className="font-medium truncate block">{m.description}</span>
+   939→                                  </div>
+   940→                                  <span className="font-semibold text-emerald-700 dark:text-emerald-400 shrink-0 ml-2">{fmtBase(m.total)}</span>
+   941→                                </div>
+   942→                              ))}
+   943→                            </div>
+   944→                          )}
+   945→
+   946→                          {breakdownData.posSales.length === 0 && breakdownData.subscriptionSales.length === 0 && breakdownData.legacySubscriptions.length === 0 && (
+   947→                            <p className="text-xs text-muted-foreground text-center py-2">No hay ventas registradas en esta caja</p>
+   948→                          )}
+   949→                        </>
+   950→                      ) : null}
+   951→                    </div>
+   952→                  )}
+   953→                </Card>
+   954→              )
+   955→            })}
+   956→          </div>
+   957→        </div>
+   958→      )}
+   959→
+   960→      {/* No registers open - Empty state */}
+   961→      {openRegisters.length === 0 && canManageCash && (
+   962→        <Card className="border-dashed">
+   963→          <CardContent className="p-10 flex flex-col items-center justify-center text-center gap-3">
+   964→            <div className="rounded-full bg-muted p-4">
+   965→              <Wallet className="h-10 w-10 text-muted-foreground" />
+   966→            </div>
+   967→            <div>
+   968→              <p className="font-medium text-muted-foreground">No hay cajas abiertas</p>
+   969→              <p className="text-sm text-muted-foreground mt-1">
+   970→                Abre una nueva caja para comenzar a registrar ventas y movimientos.
+   971→              </p>
+   972→            </div>
+   973→            <Button data-tutorial="cash-open-btn" className="bg-primary hover:bg-primary/90 text-white" onClick={openCreateDialog}>
+   974→              <Plus className="mr-2 h-4 w-4" /> Abrir Caja
+   975→            </Button>
+   976→          </CardContent>
+   977→        </Card>
+   978→      )}
+   979→
+   980→      {openRegisters.length === 0 && !canManageCash && (
+   981→        <Card className="border-dashed">
+   982→          <CardContent className="p-10 flex flex-col items-center justify-center text-center gap-3">
+   983→            <div className="rounded-full bg-muted p-4">
+   984→              <Wallet className="h-10 w-10 text-muted-foreground" />
+   985→            </div>
+   986→            <div>
+   987→              <p className="font-medium text-muted-foreground">No hay cajas abiertas</p>
+   988→              <p className="text-sm text-muted-foreground mt-1">
+   989→                Un administrador debe abrir una caja para que puedas operar.
+   990→              </p>
+   991→            </div>
+   992→          </CardContent>
+   993→        </Card>
+   994→      )}
+   995→
+   996→      {/* ===== HISTORY ===== */}
+   997→      {closedRegisters.length > 0 && (
+   998→        <div className="space-y-3">
+   999→          <div className="flex items-center justify-between">
+  1000→            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+  1001→              Historial de Cajas
+  1002→            </h2>
+  1003→            <Badge variant="secondary" className="text-xs">
+  1004→              {closedRegisters.length} registro{closedRegisters.length !== 1 ? 's' : ''}
+  1005→            </Badge>
+  1006→          </div>
+  1007→          <Card>
+  1008→            <CardContent className="p-0">
+  1009→              <div className="divide-y">
+  1010→                {closedRegisters.map((reg) => {
+  1011→                  const isExpanded = expandedHistory === reg.id
+  1012→                  const earnings = reg.currentAmt - reg.initialAmt
+  1013→                  const isPositive = earnings >= 0
+  1014→                  return (
+  1015→                    <div key={reg.id}>
+  1016→                      {/* Collapsible header */}
+  1017→                      <button
+  1018→                        className="w-full flex items-center gap-3 p-3 hover:bg-muted/50 transition-colors text-left"
+  1019→                        onClick={() => setExpandedHistory(isExpanded ? null : reg.id)}
+  1020→                      >
+  1021→                        {isExpanded
+  1022→                          ? <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
+  1023→                          : <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+  1024→                        }
+  1025→                        <div className="flex-1 min-w-0 grid grid-cols-2 sm:grid-cols-4 gap-2 items-center">
+  1026→                          <div className="min-w-0">
+  1027→                            <p className="font-medium text-sm truncate">{reg.name || 'Sin nombre'}</p>
+  1028→                            <p className="text-xs text-muted-foreground">{reg.user.name}</p>
+  1029→                          </div>
+  1030→                          <div className="hidden sm:block text-xs text-muted-foreground">
+  1031→                            <Clock className="h-3 w-3 inline mr-1" />
+  1032→                            {formatTime(reg.openingDate)}
+  1033→                          </div>
+  1034→                          {/* Fix 3: Use fmt() in history list */}
+  1035→                          <div className="text-right">
+  1036→                            <p className="text-sm font-semibold tabular-nums">{fmtBase(reg.currentAmt)}</p>
+  1037→                            <p className={`text-xs tabular-nums ${isPositive ? 'text-emerald-600' : 'text-red-600'}`}>
+  1038→                              {isPositive ? '+' : ''}{fmt(earnings)}
+  1039→                            </p>
+  1040→                          </div>
+  1041→                          <div className="text-right">
+  1042→                            <Badge variant="outline" className="bg-slate-50 text-slate-600 border-slate-200 dark:bg-slate-900/50 dark:text-slate-400 dark:border-slate-700">
+  1043→                              {reg.branch?.name || '—'}
+  1044→                            </Badge>
+  1045→                            <p className="text-xs text-muted-foreground mt-1">
+  1046→                              <ShoppingCart className="h-3 w-3 inline mr-1" />
+  1047→                              {reg._count.sales} venta{reg._count.sales !== 1 ? 's' : ''}
+  1048→                            </p>
+  1049→                          </div>
+  1050→                        </div>
+  1051→                      </button>
+  1052→
+  1053→                      {/* Expanded details */}
+  1054→                      {isExpanded && (
+  1055→                        <div className="px-3 pb-3 pl-10">
+  1056→                          {/* Fix 3: Use fmt() in history expanded details */}
+  1057→                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3 rounded-md bg-muted/50 text-sm">
+  1058→                            <div>
+  1059→                              <p className="text-xs text-muted-foreground">Cajero</p>
+  1060→                              <p className="font-medium">{reg.user.name}</p>
+  1061→                            </div>
+  1062→                            <div>
+  1063→                              <p className="text-xs text-muted-foreground">Sucursal</p>
+  1064→                              <p className="font-medium">{reg.branch?.name || '—'}</p>
+  1065→                            </div>
+  1066→                            <div>
+  1067→                              <p className="text-xs text-muted-foreground">Apertura</p>
+  1068→                              <p className="font-medium">{formatTime(reg.openingDate)}</p>
+  1069→                            </div>
+  1070→                            {reg.closingDate && (
+  1071→                              <div>
+  1072→                                <p className="text-xs text-muted-foreground">Cierre</p>
+  1073→                                <p className="font-medium">{formatTime(reg.closingDate)}</p>
+  1074→                              </div>
+  1075→                            )}
+  1076→                            <div>
+  1077→                              <p className="text-xs text-muted-foreground">Monto Inicial</p>
+  1078→                              <p className="font-medium tabular-nums">{fmtBase(reg.initialAmt)}</p>
+  1079→                            </div>
+  1080→                            <div>
+  1081→                              <p className="text-xs text-muted-foreground">Monto Final</p>
+  1082→                              <p className="font-bold tabular-nums">{fmtBase(reg.currentAmt)}</p>
+  1083→                            </div>
+  1084→                            <div>
+  1085→                              <p className="text-xs text-muted-foreground">Diferencia</p>
+  1086→                              <p className={`font-bold tabular-nums ${isPositive ? 'text-emerald-600' : 'text-red-600'}`}>
+  1087→                                {isPositive ? '+' : ''}{fmt(earnings)}
+  1088→                              </p>
+  1089→                            </div>
+  1090→                            <div>
+  1091→                              <p className="text-xs text-muted-foreground">Ventas</p>
+  1092→                              <p className="font-medium">{reg._count.sales}</p>
+  1093→                            </div>
+  1094→                          </div>
+  1095→                        </div>
+  1096→                      )}
+  1097→                    </div>
+  1098→                  )
+  1099→                })}
+  1100→              </div>
+  1101→            </CardContent>
+  1102→          </Card>
+  1103→        </div>
+  1104→      )}
+  1105→
+  1106→      {/* Show all in table if there are no closed registers but there are registers */}
+  1107→      {closedRegisters.length === 0 && registers.length === 0 && (
+  1108→        <Card className="border-dashed">
+  1109→          <CardContent className="p-8 text-center text-muted-foreground text-sm">
+  1110→            No hay registros de caja
+  1111→          </CardContent>
+  1112→        </Card>
+  1113→      )}
+  1114→
+  1115→      {/* ===== DIALOGS ===== */}
+  1116→
+  1117→      {/* Open Dialog */}
+  1118→      <Dialog open={showOpen} onOpenChange={setShowOpen}>
+  1119→        <DialogContent className="sm:max-w-md">
+  1120→          <DialogHeader>
+  1121→            <DialogTitle className="flex items-center gap-2">
+  1122→              <Plus className="h-5 w-5 text-primary" />
+  1123→              Abrir Caja
+  1124→            </DialogTitle>
+  1125→            <DialogDescription>Selecciona el cajero y el monto inicial para abrir una nueva caja.</DialogDescription>
+  1126→          </DialogHeader>
+  1127→          <div className="space-y-4">
+  1128→            <div className="space-y-2">
+  1129→              <Label>Cajero Asignado *</Label>
+  1130→              {/* Fix 6: Use filteredUsers instead of availableUsers */}
+  1131→              <Select value={selectedUserId} onValueChange={setSelectedUserId}>
+  1132→                <SelectTrigger><SelectValue placeholder="Seleccionar cajero" /></SelectTrigger>
+  1133→                <SelectContent>
+  1134→                  {filteredUsers.length > 0 ? (
+  1135→                    filteredUsers.map((u) => (
+  1136→                      <SelectItem key={u.id} value={u.id}>
+  1137→                        <span className="flex items-center gap-2">
+  1138→                          <UserCircle className="h-3 w-3" />
+  1139→                          {u.name}
+  1140→                        </span>
+  1141→                      </SelectItem>
+  1142→                    ))
+  1143→                  ) : (
+  1144→                    <div className="px-2 py-1.5 text-sm text-muted-foreground">
+  1145→                      {availableUsers.length > 0
+  1146→                        ? 'Todos los cajeros tienen una caja abierta'
+  1147→                        : 'No hay cajeros disponibles'}
+  1148→                    </div>
+  1149→                  )}
+  1150→                </SelectContent>
+  1151→              </Select>
+  1152→              {/* Fix 6: Note when all cashiers have open boxes */}
+  1153→              {filteredUsers.length === 0 && availableUsers.length > 0 && (
+  1154→                <p className="text-xs text-amber-600 dark:text-amber-400">
+  1155→                  Todos los cajeros disponibles ya tienen una caja abierta.
+  1156→                </p>
+  1157→              )}
+  1158→            </div>
+  1159→            <div className="space-y-2">
+  1160→              <Label htmlFor="regname">Nombre de la Caja (opcional)</Label>
+  1161→              <Input id="regname" value={registerName} onChange={(e) => setRegisterName(e.target.value)} placeholder="Ej: Caja Principal, Caja 2..." />
+  1162→            </div>
+  1163→            <div className="space-y-2">
+  1164→              <Label htmlFor="initial">Monto Inicial</Label>
+  1165→              {/* Fix 1: max="500000" + Fix 2: text inputMode numeric + cash-input */}
+  1166→              <Input
+  1167→                id="initial"
+  1168→                type="text"
+  1169→                inputMode="numeric"
+  1170→                className={`cash-input [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield] ${parseFloat(initialAmt.replace(/,/g, '')) >= MAX_INITIAL ? 'border-amber-500 focus-visible:ring-amber-500' : ''}`}
+  1171→                value={initialAmt}
+  1172→                onChange={(e) => setInitialAmt(numericFilter(e.target.value))}
+  1173→                placeholder="0.00"
+  1174→              />
+  1175→              <p className={`text-xs ${parseFloat(initialAmt.replace(/,/g, '')) >= MAX_INITIAL ? 'text-amber-500 font-semibold' : 'text-muted-foreground'}`}>Máximo permitido: {fmtBase(MAX_INITIAL)}</p>
+  1176→            </div>
+  1177→            <Button className="w-full bg-primary hover:bg-primary/90 text-white" onClick={openRegister} disabled={saving || !selectedUserId}>
+  1178→              {saving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Abriendo...</> : 'Abrir Caja'}
+  1179→            </Button>
+  1180→          </div>
+  1181→        </DialogContent>
+  1182→      </Dialog>
+  1183→
+  1184→      {/* Movement Dialog */}
+  1185→      <Dialog open={showMovement} onOpenChange={(open) => {
+  1186→        if (!open) {
+  1187→          setShowMovement(false)
+  1188→          setMovementRegId(null)
+  1189→        }
+  1190→      }}>
+  1191→        <DialogContent className="sm:max-w-md">
+  1192→          <DialogHeader>
+  1193→            <DialogTitle className="flex items-center gap-2">
+  1194→              <ArrowDownCircle className="h-5 w-5 text-blue-600" />
+  1195→              Registrar Movimiento
+  1196→            </DialogTitle>
+  1197→            <DialogDescription>Registra una entrada o salida de efectivo.</DialogDescription>
+  1198→          </DialogHeader>
+  1199→          <div className="space-y-4">
+  1200→            {openRegisters.length > 1 && (
+  1201→              <div className="space-y-2">
+  1202→                <Label>Caja</Label>
+  1203→                <Select value={movementRegId || ''} onValueChange={setMovementRegId}>
+  1204→                  <SelectTrigger><SelectValue placeholder="Seleccionar caja" /></SelectTrigger>
+  1205→                  <SelectContent>
+  1206→                    {openRegisters.map((reg) => (
+  1207→                      <SelectItem key={reg.id} value={reg.id}>
+  1208→                        {/* Fix 3: Use fmt() in movement select label */}
+  1209→                        {reg.name || reg.user.name} — {fmtBase(reg.currentAmt)}
+  1210→                      </SelectItem>
+  1211→                    ))}
+  1212→                  </SelectContent>
+  1213→                </Select>
+  1214→              </div>
+  1215→            )}
+  1216→            <div className="space-y-2">
+  1217→              <Label>Tipo</Label>
+  1218→              <Select value={moveType} onValueChange={setMoveType}>
+  1219→                <SelectTrigger><SelectValue /></SelectTrigger>
+  1220→                <SelectContent>
+  1221→                  <SelectItem value="entrada">
+  1222→                    <span className="flex items-center gap-2">
+  1223→                      <ArrowUpCircle className="h-3 w-3 text-emerald-600" /> Entrada
+  1224→                    </span>
+  1225→                  </SelectItem>
+  1226→                  <SelectItem value="salida">
+  1227→                    <span className="flex items-center gap-2">
+  1228→                      <ArrowDownCircle className="h-3 w-3 text-red-600" /> Salida
+  1229→                    </span>
+  1230→                  </SelectItem>
+  1231→                </SelectContent>
+  1232→              </Select>
+  1233→            </div>
+  1234→            <div className="space-y-2">
+  1235→              <Label htmlFor="mamt">Monto</Label>
+  1236→              {/* Fix 2: text inputMode numeric + cash-input */}
+  1237→              <Input
+  1238→                id="mamt"
+  1239→                type="text"
+  1240→                inputMode="numeric"
+  1241→                className="cash-input [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]"
+  1242→                value={moveAmount}
+  1243→                onChange={(e) => setMoveAmount(numericFilter(e.target.value))}
+  1244→                placeholder="0.00"
+  1245→              />
+  1246→            </div>
+  1247→            <div className="space-y-2">
+  1248→              <Label htmlFor="mconcept">Concepto *</Label>
+  1249→              <Input id="mconcept" value={moveConcept} onChange={(e) => setMoveConcept(e.target.value)} placeholder="Descripción del movimiento" />
+  1250→            </div>
+  1251→            <Button className="w-full bg-primary hover:bg-primary/90 text-white" onClick={addMovement} disabled={saving}>
+  1252→              {saving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Registrando...</> : 'Registrar'}
+  1253→            </Button>
+  1254→          </div>
+  1255→        </DialogContent>
+  1256→      </Dialog>
+  1257→
+  1258→      {/* Close Dialog */}
+  1259→      <Dialog open={showClose} onOpenChange={setShowClose}>
+  1260→        <DialogContent className="sm:max-w-md">
+  1261→          <DialogHeader>
+  1262→            <DialogTitle className="flex items-center gap-2">
+  1263→              <Lock className="h-5 w-5 text-red-600" />
+  1264→              Cerrar Caja
+  1265→            </DialogTitle>
+  1266→            <DialogDescription>Confirma el monto real en caja para cerrar.</DialogDescription>
+  1267→          </DialogHeader>
+  1268→          <div className="space-y-4">
+  1269→            {closeRegId && (() => {
+  1270→              const reg = registers.find(r => r.id === closeRegId)
+  1271→              return reg ? (
+  1272→                <div className="rounded-md bg-muted p-3 space-y-2 text-sm">
+  1273→                  <div className="flex justify-between">
+  1274→                    <span className="text-muted-foreground">Caja:</span>
+  1275→                    <span className="font-medium">{reg.name || '—'}</span>
+  1276→                  </div>
+  1277→                  <div className="flex justify-between">
+  1278→                    <span className="text-muted-foreground">Cajero:</span>
+  1279→                    <span className="font-medium">{reg.user.name}</span>
+  1280→                  </div>
+  1281→                  <div className="flex justify-between">
+  1282→                    <span className="text-muted-foreground">Monto esperado:</span>
+  1283→                    {/* Fix 3: Use fmt() in close dialog */}
+  1284→                    <span className="font-bold tabular-nums">{fmtBase(reg.currentAmt)}</span>
+  1285→                  </div>
+  1286→                </div>
+  1287→              ) : null
+  1288→            })()}
+  1289→            <div className="space-y-2">
+  1290→              <Label htmlFor="closeamt">Monto Real en Caja *</Label>
+  1291→              {/* Fix 2: text inputMode numeric + cash-input */}
+  1292→              {/* Fix 15: Use correct register for placeholder */}
+  1293→              <Input
+  1294→                id="closeamt"
+  1295→                type="text"
+  1296→                inputMode="numeric"
+  1297→                className="cash-input [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]"
+  1298→                value={closeActual}
+  1299→                onChange={(e) => setCloseActual(numericFilter(e.target.value))}
+  1300→                placeholder={closeRegId ? fmt(registers.find(r => r.id === closeRegId)?.currentAmt || 0) : '0,00'}
+  1301→              />
+  1302→            </div>
+  1303→            <p className="text-xs text-muted-foreground">
+  1304→              Se enviará un correo electrónico al administrador con el resumen del cierre.
+  1305→            </p>
+  1306→            <Button className="w-full bg-red-600 hover:bg-red-700 text-white" onClick={closeRegister} disabled={saving}>
+  1307→              {saving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Cerrando...</> : 'Confirmar Cierre'}
+  1308→            </Button>
+  1309→          </div>
+  1310→        </DialogContent>
+  1311→      </Dialog>
+  1312→
+  1313→      {/* Retiro de Excedente Dialog */}
+  1314→      <Dialog open={showWithdrawal} onOpenChange={(open) => {
+  1315→        if (!open) {
+  1316→          setShowWithdrawal(false)
+  1317→          setWithdrawalRegId(null)
+  1318→          setWithdrawalAmount('')
+  1319→          setWithdrawalConcept('')
+  1320→        }
+  1321→      }}>
+  1322→        <DialogContent className="sm:max-w-md">
+  1323→          <DialogHeader>
+  1324→            <DialogTitle className="flex items-center gap-2">
+  1325→              <Banknote className="h-5 w-5 text-orange-600" />
+  1326→              Retiro de Excedente
+  1327→            </DialogTitle>
+  1328→            <DialogDescription>Retira el efectivo excedente de la caja.</DialogDescription>
+  1329→          </DialogHeader>
+  1330→          <div className="space-y-4">
+  1331→            {openRegisters.length > 1 && (
+  1332→              <div className="space-y-2">
+  1333→                <Label>Caja</Label>
+  1334→                <Select value={withdrawalRegId || ''} onValueChange={setWithdrawalRegId}>
+  1335→                  <SelectTrigger><SelectValue placeholder="Seleccionar caja" /></SelectTrigger>
+  1336→                  <SelectContent>
+  1337→                    {openRegisters.map((reg) => (
+  1338→                      <SelectItem key={reg.id} value={reg.id}>
+  1339→                        {/* Fix 3: Use fmt() in withdrawal select label */}
+  1340→                        {reg.name || reg.user.name} — {fmtBase(reg.currentAmt)}
+  1341→                      </SelectItem>
+  1342→                    ))}
+  1343→                  </SelectContent>
+  1344→                </Select>
+  1345→              </div>
+  1346→            )}
+  1347→            {withdrawalRegId && (() => {
+  1348→              const reg = registers.find(r => r.id === withdrawalRegId)
+  1349→              if (!reg) return null
+  1350→              return (
+  1351→                <div className="rounded-md bg-muted p-3 space-y-1 text-sm">
+  1352→                  <div className="flex justify-between">
+  1353→                    <span className="text-muted-foreground">Caja:</span>
+  1354→                    <span className="font-medium">{reg.name || '—'}</span>
+  1355→                  </div>
+  1356→                  <div className="flex justify-between">
+  1357→                    <span className="text-muted-foreground">Saldo actual:</span>
+  1358→                    {/* Fix 3: Use fmt() in withdrawal card */}
+  1359→                    <span className="font-bold text-primary tabular-nums">{fmtBase(reg.currentAmt)}</span>
+  1360→                  </div>
+  1361→                </div>
+  1362→              )
+  1363→            })()}
+  1364→            <div className="space-y-2">
+  1365→              <Label htmlFor="wamt">Monto a Retirar</Label>
+  1366→              {/* Fix 2: text inputMode numeric + cash-input */}
+  1367→              <Input
+  1368→                id="wamt"
+  1369→                type="text"
+  1370→                inputMode="numeric"
+  1371→                className="cash-input [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]"
+  1372→                min="0"
+  1373→                value={withdrawalAmount}
+  1374→                onChange={(e) => setWithdrawalAmount(numericFilter(e.target.value))}
+  1375→                placeholder="0.00"
+  1376→              />
+  1377→            </div>
+  1378→            <div className="space-y-2">
+  1379→              <Label htmlFor="wconcept">Concepto (opcional)</Label>
+  1380→              <Input
+  1381→                id="wconcept"
+  1382→                value={withdrawalConcept}
+  1383→                onChange={(e) => setWithdrawalConcept(e.target.value)}
+  1384→                placeholder="Razón del retiro..."
+  1385→              />
+  1386→            </div>
+  1387→            <Button
+  1388→              className="w-full bg-orange-600 hover:bg-orange-700 text-white"
+  1389→              onClick={handleWithdrawal}
+  1390→              disabled={saving || !withdrawalAmount || parseFloat(withdrawalAmount) <= 0}
+  1391→            >
+  1392→              {saving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Registrando...</> : 'Registrar Retiro'}
+  1393→            </Button>
+  1394→          </div>
+  1395→        </DialogContent>
+  1396→      </Dialog>
+  1397→
+  1398→      {/* Arqueo de Caja Dialog */}
+  1399→      <Dialog open={showAudit} onOpenChange={(open) => {
+  1400→        if (!open) resetAuditDialog()
+  1401→      }}>
+  1402→        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+  1403→          <DialogHeader>
+  1404→            <DialogTitle className="flex items-center gap-2">
+  1405→              <ClipboardCheck className="h-5 w-5 text-emerald-600" />
+  1406→              Arqueo de Caja
+  1407→            </DialogTitle>
+  1408→            <DialogDescription>Verificación del efectivo en caja por denominación.</DialogDescription>
+  1409→          </DialogHeader>
+  1410→          <div className="space-y-4">
+  1411→            {openRegisters.length > 1 && (
+  1412→              <div className="space-y-2">
+  1413→                <Label>Caja</Label>
+  1414→                <Select value={auditRegId || ''} onValueChange={setAuditRegId}>
+  1415→                  <SelectTrigger><SelectValue placeholder="Seleccionar caja" /></SelectTrigger>
+  1416→                  <SelectContent>
+  1417→                    {openRegisters.map((reg) => (
+  1418→                      <SelectItem key={reg.id} value={reg.id}>
+  1419→                        {/* Fix 3: Use fmt() in audit select label */}
+  1420→                        {reg.name || reg.user.name} — {fmtBase(reg.currentAmt)}
+  1421→                      </SelectItem>
+  1422→                    ))}
+  1423→                  </SelectContent>
+  1424→                </Select>
+  1425→              </div>
+  1426→            )}
+  1427→            {auditRegId && (() => {
+  1428→              const reg = registers.find(r => r.id === auditRegId)
+  1429→              if (!reg) return null
+  1430→              return (
+  1431→                <div className="rounded-md bg-muted p-3 space-y-1 text-sm">
+  1432→                  <div className="flex justify-between">
+  1433→                    <span className="text-muted-foreground">Caja:</span>
+  1434→                    <span className="font-medium">{reg.name || '—'}</span>
+  1435→                  </div>
+  1436→                  <div className="flex justify-between">
+  1437→                    <span className="text-muted-foreground">Monto esperado:</span>
+  1438→                    {/* Fix 3: Use fmt() in audit card */}
+  1439→                    <span className="font-bold text-primary tabular-nums">{fmtBase(reg.currentAmt)}</span>
+  1440→                  </div>
+  1441→                </div>
+  1442→              )
+  1443→            })()}
+  1444→
+  1445→            <div className="space-y-3">
+  1446→              {/* Denominations for the configured country */}
+  1447→              <Label className="text-sm font-medium">Denominaciones ({country || 'VE'})</Label>
+  1448→              <div className="grid grid-cols-2 gap-2">
+  1449→                {denominations.map((denom) => (
+  1450→                  <div key={denom.value} className="flex items-center gap-2">
+  1451→                    <span className="text-xs font-mono w-16 text-right shrink-0 text-muted-foreground">
+  1452→                      {denom.label}
+  1453→                    </span>
+  1454→                    {/* Fix 2: text inputMode numeric + cash-input */}
+  1455→                    <Input
+  1456→                      type="text"
+  1457→                      inputMode="numeric"
+  1458→                      min="0"
+  1459→                      className="h-8 text-sm cash-input [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]"
+  1460→                      placeholder="0"
+  1461→                      value={auditBreakdown[denom.value.toString()] || ''}
+  1462→                      onChange={(e) =>
+  1463→                        setAuditBreakdown((prev) => ({
+  1464→                          ...prev,
+  1465→                          [denom.value.toString()]: numericFilter(e.target.value),
+  1466→                        }))
+  1467→                      }
+  1468→                    />
+  1469→                  </div>
+  1470→                ))}
+  1471→              </div>
+  1472→            </div>
+  1473→
+  1474→            <Separator />
+  1475→
+  1476→            <div className="space-y-2">
+  1477→              <div className="flex justify-between text-sm">
+  1478→                <span className="text-muted-foreground">Total contado:</span>
+  1479→                {/* Fix 3: Use fmt() for audit total */}
+  1480→                <span className="font-bold text-lg tabular-nums">
+  1481→                  {fmtBase(Object.entries(auditBreakdown).reduce(
+  1482→                    (sum, [denom, qty]) => sum + parseFloat(denom) * (parseFloat(qty) || 0),
+  1483→                    0
+  1484→                  ))}
+  1485→                </span>
+  1486→              </div>
+  1487→              {auditRegId && (() => {
+  1488→                const reg = registers.find(r => r.id === auditRegId)
+  1489→                if (!reg) return null
+  1490→                const counted = Object.entries(auditBreakdown).reduce(
+  1491→                  (sum, [denom, qty]) => sum + parseFloat(denom) * (parseFloat(qty) || 0),
+  1492→                  0
+  1493→                )
+  1494→                const diff = counted - reg.currentAmt
+  1495→                return (
+  1496→                  <div className="flex justify-between text-sm">
+  1497→                    <span className="text-muted-foreground">Diferencia:</span>
+  1498→                    {/* Fix 3: Use fmt() for audit difference */}
+  1499→                    <span className={`font-bold tabular-nums ${diff > 0 ? 'text-amber-600' : diff < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+  1500→                      {diff > 0 ? '+' : ''}{fmt(diff)}
+  1501→                      {diff > 0 && ' (Sobrante)'}
+  1502→                      {diff < 0 && ' (Faltante)'}
+  1503→                      {diff === 0 && ' (Cuadrado)'}
+  1504→                    </span>
+  1505→                  </div>
+  1506→                )
+  1507→              })()}
+  1508→            </div>
+  1509→
+  1510→            {auditResult && (
+  1511→              <div className={`rounded-md p-4 text-center ${
+  1512→                auditResult.difference === 0
+  1513→                  ? 'bg-emerald-50 border border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-800'
+  1514→                  : auditResult.difference > 0
+  1515→                    ? 'bg-amber-50 border border-amber-200 dark:bg-amber-950/30 dark:border-amber-800'
+  1516→                    : 'bg-red-50 border border-red-200 dark:bg-red-950/30 dark:border-red-800'
+  1517→              }`}>
+  1518→                {auditResult.difference === 0 ? (
+  1519→                  <>
+  1520→                    <CheckCircle2 className="h-8 w-8 text-emerald-600 mx-auto mb-1" />
+  1521→                    <p className="font-bold text-emerald-700 dark:text-emerald-400">Cuadrado</p>
+  1522→                  </>
+  1523→                ) : auditResult.difference > 0 ? (
+  1524→                  <p className="font-bold text-amber-700 dark:text-amber-400">
+  1525→                    {/* Fix 3: Use fmt() for audit result amounts */}
+  1526→                    Sobrante: {fmtBase(auditResult.difference)}
+  1527→                  </p>
+  1528→                ) : (
+  1529→                  <p className="font-bold text-red-700 dark:text-red-400">
+  1530→                    Faltante: {fmtBase(Math.abs(auditResult.difference))}
+  1531→                  </p>
+  1532→                )}
+  1533→                <div className="text-xs text-muted-foreground mt-2 space-y-0.5">
+  1534→                  <p>Esperado: {fmtBase(auditResult.expected)}</p>
+  1535→                  <p>Contado: {fmtBase(auditResult.counted)}</p>
+  1536→                </div>
+  1537→                {/* Fix 10: Show message when difference detected */}
+  1538→                {auditResult.difference !== 0 && (
+  1539→                  <p className="text-xs text-muted-foreground mt-2 italic">
+  1540→                    Se detectó diferencia. El saldo actualizado se reflejará en el próximo cierre.
+  1541→                  </p>
+  1542→                )}
+  1543→              </div>
+  1544→            )}
+  1545→
+  1546→            <div className="space-y-2">
+  1547→              <Label htmlFor="auditnotes">Notas (opcional)</Label>
+  1548→              <Textarea
+  1549→                id="auditnotes"
+  1550→                value={auditNotes}
+  1551→                onChange={(e) => setAuditNotes(e.target.value)}
+  1552→                placeholder="Observaciones del arqueo..."
+  1553→                rows={2}
+  1554→              />
+  1555→            </div>
+  1556→            <Button
+  1557→              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
+  1558→              onClick={handleAudit}
+  1559→              disabled={saving}
+  1560→            >
+  1561→              {saving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Registrando...</> : auditResult ? 'Registrar Nuevo Arqueo' : 'Registrar Arqueo'}
+  1562→            </Button>
+  1563→          </div>
+  1564→        </DialogContent>
+  1565→      </Dialog>
+  1566→
+  1567→      {/* Fix 18: Close All Confirm AlertDialog */}
+  1568→      <AlertDialog open={showCloseAllConfirm} onOpenChange={setShowCloseAllConfirm}>
+  1569→        <AlertDialogContent>
+  1570→          <AlertDialogHeader>
+  1571→            <AlertDialogTitle className="flex items-center gap-2">
+  1572→              <Lock className="h-5 w-5 text-red-600" />
+  1573→              Cerrar Todas las Cajas
+  1574→            </AlertDialogTitle>
+  1575→            <AlertDialogDescription>
+  1576→              ¿Está seguro de cerrar todas las cajas?
+  1577→            </AlertDialogDescription>
+  1578→          </AlertDialogHeader>
+  1579→          <div className="my-2">
+  1580→            <Table>
+  1581→              <TableHeader>
+  1582→                <TableRow>
+  1583→                  <TableHead>Caja</TableHead>
+  1584→                  <TableHead>Cajero</TableHead>
+  1585→                  <TableHead className="text-right">Monto Actual</TableHead>
+  1586→                </TableRow>
+  1587→              </TableHeader>
+  1588→              <TableBody>
+  1589→                {openRegisters.map((reg) => (
+  1590→                  <TableRow key={reg.id}>
+  1591→                    <TableCell className="font-medium">{reg.name || 'Sin nombre'}</TableCell>
+  1592→                    <TableCell>{reg.user.name}</TableCell>
+  1593→                    {/* Fix 3: Use fmt() in close all confirmation */}
+  1594→                    <TableCell className="text-right font-semibold tabular-nums">{fmtBase(reg.currentAmt)}</TableCell>
+  1595→                  </TableRow>
+  1596→                ))}
+  1597→              </TableBody>
+  1598→            </Table>
+  1599→            <div className="mt-3 rounded-md bg-muted p-3 text-sm">
+  1600→              <div className="flex justify-between font-bold">
+  1601→                <span>Total global:</span>
+  1602→                <span className="tabular-nums">{fmtBase(totalOpenAmt)}</span>
+  1603→              </div>
+  1604→            </div>
+  1605→          </div>
+  1606→          <AlertDialogFooter>
+  1607→            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+  1608→            <AlertDialogAction
+  1609→              variant="destructive"
+  1610→              onClick={closeAllRegisters}
+  1611→              disabled={closingAll}
+  1612→            >
+  1613→              {closingAll ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Cerrando...</> : 'Confirmar Cierre'}
+  1614→            </AlertDialogAction>
+  1615→          </AlertDialogFooter>
+  1616→        </AlertDialogContent>
+  1617→      </AlertDialog>
+  1618→
+  1619→    </div>
+  1620→    </TooltipProvider>
+  1621→  )
+  1622→}
+  1623→

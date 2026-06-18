@@ -157,7 +157,11 @@ export async function POST(
     if (paymentMethod && resolvedCurrencyId) {
       const clientName = `${client.name}${client.lastName ? ' ' + client.lastName : ''}`
       const refPart = paymentReference?.trim() ? `: ${paymentReference.trim()}` : ''
-      const concept = `Suscripción plan "${plan.name}" - ${clientName}${refPart}`
+      // Include plan change info in concept if plan changed
+      const previousPlan = existingMembership?.tarifa && existingMembership.tarifa !== plan.name
+        ? `${existingMembership.tarifa} -> ${plan.name}`
+        : plan.name
+      const concept = `Suscripción plan "${previousPlan}" - ${clientName}${refPart}`
 
       try {
         // Create Sale + SalePayment

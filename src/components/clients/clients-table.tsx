@@ -221,7 +221,7 @@ export function ClientsTable() {
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>([])
 
   const referenceCurrency = useSetting('referenceCurrency')
-  const { sym: currencySymbol, baseSym, rate: exchangeRate, fmt } = useCurrency()
+  const { sym: currencySymbol, baseSym, refCode, rate: exchangeRate, fmt } = useCurrency()
   const selectedPm = paymentMethods.find(m => m.code === paymentMethod)
   const isLocalMethod = selectedPm?.isLocalCurrency ?? false
 
@@ -1839,13 +1839,13 @@ export function ClientsTable() {
         </DialogContent>
       </Dialog>
 
-      {/* Payment Dialog */}
+      {/* Payment Dialog — POS-style */}
       <Dialog open={showPaymentDialog} onOpenChange={setShowPaymentDialog}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Cobrar a {paymentClient?.name}</DialogTitle>
+            <DialogTitle>Cobrar</DialogTitle>
             <DialogDescription>
-              Registrar pago de deuda pendiente
+              Deuda pendiente: <span className="text-red-600 font-medium">{paymentClient ? fmt(paymentClient.pendingBalance) : ''}</span>
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -1853,32 +1853,51 @@ export function ClientsTable() {
               <div className="rounded-md bg-muted p-3 space-y-1 text-sm">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Cliente:</span>
-                  <span className="font-medium">{paymentClient.name}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Deuda pendiente:</span>
-                  <span className="font-medium text-red-600">{fmt(paymentClient.pendingBalance)}</span>
+                  <span className="font-medium">{paymentClient.name}{paymentClient.lastName ? ` ${paymentClient.lastName}` : ''}</span>
                 </div>
               </div>
             )}
-            <div className="space-y-2">
-              <Label>Método de Pago</Label>
-              <Select value={paymentMethod} onValueChange={handlePaymentMethodChange}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {paymentMethods.map(pm => (
-                    <SelectItem key={pm.code} value={pm.code}>
+
+            {!openCashRegId && (
+              <div className="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-2 text-xs text-amber-700 dark:text-amber-400">
+                No hay caja abierta. Las ventas no se asociarán a un registro de caja.
+              </div>
+            )}
+
+            {/* Method Selection — POS RadioGroup style */}
+            <RadioGroup value={paymentMethod} onValueChange={handlePaymentMethodChange} className="grid grid-cols-2 gap-3">
+              {paymentMethods.filter(m => !m.isCredit).map((pm) => {
+                const Icon = getRenewIcon(pm.icon)
+                return (
+                  <label
+                    key={pm.code}
+                    className={`flex cursor-pointer flex-col items-center gap-2 rounded-lg border-2 p-3 transition-colors ${
+                      paymentMethod === pm.code
+                        ? 'border-primary bg-primary/5 dark:bg-primary/10'
+                        : 'border-muted hover:border-muted-foreground/30'
+                    }`}
+                  >
+                    <RadioGroupItem value={pm.code} className="sr-only" />
+                    <Icon className={`h-5 w-5 ${paymentMethod === pm.code ? 'text-primary' : 'text-muted-foreground'}`} />
+                    <span className={`text-xs font-medium ${paymentMethod === pm.code ? 'text-primary dark:text-primary' : ''}`}>
                       {pm.name}
-                    </SelectItem>
-                  ))}
-                  {paymentMethods.length === 0 && (
-                    <SelectItem value="">Cargando métodos...</SelectItem>
-                  )}
-                </SelectContent>
-              </Select>
-            </div>
+                    </span>
+                  </label>
+                )
+              })}
+            </RadioGroup>
+
+            {paymentMethods.filter(m => !m.isCredit).length === 0 && (
+              <p className="text-xs text-center text-muted-foreground py-2">
+                No hay métodos de pago disponibles (se excluyen métodos de crédito)
+              </p>
+            )}
+
+            <Separator />
+
+            {/* Amount */}
             <div className="space-y-2">
-              <Label htmlFor="cpaymentAmt">Monto a Cobrar</Label>
+              <Label htmlFor="cpaymentAmt">{isLocalMethod ? `Monto (${baseSym})` : 'Monto'}</Label>
               <Input
                 id="cpaymentAmt"
                 type="number"
@@ -1890,23 +1909,27 @@ export function ClientsTable() {
               />
               {multiCurrencyEnabled && isLocalMethod && exchangeRate > 0 && (
                 <p className="text-xs text-muted-foreground">
-                  Equivale a {fmt(paymentAmountInRef)} (Tasa: {exchangeRate.toFixed(2)})
+                  Equivale a {currencySymbol}{paymentAmountInRef.toFixed(2)} (Tasa: {exchangeRate.toFixed(2)} {baseSym}/{refCode})
                 </p>
               )}
               <p className="text-xs text-muted-foreground">
                 Saldo después del cobro: {fmt((paymentClient?.pendingBalance || 0) - paymentAmountInRef)}
               </p>
             </div>
+
+            {/* Reference */}
             {selectedPm?.needsReference && (
               <div className="space-y-2">
-                <Label>Referencia</Label>
+                <Label htmlFor="cpaymentRef">Referencia</Label>
                 <Input
+                  id="cpaymentRef"
                   value={paymentReference}
                   onChange={(e) => setPaymentReference(e.target.value)}
                   placeholder="Número de referencia"
                 />
               </div>
             )}
+
             {selectedPm?.isCash && !openCashRegId && (
               <div className="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-3 text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2">
                 <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
@@ -1916,13 +1939,18 @@ export function ClientsTable() {
                 </div>
               </div>
             )}
+
             <Button
               className="w-full bg-primary hover:bg-primary/90 text-white"
+              size="lg"
               onClick={handlePayment}
-              disabled={paying || !parseFloat(paymentAmount) || parseFloat(paymentAmount) <= 0}
+              disabled={paying || !parseFloat(paymentAmount) || parseFloat(paymentAmount) <= 0 || !paymentMethod}
             >
-              {paying ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <DollarSign className="mr-2 h-4 w-4" />}
-              {paying ? 'Procesando...' : 'Registrar Cobro'}
+              {paying ? (
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Procesando...</>
+              ) : (
+                <>Confirmar Pago {isLocalMethod ? baseSym : currencySymbol}{parseFloat(paymentAmount || '0').toFixed(2)}</>
+              )}
             </Button>
           </div>
         </DialogContent>

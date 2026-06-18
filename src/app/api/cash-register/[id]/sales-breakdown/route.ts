@@ -31,12 +31,47 @@ export async function GET(
     const posSales = sales.filter(s => s.lines.length > 0)
     const subscriptionSales = sales.filter(s => s.lines.length === 0)
 
-    // Legacy subscription movements (old renewals that didn't create a Sale)
-    const saleIds = new Set(sales.map(s => s.id))
-    const legacySubscriptions = movements.filter(m =>
-      (m.concept.includes('Suscripción') || m.concept.includes('Renovación')) &&
-      m.type === 'entrada'
+    // Build a set of subscription sale IDs and their (amount, date, clientId) to filter duplicate CashMovements
+    const subSaleKeys = new Set(
+      subscriptionSales.map(s => `${s.total}-${s.date.getTime()}-${s.clientId || ''}`)
     )
+
+    // Legacy subscription movements (old renewals that didn't create a Sale)
+    // Filter out movements that correspond to an existing subscription Sale (same amount + date + clientId pattern)
+    const legacySubscriptions = movements.filter(m => {
+      if (m.type !== 'entrada') return false
+      if (!m.concept.includes('Suscripción') && !m.concept.includes('Renovación')) return false
+      // Check if this movement matches a subscription sale (to avoid duplicates)
+      // Movement and Sale created at roughly same time with same amount
+      return !subscriptionSales.some(s => {
+        const timeDiff = Math.abs(s.date.getTime() - m.createdAt.getTime())
+        return Math.abs(s.total - m.amount) < 0.01 && timeDiff < 5000
+      })
+    })
+
+    // Get membership info for subscription sales to show plan names
+    const clientIds = [...new Set(subscriptionSales.map(s => s.clientId).filter(Boolean))] as string[]
+    const memberships = clientIds.length > 0
+      ? await db.clientMembership.findMany({
+          where: { clientId: { in: clientIds } },
+          orderBy: { createdAt: 'desc' },
+        })
+      : []
+
+    // Build a map: clientId -> most recent membership
+    const membershipMap = new Map<string, { tarifa: string; planId: string; createdAt: Date }>()
+    for (const m of memberships) {
+      if (!membershipMap.has(m.clientId)) {
+        membershipMap.set(m.clientId, { tarifa: m.tarifa || '', planId: m.planId, createdAt: m.createdAt })
+      }
+    }
+
+    // Helper: parse plan name from legacy concept string like:
+    // 'Suscripción plan "Diario" - Juan Pérez' or 'Suscripción plan "Mensual -> Diario" - Juan'
+    function parsePlanFromConcept(concept: string): string {
+      const match = concept.match(/plan\s+"([^"]+)"/)
+      return match ? match[1] : ''
+    }
 
     const posTotal = posSales.reduce((sum, s) => sum + s.total, 0)
     const subTotal = subscriptionSales.reduce((sum, s) => sum + s.total, 0)
@@ -51,26 +86,33 @@ export async function GET(
         clientName: s.client ? `${s.client.name}${s.client.lastName ? ' ' + s.client.lastName : ''}` : null,
         description: s.lines.map(l => l.product?.name || 'Producto').join(', '),
       })),
-      subscriptionSales: subscriptionSales.map(s => ({
-        id: s.id,
-        date: s.date,
-        total: s.total,
-        method: s.payments[0]?.method || '',
-        clientName: s.client ? `${s.client.name}${s.client.lastName ? ' ' + s.client.lastName : ''}` : null,
-        description: s.payments[0]?.reference ? `Ref: ${s.payments[0].reference}` : '',
-      })),
+      subscriptionSales: subscriptionSales.map(s => {
+        const membership = s.clientId ? membershipMap.get(s.clientId) : null
+        const planName = membership?.tarifa || ''
+        const ref = s.payments[0]?.reference
+        return {
+          id: s.id,
+          date: s.date,
+          total: s.total,
+          method: s.payments[0]?.method || '',
+          clientName: s.client ? `${s.client.name}${s.client.lastName ? ' ' + s.client.lastName : ''}` : null,
+          planName,
+          description: ref ? `Ref: ${ref}` : '',
+        }
+      }),
       legacySubscriptions: legacySubscriptions.map(m => ({
         id: m.id,
         date: m.createdAt,
         total: m.amount,
         method: '',
         clientName: '',
+        planName: parsePlanFromConcept(m.concept),
         description: m.concept,
       })),
       posTotal,
       subTotal,
       legacyTotal,
-      totalCount: sales.length,
+      totalCount: posSales.length + subscriptionSales.length,
     })
   } catch (error) {
     console.error('[GET cash-register sales-breakdown]', error)
