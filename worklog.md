@@ -197,3 +197,30 @@ Stage Summary:
 - El campo isDefault permite proteger métodos del sistema sin listar códigos
 - Migración automática para bases de datos existentes
 - FALLBACK_METHODS se mantiene solo como último recurso si la DB no responde
+---
+Task ID: 1
+Agent: Main Agent
+Task: Agregar pagos realizados en historial + eliminar pagos + quitar deuda
+
+Work Log:
+- Added ClientPayment model to Prisma schema with relations to Client, AccountReceivable, User
+- Added createdAt to AccountReceivable model
+- Modified /api/clients/[id]/payment to create ClientPayment records on each debt collection
+- Fixed payment route to also collect from "parcial" status receivables (not just "pendiente")
+- Created GET /api/clients/[id]/payments to list all client payments with sale details
+- Created DELETE /api/clients/[id]/payments/[paymentId] to delete a payment and restore debt balance (also reverses cash register movement)
+- Created DELETE /api/clients/[id]/receivables/[receivableId] to remove entire debt (with sale/inventory restoration if credit-only)
+- Updated /api/clients to include receivables data with "parcial" status
+- Added "Pagos Realizados" section in client history dialog with table showing date, amount, method, reference, user, concept
+- Added delete button per payment (with confirmation) that restores debt
+- Added "Quitar Deuda" button next to "Cobrar" on client card with confirmation dialog
+- Added ClientPaymentRecord and ReceivableRecord interfaces
+- Added payment deletion states and remove debt confirmation states
+
+Stage Summary:
+- New model: ClientPayment (audit trail for debt payments)
+- New APIs: GET/DELETE /api/clients/[id]/payments, DELETE /api/clients/[id]/receivables/[receivableId]
+- Modified APIs: /api/clients (include receivables), /api/clients/[id]/payment (create ClientPayment, fix parcial status)
+- UI: Pagos Realizados table in history, Quitar Deuda button on client card
+- Note: prisma db push needed on production for ClientPayment table + AccountReceivable.createdAt column
+

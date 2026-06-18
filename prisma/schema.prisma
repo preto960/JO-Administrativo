@@ -26,6 +26,7 @@ model User {
   expenses          Expense[]
   notifications     Notification[]
   supplierPayments  SupplierPayment[]
+  clientPayments    ClientPayment[]
   audits            CashAudit[]
   auditLogs         AuditLog[]
   branch            Branch?           @relation(fields: [branchId], references: [id])
@@ -51,6 +52,7 @@ model Client {
 
   sales            Sale[]
   receivables      AccountReceivable[]
+  clientPayments   ClientPayment[]
   notifications    Notification[]
   memberships      ClientMembership[]
   attendances      Attendance[]
@@ -383,10 +385,28 @@ model AccountReceivable {
   pendingBalance Float
   dueDate        DateTime?
   status         String    @default("pendiente")
+  createdAt      DateTime  @default(now())
 
-  client   Client   @relation(fields: [clientId], references: [id])
-  sale     Sale     @relation(fields: [saleId], references: [id])
-  currency Currency? @relation(fields: [currencyId], references: [id])
+  client   Client           @relation(fields: [clientId], references: [id])
+  sale     Sale             @relation(fields: [saleId], references: [id])
+  currency Currency?        @relation(fields: [currencyId], references: [id])
+  payments ClientPayment[]
+}
+
+model ClientPayment {
+  id             String   @id @default(cuid())
+  clientId       String
+  receivableId   String
+  amount         Float
+  method         String   @default("efectivo")
+  reference      String?
+  cashRegId      String?
+  userId         String
+  createdAt      DateTime @default(now())
+
+  client     Client           @relation(fields: [clientId], references: [id])
+  receivable AccountReceivable @relation(fields: [receivableId], references: [id])
+  user       User             @relation(fields: [userId], references: [id])
 }
 
 model AccountPayable {

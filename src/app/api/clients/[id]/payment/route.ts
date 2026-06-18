@@ -20,14 +20,14 @@ export async function POST(
       return NextResponse.json({ error: 'userId es requerido' }, { status: 400 })
     }
 
-    // Get pending receivables for this client
+    // Get pending receivables for this client (both pendiente and parcial)
     const settings = await db.settings.findFirst()
     const currencyCode = settings?.referenceCurrency || null
 
     const receivables = await db.accountReceivable.findMany({
       where: {
         clientId,
-        status: 'pendiente',
+        status: { in: ['pendiente', 'parcial'] },
       },
       orderBy: { createdAt: 'asc' },
     })
@@ -44,7 +44,7 @@ export async function POST(
     // Distribute payment across receivables (FIFO)
     let remaining = amount
     const results = await db.$transaction(async (tx) => {
-      const updated: Array<{ receivableId: string; amountApplied: number; newBalance: number }> = []
+      const updated: Array<{ receivableId: string; paymentId: string; amountApplied: number; newBalance: number }> = []
 
       for (const receivable of receivables) {
         if (remaining <= 0) break
@@ -61,8 +61,22 @@ export async function POST(
           },
         })
 
+        // Create ClientPayment record for audit trail
+        const payment = await tx.clientPayment.create({
+          data: {
+            clientId,
+            receivableId: receivable.id,
+            amount: Math.round(applied * 100) / 100,
+            method: method || 'efectivo',
+            reference: reference || null,
+            cashRegId: cashRegId || null,
+            userId,
+          },
+        })
+
         updated.push({
           receivableId: receivable.id,
+          paymentId: payment.id,
           amountApplied: Math.round(applied * 100) / 100,
           newBalance,
         })

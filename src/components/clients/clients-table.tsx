@@ -45,7 +45,7 @@ import { Switch } from '@/components/ui/switch'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Separator } from '@/components/ui/separator'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Plus, Search, Users, DollarSign, Loader2, Receipt, Truck, X, Trash2, Printer, FileText, Mail, Pencil, Phone, MapPin, ShoppingCart, Eye, EyeOff, AlertTriangle, Upload, ChevronLeft, ChevronRight, Filter, UserCheck, UserX, UsersRound, RefreshCw, CalendarCheck, CalendarDays, CheckCircle2, CreditCard, Banknote, ArrowLeftRight, Clock, Smartphone, CircleDollarSign, type LucideIcon } from 'lucide-react'
+import { Plus, Search, Users, DollarSign, Loader2, Receipt, Truck, X, Trash2, Printer, FileText, Mail, Pencil, Phone, MapPin, ShoppingCart, Eye, EyeOff, AlertTriangle, Upload, ChevronLeft, ChevronRight, Filter, UserCheck, UserX, UsersRound, RefreshCw, CalendarCheck, CalendarDays, CheckCircle2, CreditCard, Banknote, ArrowLeftRight, Clock, Smartphone, CircleDollarSign, Ban, type LucideIcon } from 'lucide-react'
 import { ClientBulkImport } from './client-bulk-import'
 import { FALLBACK_METHODS } from '@/lib/payment-methods'
 import { toast } from 'sonner'
@@ -96,6 +96,7 @@ interface Client {
     daysRemaining: number
     ticketsRemaining: number
   } | null
+  receivables: Array<{ id: string; amount: number; pendingBalance: number; status: string; dueDate: string | null; createdAt: string }>
   _count: { sales: number }
 }
 
@@ -118,6 +119,35 @@ interface SaleRecord {
   payments: Array<{ method: string; amount: number; currency: { symbol: string } }>
   lines: Array<{ product: { name: string }; quantity: number; unitPrice: number; lineTotal: number }>
   receivables: Array<{ pendingBalance: number; status: string; dueDate: string | null }>
+}
+
+interface ClientPaymentRecord {
+  id: string
+  amount: number
+  method: string
+  reference: string | null
+  createdAt: string
+  user: { name: string }
+  receivable: {
+    id: string
+    saleId: string
+    amount: number
+    pendingBalance: number
+    status: string
+    sale: {
+      date: string
+      lines: Array<{ product: { name: string }; quantity: number; lineTotal: number }>
+    }
+  }
+}
+
+interface ReceivableRecord {
+  id: string
+  amount: number
+  pendingBalance: number
+  status: string
+  dueDate: string | null
+  createdAt: string
 }
 
 interface ProductOption {
@@ -161,6 +191,15 @@ export function ClientsTable() {
   const [sales, setSales] = useState<SaleRecord[]>([])
   const [loadingHistory, setLoadingHistory] = useState(false)
   const [showHistoryDialog, setShowHistoryDialog] = useState(false)
+
+  // Client payments (pagos realizados) in history
+  const [clientPayments, setClientPayments] = useState<ClientPaymentRecord[]>([])
+  const [loadingPayments, setLoadingPayments] = useState(false)
+  const [deletingPaymentId, setDeletingPaymentId] = useState<string | null>(null)
+
+  // Remove debt confirmation
+  const [removeDebtTarget, setRemoveDebtTarget] = useState<{ client: Client; receivable: ReceivableRecord } | null>(null)
+  const [removingDebt, setRemovingDebt] = useState(false)
 
   // Sale lines detail modal
   const [detailSale, setDetailSale] = useState<SaleRecord | null>(null)
@@ -578,14 +617,21 @@ export function ClientsTable() {
   const openHistory = async (client: Client) => {
     setHistoryClient(client)
     setShowHistoryDialog(true)
+    setClientPayments([])
     setLoadingHistory(true)
+    setLoadingPayments(true)
     try {
-      const data = await api.get<{ sales: SaleRecord[] }>(`/api/clients/${client.id}/sales`)
-      setSales(data.sales)
+      const [salesData, paymentsData] = await Promise.all([
+        api.get<{ sales: SaleRecord[] }>(`/api/clients/${client.id}/sales`),
+        api.get<{ payments: ClientPaymentRecord[] }>(`/api/clients/${client.id}/payments`),
+      ])
+      setSales(salesData.sales)
+      setClientPayments(paymentsData.payments)
     } catch {
       toast.error('Error al cargar historial')
     } finally {
       setLoadingHistory(false)
+      setLoadingPayments(false)
     }
   }
 
@@ -682,6 +728,41 @@ export function ClientsTable() {
       toast.error(msg)
     } finally {
       setPaying(false)
+    }
+  }
+
+  const handleDeletePayment = async (paymentId: string, amount: number) => {
+    if (!historyClient) return
+    if (!window.confirm(`¿Eliminar este cobro de ${fmt(amount)}? La deuda será restaurada.`)) return
+    setDeletingPaymentId(paymentId)
+    try {
+      await api.del(`/api/clients/${historyClient.id}/payments/${paymentId}`)
+      toast.success(`Pago de ${fmt(amount)} eliminado. Deuda restaurada.`)
+      // Refresh payments list and client list
+      setClientPayments(prev => prev.filter(p => p.id !== paymentId))
+      fetchClients()
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Error al eliminar pago'
+      toast.error(msg)
+    } finally {
+      setDeletingPaymentId(null)
+    }
+  }
+
+  const handleConfirmRemoveDebt = async () => {
+    if (!removeDebtTarget) return
+    const { client, receivable } = removeDebtTarget
+    setRemovingDebt(true)
+    try {
+      await api.del(`/api/clients/${client.id}/receivables/${receivable.id}`)
+      toast.success('Deuda eliminada correctamente')
+      setRemoveDebtTarget(null)
+      fetchClients()
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Error al eliminar deuda'
+      toast.error(msg)
+    } finally {
+      setRemovingDebt(false)
     }
   }
 
@@ -1083,9 +1164,24 @@ export function ClientsTable() {
                         </Button>
                       )}
                       {client.pendingBalance > 0 && (
-                        <Button size="sm" variant="outline" className="h-7 text-xs text-primary hover:text-primary" onClick={() => openPayment(client)}>
-                          <DollarSign className="mr-1 h-3 w-3" /> Cobrar
-                        </Button>
+                        <>
+                          <Button size="sm" variant="outline" className="h-7 text-xs text-primary hover:text-primary" onClick={() => openPayment(client)}>
+                            <DollarSign className="mr-1 h-3 w-3" /> Cobrar
+                          </Button>
+                          {canManage && (
+                            <Button size="sm" variant="outline" className="h-7 text-xs text-red-500 border-red-200 hover:text-red-600 hover:bg-red-50 dark:border-red-800 dark:hover:bg-red-950/40" title="Quitar deuda (si fue asignada por error)" onClick={() => {
+                              // Find the first pending receivable for this client
+                              const receivable = client.receivables?.[0]
+                              if (receivable && receivable.pendingBalance > 0) {
+                                setRemoveDebtTarget({ client, receivable })
+                              } else {
+                                toast.error('No hay deuda pendiente para quitar')
+                              }
+                            }}>
+                              <Ban className="mr-1 h-3 w-3" /> Quitar Deuda
+                            </Button>
+                          )}
+                        </>
                       )}
                       <div className="flex-1" />
                       {canManage && (
@@ -1604,6 +1700,85 @@ export function ClientsTable() {
                   )}
                 </CardContent>
               </Card>
+
+              {/* Pagos Realizados */}
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <DollarSign className="h-4 w-4 text-emerald-600" />
+                    Pagos Realizados
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  {loadingPayments ? (
+                    <div className="h-24 rounded-lg bg-muted animate-pulse m-4" />
+                  ) : clientPayments.length === 0 ? (
+                    <p className="text-sm text-muted-foreground p-4 text-center">Sin pagos registrados</p>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Fecha</TableHead>
+                            <TableHead>Monto</TableHead>
+                            <TableHead className="hidden md:table-cell">Método</TableHead>
+                            <TableHead className="hidden md:table-cell">Referencia</TableHead>
+                            <TableHead className="hidden lg:table-cell">Registró</TableHead>
+                            <TableHead>Concepto</TableHead>
+                            {canManage && <TableHead className="w-10"></TableHead>}
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {clientPayments.map((payment) => {
+                            const saleProducts = payment.receivable.sale.lines
+                              .map(l => l.product.name)
+                              .join(', ')
+                            return (
+                              <TableRow key={payment.id}>
+                                <TableCell className="text-xs whitespace-nowrap">
+                                  {new Date(payment.createdAt).toLocaleDateString('es-VE')}
+                                </TableCell>
+                                <TableCell className="text-sm font-medium text-emerald-600 whitespace-nowrap">
+                                  {fmt(payment.amount)}
+                                </TableCell>
+                                <TableCell className="text-xs hidden md:table-cell">
+                                  {payment.method}
+                                </TableCell>
+                                <TableCell className="text-xs hidden md:table-cell">
+                                  {payment.reference || '—'}
+                                </TableCell>
+                                <TableCell className="text-xs hidden lg:table-cell">
+                                  {payment.user.name}
+                                </TableCell>
+                                <TableCell className="text-xs text-muted-foreground max-w-[150px] truncate" title={saleProducts}>
+                                  {saleProducts || `Factura ${payment.receivable.saleId.slice(0, 8)}`}
+                                </TableCell>
+                                {canManage && (
+                                  <TableCell>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-7 w-7 p-0 text-red-400 hover:text-red-600"
+                                      title="Eliminar pago y restaurar deuda"
+                                      disabled={deletingPaymentId === payment.id}
+                                      onClick={() => handleDeletePayment(payment.id, payment.amount)}
+                                    >
+                                      {deletingPaymentId === payment.id
+                                        ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                        : <Trash2 className="h-3.5 w-3.5" />
+                                      }
+                                    </Button>
+                                  </TableCell>
+                                )}
+                              </TableRow>
+                            )
+                          })}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
             </div>
           )}
         </DialogContent>
@@ -2074,6 +2249,32 @@ export function ClientsTable() {
             <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
             <AlertDialogAction variant="destructive" onClick={handleConfirmDelete} disabled={deleting}>
               {deleting ? 'Inactivando...' : 'Inactivar'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Remove Debt Confirmation */}
+      <AlertDialog open={!!removeDebtTarget} onOpenChange={(open) => { if (!open) setRemoveDebtTarget(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Quitar Deuda</AlertDialogTitle>
+            <AlertDialogDescription>
+              ¿Estás seguro de que deseas eliminar esta deuda de <b>{removeDebtTarget?.client.name}{removeDebtTarget?.client.lastName ? ` ${removeDebtTarget.client.lastName}` : ''}</b> por <b className="text-red-600">{removeDebtTarget ? fmt(removeDebtTarget.receivable.pendingBalance) : ''}</b>?
+              {removeDebtTarget?.receivable.dueDate && (
+                <span className="block mt-1 text-xs">
+                  Vencimiento: {new Date(removeDebtTarget.receivable.dueDate).toLocaleDateString('es-VE')}
+                </span>
+              )}
+              <span className="block mt-2 text-xs text-amber-600 font-medium">
+                Si la venta asociada no tiene otros pagos, se eliminará la venta y se restaurará el inventario.
+              </span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={removingDebt}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" onClick={handleConfirmRemoveDebt} disabled={removingDebt}>
+              {removingDebt ? 'Eliminando...' : 'Quitar Deuda'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

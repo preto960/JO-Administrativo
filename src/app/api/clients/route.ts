@@ -62,8 +62,8 @@ export async function GET(request: NextRequest) {
       include: {
         _count: { select: { sales: true } },
         receivables: {
-          where: { status: 'pendiente' },
-          select: { pendingBalance: true },
+          where: { status: { in: ['pendiente', 'parcial'] } },
+          select: { id: true, amount: true, pendingBalance: true, status: true, dueDate: true, createdAt: true },
         },
         memberships: {
           orderBy: { createdAt: 'desc' },
@@ -80,6 +80,14 @@ export async function GET(request: NextRequest) {
       return {
         ...client,
         pendingBalance: Math.round(pendingBalance * 100) / 100,
+        receivables: client.receivables.map(r => ({
+          id: r.id,
+          amount: r.amount,
+          pendingBalance: r.pendingBalance,
+          status: r.status,
+          dueDate: r.dueDate,
+          createdAt: r.createdAt,
+        })),
         membership: membership ? {
           id: membership.id,
           status: membership.status,
