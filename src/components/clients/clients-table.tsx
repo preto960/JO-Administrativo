@@ -287,6 +287,9 @@ export function ClientsTable() {
 
   const searchLower = search.toLowerCase().trim()
   const filtered = clients.filter((c) => {
+    // Inactive toggle: when ON, show ONLY inactive clients
+    if (showInactive && !c.deletedAt) return false
+
     // Membership filter (gym only)
     if (isGym) {
       if (membershipFilter === 'activo' && c.membership?.status !== 'Activo') return false
