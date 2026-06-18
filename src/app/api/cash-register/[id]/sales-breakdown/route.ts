@@ -21,7 +21,7 @@ export async function GET(
       orderBy: { date: 'desc' },
     })
 
-    // Get cash movements for this register (for backward compat with old renewals)
+    // Get cash movements for this register
     const movements = await db.cashMovement.findMany({
       where: { cashRegId: id },
       orderBy: { createdAt: 'desc' },
@@ -31,23 +31,34 @@ export async function GET(
     const posSales = sales.filter(s => s.lines.length > 0)
     const subscriptionSales = sales.filter(s => s.lines.length === 0)
 
-    // Parse plan name from concept string like:
-    // 'Suscripción plan "Diario" - Juan Pérez' or 'Suscripción plan "Diario -> Mensual" - Juan'
+    // Parse plan name from concept string. Handles multiple formats:
+    // 'Suscripción plan "Diario" - Juan Pérez'
+    // 'Suscripción plan "Diario -> Mensual" - Juan'
+    // 'Renovación plan: Diario - Juan Pérez'
     function parsePlanFromConcept(concept: string): string {
-      const match = concept.match(/plan\s+"([^"]+)"/)
-      return match ? match[1] : ''
+      // Try quoted format first: plan "Diario" or plan "Diario -> Mensual"
+      const quoted = concept.match(/plan\s+"([^"]+)"/)
+      if (quoted) return quoted[1]
+      // Fallback: colon format: plan: Diario or plan: Diario -> Mensual
+      const colon = concept.match(/plan:\s*(.+?)(?:\s*[-–—]|\s*\()/)
+      if (colon) return colon[1].trim()
+      return ''
     }
 
-    // For each subscription sale, find the matching CashMovement to get the plan name
-    // and build a set of matched movement IDs to filter duplicates
+    // Build a set of CashMovement IDs that are matched to a subscription Sale
+    // This prevents showing duplicates (Sale + CashMovement for the same renewal)
     const matchedMovementIds = new Set<string>()
 
     const subscriptionSalesWithPlan = subscriptionSales.map(s => {
-      const saleClientName = s.client ? `${s.client.name}${s.client.lastName || ''}` : ''
+      // Build client name with proper spacing (must match concept format)
+      const saleClientName = s.client
+        ? `${s.client.name}${s.client.lastName ? ' ' + s.client.lastName : ''}`
+        : ''
       let planName = ''
 
-      // Try to find a matching CashMovement by amount + client name in concept
-      const matchingMovement = movements.find(m => {
+      // Try to find the matching CashMovement by amount + client name in concept
+      // Use findIndex instead of find so we can match multiple movements to same client
+      const mIdx = movements.findIndex(m => {
         if (m.type !== 'entrada') return false
         if (!m.concept.includes('Suscripción') && !m.concept.includes('Renovación')) return false
         if (Math.abs(s.total - m.amount) >= 0.01) return false
@@ -56,7 +67,8 @@ export async function GET(
         return true
       })
 
-      if (matchingMovement) {
+      if (mIdx !== -1) {
+        const matchingMovement = movements[mIdx]
         planName = parsePlanFromConcept(matchingMovement.concept)
         matchedMovementIds.add(matchingMovement.id)
       }
