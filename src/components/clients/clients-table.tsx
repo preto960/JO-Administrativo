@@ -42,10 +42,17 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Separator } from '@/components/ui/separator'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Plus, Search, Users, DollarSign, Loader2, Receipt, Truck, X, Trash2, Printer, FileText, Mail, Pencil, Phone, MapPin, ShoppingCart, Eye, EyeOff, AlertTriangle, Upload, ChevronLeft, ChevronRight, Filter, UserCheck, UserX, UsersRound, RefreshCw, CalendarCheck, CalendarDays, CheckCircle2, CreditCard, Banknote, ArrowLeftRight, Clock, Smartphone, CircleDollarSign, Ban, type LucideIcon } from 'lucide-react'
+import { Plus, Search, Users, DollarSign, Loader2, Receipt, Truck, X, Trash2, Printer, FileText, Mail, Pencil, Phone, MapPin, ShoppingCart, Eye, EyeOff, AlertTriangle, Upload, ChevronLeft, ChevronRight, Filter, UserCheck, UserX, UsersRound, RefreshCw, CalendarCheck, CalendarDays, CheckCircle2, CreditCard, Banknote, ArrowLeftRight, Clock, Smartphone, CircleDollarSign, Ban, MoreHorizontal, type LucideIcon } from 'lucide-react'
 import { ClientBulkImport } from './client-bulk-import'
 import { FALLBACK_METHODS } from '@/lib/payment-methods'
 import { toast } from 'sonner'
@@ -1142,55 +1149,66 @@ export function ClientsTable() {
                 <div className="flex items-center gap-1 pt-2 border-t">
                   {!client.deletedAt && (
                     <>
-                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Ver Historial" onClick={() => openHistory(client)}>
-                        <Receipt className="h-3.5 w-3.5" />
-                      </Button>
-                      {canManage && isGym && (
-                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-blue-500 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950/40" title="Marcar Asistencia" onClick={() => openAttendance(client)}>
-                          <CalendarCheck className="h-3.5 w-3.5" />
-                        </Button>
-                      )}
-                      {canManage && isGym && (
-                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-emerald-500 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40" title="Renovar Suscripción" onClick={() => openRenew(client)}>
-                          <RefreshCw className="h-3.5 w-3.5" />
-                        </Button>
-                      )}
-                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Estado de Cuenta (PDF)" onClick={() => handleDownloadStatement(client)}>
-                        <FileText className="h-3.5 w-3.5" />
-                      </Button>
-                      {client.email && (
-                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Enviar por Email" onClick={() => handleSendStatement(client)} disabled={sendingStatement === client.id}>
-                          {sendingStatement === client.id
-                            ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            : <Mail className="h-3.5 w-3.5" />
-                          }
-                        </Button>
-                      )}
-                      {canManage && (
-                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Despachar" onClick={() => openDispatch(client)}>
-                          <Truck className="h-3.5 w-3.5" />
-                        </Button>
-                      )}
-                      {client.pendingBalance > 0 && (
-                        <>
-                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-primary hover:text-primary" onClick={() => openPayment(client)} title="Cobrar">
-                            <DollarSign className="h-3.5 w-3.5" />
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Más opciones">
+                            <MoreHorizontal className="h-3.5 w-3.5" />
                           </Button>
-                          {canManage && (
-                            <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40" title="Quitar deuda (si fue asignada por error)" onClick={() => {
-                              const pendingReceivables = client.receivables?.filter(r => r.pendingBalance > 0) || []
-                              if (pendingReceivables.length > 0) {
-                                setRemoveDebtClient(client)
-                                setRemoveDebtTarget(null)
-                              } else {
-                                toast.error('No hay deuda pendiente para quitar')
-                              }
-                            }}>
-                              <Ban className="h-3 w-3" />
-                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start" className="w-52">
+                          <DropdownMenuItem onClick={() => openHistory(client)}>
+                            <Receipt className="mr-2 h-3.5 w-3.5" /> Ver Historial
+                          </DropdownMenuItem>
+                          {canManage && isGym && (
+                            <DropdownMenuItem onClick={() => openAttendance(client)}>
+                              <CalendarCheck className="mr-2 h-3.5 w-3.5" /> Marcar Asistencia
+                            </DropdownMenuItem>
                           )}
-                        </>
-                      )}
+                          {canManage && isGym && (
+                            <DropdownMenuItem onClick={() => openRenew(client)}>
+                              <RefreshCw className="mr-2 h-3.5 w-3.5" /> Renovar Suscripción
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuItem onClick={() => handleDownloadStatement(client)}>
+                            <FileText className="mr-2 h-3.5 w-3.5" /> Estado de Cuenta (PDF)
+                          </DropdownMenuItem>
+                          {client.email && (
+                            <DropdownMenuItem onClick={() => handleSendStatement(client)} disabled={sendingStatement === client.id}>
+                              {sendingStatement === client.id
+                                ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                                : <Mail className="mr-2 h-3.5 w-3.5" />
+                              }
+                              Enviar por Email
+                            </DropdownMenuItem>
+                          )}
+                          {canManage && (
+                            <DropdownMenuItem onClick={() => openDispatch(client)}>
+                              <Truck className="mr-2 h-3.5 w-3.5" /> Despachar
+                            </DropdownMenuItem>
+                          )}
+                          {client.pendingBalance > 0 && (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem onClick={() => openPayment(client)} className="text-primary">
+                                <DollarSign className="mr-2 h-3.5 w-3.5" /> Cobrar
+                              </DropdownMenuItem>
+                              {canManage && (
+                                <DropdownMenuItem onClick={() => {
+                                  const pendingReceivables = client.receivables?.filter(r => r.pendingBalance > 0) || []
+                                  if (pendingReceivables.length > 0) {
+                                    setRemoveDebtClient(client)
+                                    setRemoveDebtTarget(null)
+                                  } else {
+                                    toast.error('No hay deuda pendiente para quitar')
+                                  }
+                                }} className="text-red-500">
+                                  <Ban className="mr-2 h-3.5 w-3.5" /> Quitar Deuda
+                                </DropdownMenuItem>
+                              )}
+                            </>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                       <div className="flex-1" />
                       {canManage && (
                         <>
