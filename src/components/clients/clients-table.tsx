@@ -752,9 +752,14 @@ export function ClientsTable() {
     try {
       await api.del(`/api/clients/${historyClient.id}/payments/${paymentId}`)
       toast.success(`Pago de ${fmt(amount)} eliminado. Deuda restaurada.`)
-      // Refresh payments list and client list
+      // Refresh payments list, sales, and client list
       setClientPayments(prev => prev.filter(p => p.id !== paymentId))
       fetchClients()
+      // Reload sales to update pending balance badges
+      if (historyClient) {
+        const salesData = await api.get<{ sales: SaleRecord[] }>(`/api/clients/${historyClient.id}/sales`)
+        setSales(salesData.sales)
+      }
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Error al eliminar pago'
       toast.error(msg)
@@ -1149,6 +1154,11 @@ export function ClientsTable() {
                 <div className="flex items-center gap-1 pt-2 border-t">
                   {!client.deletedAt && (
                     <>
+                      {canManage && isGym && client.membership?.status === 'Activo' && (
+                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-emerald-500 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40" title="Marcar Asistencia" onClick={() => openAttendance(client)}>
+                          <CalendarCheck className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Más opciones">
@@ -1159,11 +1169,6 @@ export function ClientsTable() {
                           <DropdownMenuItem onClick={() => openHistory(client)}>
                             <Receipt className="mr-2 h-3.5 w-3.5" /> Ver Historial
                           </DropdownMenuItem>
-                          {canManage && isGym && (
-                            <DropdownMenuItem onClick={() => openAttendance(client)}>
-                              <CalendarCheck className="mr-2 h-3.5 w-3.5" /> Marcar Asistencia
-                            </DropdownMenuItem>
-                          )}
                           {canManage && isGym && (
                             <DropdownMenuItem onClick={() => openRenew(client)}>
                               <RefreshCw className="mr-2 h-3.5 w-3.5" /> Renovar Suscripción

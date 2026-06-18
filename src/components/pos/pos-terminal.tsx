@@ -64,7 +64,7 @@ export function PosTerminal() {
   const [gerenteReason, setGerenteReason] = useState('')
   const [showSuggestions, setShowSuggestions] = useState(false)
   const isMobile = useIsMobile()
-  const { sym: currencySymbol } = useCurrency()
+  const { sym: currencySymbol, fmtBase } = useCurrency()
 
   // Unit quantity selector for weight/volume products
   const [unitProduct, setUnitProduct] = useState<ProductWithInventory | null>(null)
@@ -519,7 +519,7 @@ export function PosTerminal() {
                         </p>
                       </div>
                       <span className="text-sm font-bold text-primary shrink-0">
-                        {currencySymbol}{effectivePrice.toFixed(2)}
+                        {fmtBase(effectivePrice)}
                       </span>
                     </button>
                   )
@@ -655,7 +655,7 @@ export function PosTerminal() {
                   <div className="mt-auto flex items-center justify-between w-full">
                     <div>
                       <span className="text-sm font-bold text-primary dark:text-primary">
-                        {currencySymbol}{effectivePrice.toFixed(2)}
+                        {fmtBase(effectivePrice)}
                       </span>
                       {currentQty > 0 && (
                         <p className="text-[10px] text-primary font-medium">En carrito: {currentQty}</p>
@@ -755,7 +755,7 @@ export function PosTerminal() {
                       </p>
                     </div>
                     <span className="text-sm font-bold text-primary shrink-0">
-                      {product.currency.symbol}{effectivePrice.toFixed(2)}
+                      {fmtBase(effectivePrice)}
                     </span>
                   </button>
                 )
@@ -829,9 +829,9 @@ export function PosTerminal() {
                 {parsed > 0 && (
                   <div className="rounded-md bg-muted/50 p-3 text-center">
                     <p className="text-xs text-muted-foreground">Subtotal</p>
-                    <p className="text-lg font-bold">{currencySymbol}{calcPrice.toFixed(2)}</p>
+                    <p className="text-lg font-bold">{fmtBase(calcPrice)}</p>
                     <p className="text-xs text-muted-foreground">
-                      {effectivePrice.toFixed(2)} {currencySymbol}/{unitLabel} x {parsed} {unitLabel}
+                      {fmtBase(effectivePrice)}/{unitLabel} x {parsed} {unitLabel}
                     </p>
                   </div>
                 )}
