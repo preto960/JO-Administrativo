@@ -33,14 +33,19 @@ interface DashboardData {
   gastosPeriodo: number
   utilidadBrutaMes: number
   utilidadNetaMes: number
+  utilidadBrutaPeriodo: number
+  utilidadNetaPeriodo: number
+  totalProductosActivos: number
+  totalClientesActivos: number
   topProducts: { name: string; revenue: number; qty: number }[]
   recentSales: Array<{
     id: string
     date: string
     total: number
     status: string
-    client: { name: string } | null
+    client: { name: string; lastName: string | null } | null
     user: { name: string }
+    lines: Array<{ product: { name: string } | null; quantity: number }> | null
   }>
   lowStockAlerts: Array<{ productName: string; stock: number; minStock: number }>
   overdueAlerts: Array<{ clientName: string; pendingBalance: number; dueDate: string }>
@@ -181,8 +186,8 @@ export function FinancialDashboard() {
       .finally(() => setLoading(false))
   }, [selectedBranchId, period, customFrom, customTo, isCustomValid])
 
-  const totalProducts = data?.topProducts.length || 0
-  const totalClients = new Set(data?.recentSales.map(s => s.client?.name).filter(Boolean)).size || 0
+  const totalProducts = data?.totalProductosActivos || 0
+  const totalClients = data?.totalClientesActivos || 0
 
   // Fetch sales performance data
   useEffect(() => {
@@ -440,23 +445,25 @@ export function FinancialDashboard() {
                     key={sale.id}
                     className="flex items-center justify-between rounded-md border p-3"
                   >
-                    <div className="flex items-center gap-3">
-                      <div>
-                        <p className="text-sm font-medium">
-                          {sale.client?.name || 'Cliente general'}
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">
+                          {sale.client ? `${sale.client.name}${sale.client.lastName ? ' ' + sale.client.lastName : ''}` : 'Cliente general'}
                         </p>
-                        <p className="text-xs text-muted-foreground">
+                        <p className="text-xs text-muted-foreground truncate">
+                          {sale.lines && sale.lines.length > 0
+                            ? sale.lines.map(l => l.product?.name || 'Producto').join(', ')
+                            : 'Suscripción'}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground">
                           {new Date(sale.date).toLocaleString('es-VE')} · {sale.user.name}
                         </p>
                       </div>
                     </div>
-                    <div className="text-right">
+                    <div className="text-right shrink-0">
                       <p className="text-sm font-bold text-primary dark:text-primary">
                         {fmt(sale.total)}
                       </p>
-                      <Badge variant="outline" className="text-[10px]">
-                        {sale.status}
-                      </Badge>
                     </div>
                   </div>
                 ))
