@@ -220,10 +220,18 @@ export async function GET(request: NextRequest) {
     const chartData: { date: string; total: number; count: number }[] = []
 
     // Get IDs of credit sales to exclude from chart
+    const creditSaleIdsPeriodStart = isCustom
+      ? startDate
+      : period === 'year'
+        ? new Date(today.getFullYear(), 0, 1)
+        : period === 'today'
+          ? today
+          : new Date(today.getFullYear(), today.getMonth(), 1)
+
     const creditSaleIds = new Set(
       (await db.accountReceivable.findMany({
         where: {
-          sale: { date: { gte: isCustom ? startDate : (period === 'year' ? new Date(today.getFullYear(), 0, 1) : period === 'today' ? today : new Date(today.getFullYear(), today.getMonth(), 1)) },
+          sale: { date: { gte: creditSaleIdsPeriodStart } },
         },
         select: { saleId: true },
       })).map(r => r.saleId)
