@@ -55,7 +55,7 @@ import {
   Wallet, Plus, ArrowUpCircle, ArrowDownCircle, Lock, Eye, Loader2,
   UserCircle, AlertTriangle, Banknote, ClipboardCheck, CheckCircle2,
   Clock, ShoppingCart, Building2, TrendingUp, CircleDollarSign,
-  ChevronDown, ChevronRight,
+  ChevronDown, ChevronRight, Printer,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -288,6 +288,12 @@ export function CashRegisterView() {
     totalCount: number
   } | null>(null)
   const [loadingBreakdown, setLoadingBreakdown] = useState(false)
+  // Breakdown for close dialog
+  const [closeBreakdown, setCloseBreakdown] = useState<typeof breakdownData>(null)
+  const [loadingCloseBreakdown, setLoadingCloseBreakdown] = useState(false)
+  // Breakdowns for history (keyed by register ID)
+  const [historyBreakdowns, setHistoryBreakdowns] = useState<Record<string, typeof breakdownData>>({})
+  const [loadingHistoryBreakdown, setLoadingHistoryBreakdown] = useState<string | null>(null)
   const [auditBreakdown, setAuditBreakdown] = useState<Record<string, string>>({})
   const [auditNotes, setAuditNotes] = useState('')
   const [auditResult, setAuditResult] = useState<{ counted: number; expected: number; difference: number } | null>(null)
@@ -395,6 +401,42 @@ export function CashRegisterView() {
     setRegisterName('')
     setSelectedUserId('')
     setShowOpen(true)
+  }
+
+  const handleDownloadReport = async (regId: string) => {
+    try {
+      const res = await fetch(`/api/cash-register/${regId}/report`)
+      if (!res.ok) throw new Error()
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      // Extract filename from Content-Disposition or use fallback
+      const cd = res.headers.get('Content-Disposition')
+      const match = cd?.match(/filename="(.+?)"/)
+      a.download = match?.[1] || `reporte_caja_${regId.slice(0, 8)}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      toast.error('Error al generar reporte PDF')
+    }
+  }
+
+  const toggleHistoryBreakdown = async (regId: string) => {
+    if (historyBreakdowns[regId]) {
+      // Remove cached breakdown
+      setHistoryBreakdowns(prev => { const n = { ...prev }; delete n[regId]; return n })
+      return
+    }
+    setLoadingHistoryBreakdown(regId)
+    try {
+      const data = await api.get<any>(`/api/cash-register/${regId}/sales-breakdown`)
+      setHistoryBreakdowns(prev => ({ ...prev, [regId]: data }))
+    } catch {
+      toast.error('Error al cargar desglose')
+    } finally {
+      setLoadingHistoryBreakdown(null)
+    }
   }
 
   const openRegister = async () => {
@@ -826,7 +868,14 @@ export function CashRegisterView() {
                               <Button size="sm" variant="ghost" className="h-8 px-2.5 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30" onClick={() => {
                                 setCloseRegId(reg.id)
                                 setCloseActual('')
+                                setCloseBreakdown(null)
                                 setShowClose(true)
+                                // Load breakdown for close dialog
+                                setLoadingCloseBreakdown(true)
+                                api.get<any>(`/api/cash-register/${reg.id}/sales-breakdown`)
+                                  .then(setCloseBreakdown)
+                                  .catch(() => {})
+                                  .finally(() => setLoadingCloseBreakdown(false))
                               }}>
                                 <Lock className="h-4 w-4" />
                               </Button>
@@ -1050,6 +1099,15 @@ export function CashRegisterView() {
                               {reg._count.sales} venta{reg._count.sales !== 1 ? 's' : ''}
                             </p>
                           </div>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 w-7 p-0 text-muted-foreground hover:text-primary shrink-0"
+                            title="Descargar reporte PDF"
+                            onClick={(e) => { e.stopPropagation(); handleDownloadReport(reg.id) }}
+                          >
+                            <Printer className="h-3.5 w-3.5" />
+                          </Button>
                         </div>
                       </button>
 
@@ -1097,7 +1155,85 @@ export function CashRegisterView() {
                           </div>
                         </div>
                       )}
-                    </div>
+
+                      {/* History breakdown + download button */}
+                      {isExpanded && (
+                        <div className="pl-10 pb-3 space-y-2">
+                          <div className="flex items-center gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-6 text-[10px] px-2"
+                              onClick={() => toggleHistoryBreakdown(reg.id)}
+                              disabled={loadingHistoryBreakdown === reg.id}
+                            >
+                              {loadingHistoryBreakdown === reg.id
+                                ? <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                                : <Eye className="h-3 w-3 mr-1" />
+                              }
+                              {historyBreakdowns[reg.id] ? 'Ocultar Desglose' : 'Ver Desglose'}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-6 text-[10px] px-2"
+                              onClick={() => handleDownloadReport(reg.id)}
+                            >
+                              <Printer className="h-3 w-3 mr-1" />
+                              Descargar PDF
+                            </Button>
+                          </div>
+                          {loadingHistoryBreakdown === reg.id && (
+                            <div className="flex items-center justify-center py-2">
+                              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                            </div>
+                          )}
+                          {historyBreakdowns[reg.id] && !loadingHistoryBreakdown && (
+                            <div className="rounded-md border p-2 space-y-1.5 max-h-48 overflow-y-auto">
+                              <div className="grid grid-cols-2 gap-1.5">
+                                <div className="rounded-md bg-blue-50 dark:bg-blue-950/30 p-1.5 text-center">
+                                  <p className="text-[9px] text-blue-600 dark:text-blue-400 uppercase font-medium">POS</p>
+                                  <p className="text-xs font-bold text-blue-700 dark:text-blue-300">{fmtBase(historyBreakdowns[reg.id].posTotal)}</p>
+                                  <p className="text-[9px] text-muted-foreground">{historyBreakdowns[reg.id].posSales.length} venta{historyBreakdowns[reg.id].posSales.length !== 1 ? 's' : ''}</p>
+                                </div>
+                                <div className="rounded-md bg-emerald-50 dark:bg-emerald-950/30 p-1.5 text-center">
+                                  <p className="text-[9px] text-emerald-600 dark:text-emerald-400 uppercase font-medium">Suscripciones</p>
+                                  <p className="text-xs font-bold text-emerald-700 dark:text-emerald-300">{fmtBase(historyBreakdowns[reg.id].subTotal)}</p>
+                                  <p className="text-[9px] text-muted-foreground">{historyBreakdowns[reg.id].subscriptionSales.length} renovación(es)</p>
+                                </div>
+                              </div>
+                              {historyBreakdowns[reg.id].posSales.length > 0 && (
+                                <div className="space-y-0.5">
+                                  <p className="text-[9px] font-semibold text-muted-foreground uppercase">Ventas POS</p>
+                                  {historyBreakdowns[reg.id].posSales.slice(0, 5).map((s: any) => (
+                                    <div key={s.id} className="flex justify-between text-[10px] py-0.5">
+                                      <span className="truncate mr-2">{s.description}</span>
+                                      <span className="font-medium shrink-0">{fmtBase(s.total)}</span>
+                                    </div>
+                                  ))}
+                                  {historyBreakdowns[reg.id].posSales.length > 5 && (
+                                    <p className="text-[9px] text-muted-foreground text-center">...y {historyBreakdowns[reg.id].posSales.length - 5} más</p>
+                                  )}
+                                </div>
+                              )}
+                              {historyBreakdowns[reg.id].subscriptionSales.length > 0 && (
+                                <div className="space-y-0.5">
+                                  <p className="text-[9px] font-semibold text-muted-foreground uppercase">Suscripciones</p>
+                                  {historyBreakdowns[reg.id].subscriptionSales.map((s: any) => (
+                                    <div key={s.id} className="flex justify-between text-[10px] py-0.5">
+                                      <span className="truncate mr-2">{s.clientName || 'Renovación'}{s.planName ? ` — ${s.planName}` : ''}</span>
+                                      <span className="font-medium text-emerald-700 shrink-0">{fmtBase(s.total)}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                              {historyBreakdowns[reg.id].posSales.length === 0 && historyBreakdowns[reg.id].subscriptionSales.length === 0 && (
+                                <p className="text-[10px] text-muted-foreground text-center py-1">Sin ventas registradas</p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
                   )
                 })}
               </div>
@@ -1283,12 +1419,62 @@ export function CashRegisterView() {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Monto esperado:</span>
-                    {/* Fix 3: Use fmt() in close dialog */}
                     <span className="font-bold tabular-nums">{fmtBase(reg.currentAmt)}</span>
                   </div>
                 </div>
               ) : null
             })()}
+
+            {/* Breakdown in close dialog */}
+            {loadingCloseBreakdown && (
+              <div className="flex items-center justify-center py-3">
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+              </div>
+            )}
+            {closeBreakdown && !loadingCloseBreakdown && (
+              <div className="rounded-md border p-3 space-y-2 max-h-52 overflow-y-auto">
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="rounded-md bg-blue-50 dark:bg-blue-950/30 p-1.5 text-center">
+                    <p className="text-[9px] text-blue-600 dark:text-blue-400 uppercase font-medium">POS</p>
+                    <p className="text-xs font-bold text-blue-700 dark:text-blue-300">{fmtBase(closeBreakdown.posTotal)}</p>
+                    <p className="text-[9px] text-muted-foreground">{closeBreakdown.posSales.length} venta{closeBreakdown.posSales.length !== 1 ? 's' : ''}</p>
+                  </div>
+                  <div className="rounded-md bg-emerald-50 dark:bg-emerald-950/30 p-1.5 text-center">
+                    <p className="text-[9px] text-emerald-600 dark:text-emerald-400 uppercase font-medium">Suscripciones</p>
+                    <p className="text-xs font-bold text-emerald-700 dark:text-emerald-300">{fmtBase(closeBreakdown.subTotal)}</p>
+                    <p className="text-[9px] text-muted-foreground">{closeBreakdown.subscriptionSales.length} renovación(es)</p>
+                  </div>
+                </div>
+                {closeBreakdown.posSales.length > 0 && (
+                  <div className="space-y-0.5">
+                    <p className="text-[9px] font-semibold text-muted-foreground uppercase">Ventas POS</p>
+                    {closeBreakdown.posSales.slice(0, 5).map(s => (
+                      <div key={s.id} className="flex justify-between text-[10px] py-0.5">
+                        <span className="truncate mr-2">{s.description}</span>
+                        <span className="font-medium shrink-0">{fmtBase(s.total)}</span>
+                      </div>
+                    ))}
+                    {closeBreakdown.posSales.length > 5 && (
+                      <p className="text-[9px] text-muted-foreground text-center">...y {closeBreakdown.posSales.length - 5} más</p>
+                    )}
+                  </div>
+                )}
+                {closeBreakdown.subscriptionSales.length > 0 && (
+                  <div className="space-y-0.5">
+                    <p className="text-[9px] font-semibold text-muted-foreground uppercase">Suscripciones</p>
+                    {closeBreakdown.subscriptionSales.map(s => (
+                      <div key={s.id} className="flex justify-between text-[10px] py-0.5">
+                        <span className="truncate mr-2">{s.clientName || 'Renovación'}{s.planName ? ` — ${s.planName}` : ''}</span>
+                        <span className="font-medium text-emerald-700 shrink-0">{fmtBase(s.total)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {closeBreakdown.posSales.length === 0 && closeBreakdown.subscriptionSales.length === 0 && (
+                  <p className="text-[10px] text-muted-foreground text-center py-1">Sin ventas</p>
+                )}
+              </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="closeamt">Monto Real en Caja *</Label>
               {/* Fix 2: text inputMode numeric + cash-input */}
