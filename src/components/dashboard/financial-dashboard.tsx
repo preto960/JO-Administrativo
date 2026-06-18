@@ -92,12 +92,14 @@ function KpiCard({
   icon: Icon,
   trend,
   color = 'primary',
+  subtitle,
 }: {
   title: string
   value: string
   icon: React.ElementType
   trend?: 'up' | 'down'
   color?: string
+  subtitle?: string
 }) {
   const colorMap: Record<string, string> = {
     primary: 'bg-primary/5 text-primary border-primary/20 dark:bg-primary/10 dark:text-primary dark:border-primary/30',
@@ -113,6 +115,7 @@ function KpiCard({
           <div>
             <p className="text-xs font-medium opacity-80">{title}</p>
             <p className="text-2xl font-bold mt-1">{value}</p>
+            {subtitle && <p className="text-[10px] opacity-60 mt-1 leading-tight">{subtitle}</p>}
           </div>
           <div className="flex flex-col items-center gap-1">
             <Icon className="h-5 w-5" />
@@ -326,12 +329,14 @@ export function FinancialDashboard() {
           value={fmt(data.utilidadBrutaMes)}
           icon={Target}
           color="violet"
+          subtitle="Ingresos - Costo de ventas (suma de costo unitario x cantidad por línea)"
         />
         <KpiCard
           title="Utilidad Neta (Mes)"
           value={fmt(data.utilidadNetaMes)}
           icon={PiggyBank}
           color="amber"
+          subtitle="Utilidad Bruta - Gastos - Pérdidas por ajustes de inventario"
         />
       </div>
 

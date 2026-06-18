@@ -206,13 +206,15 @@ export async function POST(
           const register = await db.cashRegister.findUnique({ where: { id: cashRegId } })
           if (register && register.status === 'abierta') {
             try {
+              // Embed saleId in concept for reliable dedup in sales-breakdown
+              const conceptWithId = `[${saleId}] ${concept}`
               const movement = await db.cashMovement.create({
                 data: {
                   cashRegId,
                   userId: auth.userId,
                   type: 'entrada',
                   amount: cost,
-                  concept,
+                  concept: conceptWithId,
                   currencyId: resolvedCurrencyId,
                 },
               })

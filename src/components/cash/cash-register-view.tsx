@@ -283,10 +283,8 @@ export function CashRegisterView() {
   const [breakdownData, setBreakdownData] = useState<{
     posSales: Array<{ id: string; date: string; total: number; method: string; clientName: string | null; description: string }>
     subscriptionSales: Array<{ id: string; date: string; total: number; method: string; clientName: string | null; planName: string; description: string }>
-    legacySubscriptions: Array<{ id: string; date: string; total: number; method: string; clientName: string; planName: string; description: string }>
     posTotal: number
     subTotal: number
-    legacyTotal: number
     totalCount: number
   } | null>(null)
   const [loadingBreakdown, setLoadingBreakdown] = useState(false)
@@ -888,8 +886,8 @@ export function CashRegisterView() {
                             </div>
                             <div className="rounded-md bg-emerald-50 dark:bg-emerald-950/30 p-2 text-center">
                               <p className="text-[10px] text-emerald-600 dark:text-emerald-400 uppercase font-medium">Suscripciones</p>
-                              <p className="text-sm font-bold text-emerald-700 dark:text-emerald-300">{fmtBase(breakdownData.subTotal + breakdownData.legacyTotal)}</p>
-                              <p className="text-[10px] text-muted-foreground">{breakdownData.subscriptionSales.length + breakdownData.legacySubscriptions.length} renovación(es)</p>
+                              <p className="text-sm font-bold text-emerald-700 dark:text-emerald-300">{fmtBase(breakdownData.subTotal)}</p>
+                              <p className="text-[10px] text-muted-foreground">{breakdownData.subscriptionSales.length} renovación(es)</p>
                             </div>
                           </div>
 
@@ -916,7 +914,7 @@ export function CashRegisterView() {
                           )}
 
                           {/* Subscription Sales list */}
-                          {(breakdownData.subscriptionSales.length > 0 || breakdownData.legacySubscriptions.length > 0) && (
+                          {breakdownData.subscriptionSales.length > 0 && (
                             <div className="space-y-1">
                               <p className="text-[10px] font-semibold text-muted-foreground uppercase">Suscripciones</p>
                               {breakdownData.subscriptionSales.map(s => {
@@ -944,30 +942,11 @@ export function CashRegisterView() {
                                 </div>
                                 )
                               })}
-                              {breakdownData.legacySubscriptions.map(m => {
-                                const planChanged = m.planName.includes('->')
-                                const planDisplay = planChanged
-                                  ? m.planName.replace('->', ' → ')
-                                  : m.planName
-                                return (
-                                <div key={m.id} className="flex items-center justify-between text-xs py-1 border-b last:border-b-0 border-muted">
-                                  <div className="min-w-0 flex-1">
-                                    <span className="font-medium truncate block">
-                                      {m.planName ? (
-                                        <>
-                                          Renovación plan "<span className={planChanged ? 'text-amber-600' : ''}>{planDisplay}</span>"
-                                        </>
-                                      ) : m.description}
-                                    </span>
-                                  </div>
-                                  <span className="font-semibold text-emerald-700 dark:text-emerald-400 shrink-0 ml-2">{fmtBase(m.total)}</span>
-                                </div>
-                                )
-                              })}
+
                             </div>
                           )}
 
-                          {breakdownData.posSales.length === 0 && breakdownData.subscriptionSales.length === 0 && breakdownData.legacySubscriptions.length === 0 && (
+                          {breakdownData.posSales.length === 0 && breakdownData.subscriptionSales.length === 0 && (
                             <p className="text-xs text-muted-foreground text-center py-2">No hay ventas registradas en esta caja</p>
                           )}
                         </>

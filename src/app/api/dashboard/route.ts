@@ -179,8 +179,10 @@ export async function GET(request: NextRequest) {
       take: 10,
     })
 
-    // ─── Active products count ───
-    const totalProductosActivos = await db.product.count({ where: { active: true } })
+    // ─── Active products count (products with inventory in this branch) ───
+    const totalProductosActivos = await db.inventory.count({
+      where: { branchId, product: { active: true } },
+    })
 
     // ─── Active clients count ───
     const totalClientesActivos = await db.client.count({ where: { deletedAt: null } })
