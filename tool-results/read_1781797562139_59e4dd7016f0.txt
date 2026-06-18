@@ -1,0 +1,707 @@
+     1→     1→'use client'
+     2→     2→
+     3→     3→import { useEffect, useState, useMemo } from 'react'
+     4→     4→import { api } from '@/lib/api'
+     5→     5→import { useCurrency } from '@/hooks/use-currency'
+     6→     6→import { useAppStore } from '@/stores/use-app-store'
+     7→     7→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+     8→     8→import { Badge } from '@/components/ui/badge'
+     9→     9→import { Button } from '@/components/ui/button'
+    10→    10→import { TrendingUp, TrendingDown, DollarSign, ShoppingCart, Target, PiggyBank, Package, Users, Receipt, Filter, CalendarDays, CheckCircle2, XCircle, Settings2, Loader2 } from 'lucide-react'
+    11→    11→import {
+    12→    12→  AreaChart,
+    13→    13→  Area,
+    14→    14→  XAxis,
+    15→    15→  YAxis,
+    16→    16→  CartesianGrid,
+    17→    17→  Tooltip,
+    18→    18→  ResponsiveContainer,
+    19→    19→  BarChart,
+    20→    20→  Bar,
+    21→    21→  Cell,
+    22→    22→} from 'recharts'
+    23→    23→import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
+    24→    24→import { Input } from '@/components/ui/input'
+    25→    25→import { Label } from '@/components/ui/label'
+    26→    26→
+    27→    27→interface DashboardData {
+    28→    28→  ingresosHoy: number
+    29→    29→  ingresosMes: number
+    30→    30→  ingresosPeriodo: number
+    31→    31→  gastosHoy: number
+    32→    32→  gastosMes: number
+    33→    33→  gastosPeriodo: number
+    34→    34→  utilidadBrutaMes: number
+    35→    35→  utilidadNetaMes: number
+    36→    36→  topProducts: { name: string; revenue: number; qty: number }[]
+    37→    37→  recentSales: Array<{
+    38→    38→    id: string
+    39→    39→    date: string
+    40→    40→    total: number
+    41→    41→    status: string
+    42→    42→    client: { name: string } | null
+    43→    43→    user: { name: string }
+    44→    44→  }>
+    45→    45→  lowStockAlerts: Array<{ productName: string; stock: number; minStock: number }>
+    46→    46→  overdueAlerts: Array<{ clientName: string; pendingBalance: number; dueDate: string }>
+    47→    47→  overduePayableAlerts: Array<{ supplierName: string; pendingBalance: number; dueDate: string }>
+    48→    48→  chartData: Array<{ date: string; total: number; count: number }>
+    49→    49→  chartLabel: string
+    50→    50→  period: string
+    51→    51→}
+    52→    52→
+    53→    53→type PeriodOption = 'today' | 'week' | 'month' | 'year' | 'custom'
+    54→    54→
+    55→    55→interface VendorPerformance {
+    56→    56→  userId: string
+    57→    57→  userName: string
+    58→    58→  role: string
+    59→    59→  productSales: number
+    60→    60→  renewalSales: number
+    61→    61→  totalSales: number
+    62→    62→  target: number
+    63→    63→  achieved: boolean
+    64→    64→  remaining: number
+    65→    65→  percent: number
+    66→    66→  overTarget: number
+    67→    67→}
+    68→    68→
+    69→    69→interface SalesPerformanceData {
+    70→    70→  month: string
+    71→    71→  performance: VendorPerformance[]
+    72→    72→  totalMonthSales: number
+    73→    73→  totalMonthTarget: number
+    74→    74→}
+    75→    75→
+    76→    76→const periodOptions: { value: PeriodOption; label: string }[] = [
+    77→    77→  { value: 'today', label: 'Hoy' },
+    78→    78→  { value: 'week', label: 'Semana' },
+    79→    79→  { value: 'month', label: 'Mes' },
+    80→    80→  { value: 'year', label: 'Año' },
+    81→    81→  { value: 'custom', label: 'Personalizado' },
+    82→    82→]
+    83→    83→
+    84→    84→function KpiCard({
+    85→    85→  title,
+    86→    86→  value,
+    87→    87→  icon: Icon,
+    88→    88→  trend,
+    89→    89→  color = 'primary',
+    90→    90→}: {
+    91→    91→  title: string
+    92→    92→  value: string
+    93→    93→  icon: React.ElementType
+    94→    94→  trend?: 'up' | 'down'
+    95→    95→  color?: string
+    96→    96→}) {
+    97→    97→  const colorMap: Record<string, string> = {
+    98→    98→    primary: 'bg-primary/5 text-primary border-primary/20 dark:bg-primary/10 dark:text-primary dark:border-primary/30',
+    99→    99→    red: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950/30 dark:text-red-400 dark:border-red-800',
+   100→   100→    amber: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-800',
+   101→   101→    violet: 'bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-950/30 dark:text-violet-400 dark:border-violet-800',
+   102→   102→  }
+   103→   103→
+   104→   104→  return (
+   105→   105→    <Card className={colorMap[color] || colorMap.primary}>
+   106→   106→      <CardContent className="p-4">
+   107→   107→        <div className="flex items-center justify-between">
+   108→   108→          <div>
+   109→   109→            <p className="text-xs font-medium opacity-80">{title}</p>
+   110→   110→            <p className="text-2xl font-bold mt-1">{value}</p>
+   111→   111→          </div>
+   112→   112→          <div className="flex flex-col items-center gap-1">
+   113→   113→            <Icon className="h-5 w-5" />
+   114→   114→            {trend && (
+   115→   115→              trend === 'up' ? (
+   116→   116→                <TrendingUp className="h-3.5 w-3.5 text-primary" />
+   117→   117→              ) : (
+   118→   118→                <TrendingDown className="h-3.5 w-3.5 text-red-500" />
+   119→   119→              )
+   120→   120→            )}
+   121→   121→          </div>
+   122→   122→        </div>
+   123→   123→      </CardContent>
+   124→   124→    </Card>
+   125→   125→  )
+   126→   126→}
+   127→   127→
+   128→   128→export function FinancialDashboard() {
+   129→   129→  const { fmt } = useCurrency()
+   130→   130→  const selectedBranchId = useAppStore((s) => s.selectedBranchId)
+   131→   131→  const [data, setData] = useState<DashboardData | null>(null)
+   132→   132→  const [loading, setLoading] = useState(true)
+   133→   133→  const [period, setPeriod] = useState<PeriodOption>('month')
+   134→   134→  const [customFrom, setCustomFrom] = useState('')
+   135→   135→  const [customTo, setCustomTo] = useState('')
+   136→   136→
+   137→   137→  // Sales Performance / Targets
+   138→   138→  const now = new Date()
+   139→   139→  const bogotaOffset = now.toLocaleString('en-US', { timeZone: 'America/Bogota' })
+   140→   140→  const bogotaNow = new Date(bogotaOffset)
+   141→   141→  const [perfMonth, setPerfMonth] = useState(`${bogotaNow.getFullYear()}-${String(bogotaNow.getMonth() + 1).padStart(2, '0')}`)
+   142→   142→  const [perfData, setPerfData] = useState<SalesPerformanceData | null>(null)
+   143→   143→  const [perfLoading, setPerfLoading] = useState(false)
+   144→   144→  const [showTargetDialog, setShowTargetDialog] = useState(false)
+   145→   145→  const [targetInputs, setTargetInputs] = useState<Record<string, string>>({})
+   146→   146→  const [savingTargets, setSavingTargets] = useState(false)
+   147→   147→
+   148→   148→  // Validate custom date range (derived value, no setState)
+   149→   149→  const { dateError, isCustomValid } = useMemo(() => {
+   150→   150→    if (!customFrom || !customTo) return { dateError: '', isCustomValid: false }
+   151→   151→    const from = new Date(customFrom)
+   152→   152→    const to = new Date(customTo)
+   153→   153→    if (from > to) {
+   154→   154→      return { dateError: 'La fecha "Desde" no puede ser posterior a "Hasta"', isCustomValid: false }
+   155→   155→    }
+   156→   156→    const diffMs = to.getTime() - from.getTime()
+   157→   157→    const diffDays = diffMs / (1000 * 60 * 60 * 24)
+   158→   158→    if (diffDays > 365) {
+   159→   159→      return { dateError: 'El rango no puede superar 1 año', isCustomValid: false }
+   160→   160→    }
+   161→   161→    return { dateError: '', isCustomValid: true }
+   162→   162→  }, [customFrom, customTo])
+   163→   163→
+   164→   164→  useEffect(() => {
+   165→   165→    // Check membership expirations in background
+   166→   166→    api.get('/api/clients/check-expirations').catch(() => {})
+   167→   167→
+   168→   168→    // Don't fetch if custom period is selected but dates are invalid/empty
+   169→   169→    if (period === 'custom' && !isCustomValid) return
+   170→   170→
+   171→   171→    setLoading(true)
+   172→   172→    const params = new URLSearchParams()
+   173→   173→    if (selectedBranchId) params.set('branchId', selectedBranchId)
+   174→   174→    params.set('period', period)
+   175→   175→    if (period === 'custom' && customFrom) params.set('from', customFrom)
+   176→   176→    if (period === 'custom' && customTo) params.set('to', customTo)
+   177→   177→    const query = `?${params.toString()}`
+   178→   178→    api.get<DashboardData>(`/api/dashboard${query}`)
+   179→   179→      .then(setData)
+   180→   180→      .catch(() => {})
+   181→   181→      .finally(() => setLoading(false))
+   182→   182→  }, [selectedBranchId, period, customFrom, customTo, isCustomValid])
+   183→   183→
+   184→   184→  const totalProducts = data?.topProducts.length || 0
+   185→   185→  const totalClients = new Set(data?.recentSales.map(s => s.client?.name).filter(Boolean)).size || 0
+   186→   186→
+   187→   187→  // Fetch sales performance data
+   188→   188→  useEffect(() => {
+   189→   189→    setPerfLoading(true)
+   190→   190→    api.get<SalesPerformanceData>(`/api/dashboard/sales-performance?month=${perfMonth}`)
+   191→   191→      .then(setPerfData)
+   192→   192→      .catch(() => {})
+   193→   193→      .finally(() => setPerfLoading(false))
+   194→   194→  }, [perfMonth])
+   195→   195→
+   196→   196→  // Open target dialog and load current targets
+   197→   197→  const handleOpenTargetDialog = async () => {
+   198→   198→    setShowTargetDialog(true)
+   199→   199→    api.get<{ users: { id: string; name: string }[]; targets: { userId: string; yearMonth: string; targetAmount: number }[] }>(`/api/sales-targets?month=${perfMonth}`)
+   200→   200→      .then(({ users, targets }) => {
+   201→   201→        const inputs: Record<string, string> = {}
+   202→   202→        users.forEach(u => {
+   203→   203→          const t = targets.find(t => t.userId === u.id && t.yearMonth === perfMonth)
+   204→   204→          inputs[u.id] = t ? String(t.targetAmount) : ''
+   205→   205→        })
+   206→   206→        setTargetInputs(inputs)
+   207→   207→      })
+   208→   208→      .catch(() => {})
+   209→   209→  }
+   210→   210→
+   211→   211→  const handleSaveTargets = async () => {
+   212→   212→    setSavingTargets(true)
+   213→   213→    const targets = Object.entries(targetInputs)
+   214→   214→      .filter(([, v]) => v && Number(v) > 0)
+   215→   215→      .map(([userId, v]) => ({ userId, yearMonth: perfMonth, targetAmount: Number(v) }))
+   216→   216→
+   217→   217→    await api.put('/api/sales-targets', { targets })
+   218→   218→    setShowTargetDialog(false)
+   219→   219→    // Refresh performance data
+   220→   220→    api.get<SalesPerformanceData>(`/api/dashboard/sales-performance?month=${perfMonth}`)
+   221→   221→      .then(setPerfData)
+   222→   222→      .catch(() => {})
+   223→   223→    setSavingTargets(false)
+   224→   224→  }
+   225→   225→
+   226→   226→  // Chart data for recharts
+   227→   227→  const chartData = useMemo(() => {
+   228→   228→    if (!perfData) return []
+   229→   229→    return perfData.performance.map(p => ({
+   230→   230→      name: p.userName.split(' ')[0], // first name
+   231→   231→      fullName: p.userName,
+   232→   232→      ventas: p.totalSales,
+   233→   233→      meta: p.target,
+   234→   234→      achieved: p.achieved,
+   235→   235→      percent: p.percent,
+   236→   236→    }))
+   237→   237→  }, [perfData])
+   238→   238→
+   239→   239→  if (loading) {
+   240→   240→    return (
+   241→   241→      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+   242→   242→        {Array.from({ length: 4 }).map((_, i) => (
+   243→   243→          <div key={i} className="h-28 rounded-lg bg-muted animate-pulse" />
+   244→   244→        ))}
+   245→   245→      </div>
+   246→   246→    )
+   247→   247→  }
+   248→   248→
+   249→   249→  if (!data) return null
+   250→   250→
+   251→   251→  return (
+   252→   252→    <div className="space-y-6">
+   253→   253→      {/* Period Filter */}
+   254→   254→      <div className="space-y-3">
+   255→   255→        <div className="flex items-center gap-2 flex-wrap">
+   256→   256→          <Filter className="h-4 w-4 text-muted-foreground" />
+   257→   257→          <span className="text-sm text-muted-foreground">Filtrar:</span>
+   258→   258→          {periodOptions.map((opt) => (
+   259→   259→            <Button
+   260→   260→              key={opt.value}
+   261→   261→              size="sm"
+   262→   262→              variant={period === opt.value ? 'default' : 'outline'}
+   263→   263→              className={period === opt.value ? 'bg-primary hover:bg-primary/90 text-white' : ''}
+   264→   264→              onClick={() => setPeriod(opt.value)}
+   265→   265→            >
+   266→   266→              {opt.label}
+   267→   267→            </Button>
+   268→   268→          ))}
+   269→   269→        </div>
+   270→   270→
+   271→   271→        {/* Custom Date Range Picker */}
+   272→   272→        {period === 'custom' && (
+   273→   273→          <div className="flex items-center gap-3 flex-wrap rounded-lg border bg-muted/30 p-3">
+   274→   274→            <CalendarDays className="h-4 w-4 text-muted-foreground shrink-0" />
+   275→   275→            <div className="flex items-center gap-2">
+   276→   276→              <label className="text-xs text-muted-foreground">Desde</label>
+   277→   277→              <input
+   278→   278→                type="date"
+   279→   279→                value={customFrom}
+   280→   280→                onChange={(e) => setCustomFrom(e.target.value)}
+   281→   281→                className="rounded-md border bg-background px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+   282→   282→                max={customTo || undefined}
+   283→   283→              />
+   284→   284→            </div>
+   285→   285→            <span className="text-muted-foreground">—</span>
+   286→   286→            <div className="flex items-center gap-2">
+   287→   287→              <label className="text-xs text-muted-foreground">Hasta</label>
+   288→   288→              <input
+   289→   289→                type="date"
+   290→   290→                value={customTo}
+   291→   291→                onChange={(e) => setCustomTo(e.target.value)}
+   292→   292→                className="rounded-md border bg-background px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+   293→   293→                min={customFrom || undefined}
+   294→   294→              />
+   295→   295→            </div>
+   296→   296→            {dateError && (
+   297→   297→              <p className="text-xs text-red-500">{dateError}</p>
+   298→   298→            )}
+   299→   299→          </div>
+   300→   300→        )}
+   301→   301→      </div>
+   302→   302→
+   303→   303→      {/* KPI Cards - Row 1 */}
+   304→   304→      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+   305→   305→        <KpiCard
+   306→   306→          title="Ingresos Hoy"
+   307→   307→          value={fmt(data.ingresosHoy)}
+   308→   308→          icon={DollarSign}
+   309→   309→          trend="up"
+   310→   310→          color="primary"
+   311→   311→        />
+   312→   312→        <KpiCard
+   313→   313→          title="Gastos Hoy"
+   314→   314→          value={fmt(data.gastosHoy)}
+   315→   315→          icon={ShoppingCart}
+   316→   316→          trend={data.gastosHoy > 0 ? 'down' : 'up'}
+   317→   317→          color="red"
+   318→   318→        />
+   319→   319→        <KpiCard
+   320→   320→          title="Utilidad Bruta (Mes)"
+   321→   321→          value={fmt(data.utilidadBrutaMes)}
+   322→   322→          icon={Target}
+   323→   323→          color="violet"
+   324→   324→        />
+   325→   325→        <KpiCard
+   326→   326→          title="Utilidad Neta (Mes)"
+   327→   327→          value={fmt(data.utilidadNetaMes)}
+   328→   328→          icon={PiggyBank}
+   329→   329→          color="amber"
+   330→   330→        />
+   331→   331→      </div>
+   332→   332→
+   333→   333→      {/* KPI Cards - Row 2 */}
+   334→   334→      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+   335→   335→        <KpiCard
+   336→   336→          title={`Ventas del Período (${data.chartLabel})`}
+   337→   337→          value={data.chartData.reduce((s, d) => s + d.count, 0).toString()}
+   338→   338→          icon={Receipt}
+   339→   339→          trend="up"
+   340→   340→          color="primary"
+   341→   341→        />
+   342→   342→        <KpiCard
+   343→   343→          title={`Ingresos (${data.chartLabel})`}
+   344→   344→          value={fmt(data.ingresosPeriodo)}
+   345→   345→          icon={DollarSign}
+   346→   346→          trend="up"
+   347→   347→          color="primary"
+   348→   348→        />
+   349→   349→        <KpiCard
+   350→   350→          title="Productos Activos"
+   351→   351→          value={totalProducts.toString()}
+   352→   352→          icon={Package}
+   353→   353→          color="violet"
+   354→   354→        />
+   355→   355→        <KpiCard
+   356→   356→          title="Clientes"
+   357→   357→          value={totalClients.toString()}
+   358→   358→          icon={Users}
+   359→   359→          color="amber"
+   360→   360→        />
+   361→   361→      </div>
+   362→   362→
+   363→   363→      <div className="grid gap-6 lg:grid-cols-3">
+   364→   364→        {/* Sales Chart */}
+   365→   365→        <Card className="lg:col-span-2">
+   366→   366→          <CardHeader className="pb-2">
+   367→   367→            <CardTitle className="text-base">Tendencia de Ventas ({data.chartLabel})</CardTitle>
+   368→   368→          </CardHeader>
+   369→   369→          <CardContent>
+   370→   370→            <div className="h-64">
+   371→   371→              <ResponsiveContainer width="100%" height="100%">
+   372→   372→                <AreaChart data={data.chartData}>
+   373→   373→                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+   374→   374→                  <XAxis dataKey="date" className="text-xs" />
+   375→   375→                  <YAxis className="text-xs" />
+   376→   376→                  <Tooltip
+   377→   377→                    contentStyle={{
+   378→   378→                      backgroundColor: 'var(--card)',
+   379→   379→                      border: '1px solid var(--border)',
+   380→   380→                      borderRadius: '8px',
+   381→   381→                      fontSize: '12px',
+   382→   382→                    }}
+   383→   383→                    formatter={(value: number) => [fmt(value), 'Ventas']}
+   384→   384→                  />
+   385→   385→                  <Area
+   386→   386→                    type="monotone"
+   387→   387→                    dataKey="total"
+   388→   388→                    stroke="var(--primary)"
+   389→   389→                    fill="var(--primary)"
+   390→   390→                    fillOpacity={0.1}
+   391→   391→                    strokeWidth={2}
+   392→   392→                  />
+   393→   393→                </AreaChart>
+   394→   394→              </ResponsiveContainer>
+   395→   395→            </div>
+   396→   396→          </CardContent>
+   397→   397→        </Card>
+   398→   398→
+   399→   399→        {/* Top Products */}
+   400→   400→        <Card>
+   401→   401→          <CardHeader className="pb-2">
+   402→   402→            <CardTitle className="text-base">Top 5 Productos</CardTitle>
+   403→   403→          </CardHeader>
+   404→   404→          <CardContent className="space-y-3">
+   405→   405→            {data.topProducts.length === 0 ? (
+   406→   406→              <p className="text-sm text-muted-foreground">Sin ventas en este período</p>
+   407→   407→            ) : (
+   408→   408→              data.topProducts.map((product, i) => (
+   409→   409→                <div key={i} className="flex items-center gap-3">
+   410→   410→                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary dark:bg-primary/10 dark:text-primary">
+   411→   411→                    {i + 1}
+   412→   412→                  </span>
+   413→   413→                  <div className="flex-1 min-w-0">
+   414→   414→                    <p className="text-sm font-medium truncate">{product.name}</p>
+   415→   415→                    <p className="text-xs text-muted-foreground">{product.qty} uds</p>
+   416→   416→                  </div>
+   417→   417→                  <span className="text-sm font-semibold text-primary dark:text-primary">
+   418→   418→                    {fmt(product.revenue)}
+   419→   419→                  </span>
+   420→   420→                </div>
+   421→   421→              ))
+   422→   422→            )}
+   423→   423→          </CardContent>
+   424→   424→        </Card>
+   425→   425→      </div>
+   426→   426→
+   427→   427→      <div className="grid gap-6 lg:grid-cols-3">
+   428→   428→        {/* Recent Sales */}
+   429→   429→        <Card className="lg:col-span-2">
+   430→   430→          <CardHeader className="pb-2">
+   431→   431→            <CardTitle className="text-base">Últimas Ventas</CardTitle>
+   432→   432→          </CardHeader>
+   433→   433→          <CardContent>
+   434→   434→            <div className="space-y-2 max-h-72 overflow-y-auto">
+   435→   435→              {data.recentSales.length === 0 ? (
+   436→   436→                <p className="text-sm text-muted-foreground text-center py-4">Sin ventas</p>
+   437→   437→              ) : (
+   438→   438→                data.recentSales.map((sale) => (
+   439→   439→                  <div
+   440→   440→                    key={sale.id}
+   441→   441→                    className="flex items-center justify-between rounded-md border p-3"
+   442→   442→                  >
+   443→   443→                    <div className="flex items-center gap-3">
+   444→   444→                      <div>
+   445→   445→                        <p className="text-sm font-medium">
+   446→   446→                          {sale.client?.name || 'Cliente general'}
+   447→   447→                        </p>
+   448→   448→                        <p className="text-xs text-muted-foreground">
+   449→   449→                          {new Date(sale.date).toLocaleString('es-VE')} · {sale.user.name}
+   450→   450→                        </p>
+   451→   451→                      </div>
+   452→   452→                    </div>
+   453→   453→                    <div className="text-right">
+   454→   454→                      <p className="text-sm font-bold text-primary dark:text-primary">
+   455→   455→                        {fmt(sale.total)}
+   456→   456→                      </p>
+   457→   457→                      <Badge variant="outline" className="text-[10px]">
+   458→   458→                        {sale.status}
+   459→   459→                      </Badge>
+   460→   460→                    </div>
+   461→   461→                  </div>
+   462→   462→                ))
+   463→   463→              )}
+   464→   464→            </div>
+   465→   465→          </CardContent>
+   466→   466→        </Card>
+   467→   467→
+   468→   468→        {/* Alerts */}
+   469→   469→        <Card>
+   470→   470→          <CardHeader className="pb-2">
+   471→   471→            <CardTitle className="text-base">Alertas</CardTitle>
+   472→   472→          </CardHeader>
+   473→   473→          <CardContent className="space-y-3 max-h-72 overflow-y-auto">
+   474→   474→            {data.lowStockAlerts.length === 0 && data.overdueAlerts.length === 0 && data.overduePayableAlerts.length === 0 ? (
+   475→   475→              <p className="text-sm text-muted-foreground text-center py-4">Sin alertas</p>
+   476→   476→            ) : (
+   477→   477→              <>
+   478→   478→                {data.lowStockAlerts.map((alert, i) => (
+   479→   479→                  <div
+   480→   480→                    key={`low-${i}`}
+   481→   481→                    className="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-2"
+   482→   482→                  >
+   483→   483→                    <p className="text-xs font-semibold text-amber-700 dark:text-amber-400">
+   484→   484→                      Stock Bajo
+   485→   485→                    </p>
+   486→   486→                    <p className="text-xs">{alert.productName}</p>
+   487→   487→                    <p className="text-[10px] text-muted-foreground">
+   488→   488→                      Stock: {alert.stock} / Mín: {alert.minStock}
+   489→   489→                    </p>
+   490→   490→                  </div>
+   491→   491→                ))}
+   492→   492→                {data.overdueAlerts.map((alert, i) => (
+   493→   493→                  <div
+   494→   494→                    key={`over-${i}`}
+   495→   495→                    className="rounded-md border border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950/30 p-2"
+   496→   496→                  >
+   497→   497→                    <p className="text-xs font-semibold text-red-700 dark:text-red-400">
+   498→   498→                      Cuenta Vencida (Cliente)
+   499→   499→                    </p>
+   500→   500→                    <p className="text-xs">{alert.clientName}</p>
+   501→   501→                    <p className="text-[10px] text-muted-foreground">
+   502→   502→                      Pendiente: {fmt(alert.pendingBalance)}
+   503→   503→                    </p>
+   504→   504→                  </div>
+   505→   505→                ))}
+   506→   506→                {data.overduePayableAlerts.map((alert, i) => (
+   507→   507→                  <div
+   508→   508→                    key={`payable-${i}`}
+   509→   509→                    className="rounded-md border border-orange-200 bg-orange-50 dark:border-orange-800 dark:bg-orange-950/30 p-2"
+   510→   510→                  >
+   511→   511→                    <p className="text-xs font-semibold text-orange-700 dark:text-orange-400">
+   512→   512→                      Pago Vencido (Proveedor)
+   513→   513→                    </p>
+   514→   514→                    <p className="text-xs">{alert.supplierName}</p>
+   515→   515→                    <p className="text-[10px] text-muted-foreground">
+   516→   516→                      Pendiente: {fmt(alert.pendingBalance)}
+   517→   517→                    </p>
+   518→   518→                  </div>
+   519→   519→                ))}
+   520→   520→              </>
+   521→   521→            )}
+   522→   522→          </CardContent>
+   523→   523→        </Card>
+   524→   524→      </div>
+   525→   525→
+   526→   526→      {/* Sales Performance & Targets */}
+   527→   527→      <Card>
+   528→   528→        <CardHeader className="pb-2">
+   529→   529→          <div className="flex items-center justify-between flex-wrap gap-2">
+   530→   530→            <CardTitle className="text-base flex items-center gap-2">
+   531→   531→              <Target className="h-4 w-4" />
+   532→   532→              Metas de Vendedores
+   533→   533→            </CardTitle>
+   534→   534→            <div className="flex items-center gap-2">
+   535→   535→              <input
+   536→   536→                type="month"
+   537→   537→                value={perfMonth}
+   538→   538→                onChange={(e) => setPerfMonth(e.target.value)}
+   539→   539→                className="rounded-md border bg-background px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+   540→   540→              />
+   541→   541→              <Button size="sm" variant="outline" onClick={handleOpenTargetDialog}>
+   542→   542→                <Settings2 className="h-3.5 w-3.5 mr-1" />
+   543→   543→                Configurar Metas
+   544→   544→              </Button>
+   545→   545→            </div>
+   546→   546→          </div>
+   547→   547→        </CardHeader>
+   548→   548→        <CardContent>
+   549→   549→          {perfLoading ? (
+   550→   550→            <div className="flex items-center justify-center py-8">
+   551→   551→              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+   552→   552→            </div>
+   553→   553→          ) : perfData && perfData.performance.length > 0 ? (
+   554→   554→            <div className="space-y-6">
+   555→   555→              {/* Summary KPIs */}
+   556→   556→              <div className="grid grid-cols-3 gap-3 text-center">
+   557→   557→                <div className="rounded-lg bg-muted/50 p-2">
+   558→   558→                  <p className="text-[10px] text-muted-foreground uppercase">Total Ventas</p>
+   559→   559→                  <p className="text-sm font-bold">{fmt(perfData.totalMonthSales)}</p>
+   560→   560→                </div>
+   561→   561→                <div className="rounded-lg bg-muted/50 p-2">
+   562→   562→                  <p className="text-[10px] text-muted-foreground uppercase">Meta Total</p>
+   563→   563→                  <p className="text-sm font-bold">{fmt(perfData.totalMonthTarget)}</p>
+   564→   564→                </div>
+   565→   565→                <div className="rounded-lg bg-muted/50 p-2">
+   566→   566→                  <p className="text-[10px] text-muted-foreground uppercase">% General</p>
+   567→   567→                  <p className={`text-sm font-bold ${perfData.totalMonthTarget > 0 && perfData.totalMonthSales >= perfData.totalMonthTarget ? 'text-green-600' : ''}`}>
+   568→   568→                    {perfData.totalMonthTarget > 0 ? `${Math.round((perfData.totalMonthSales / perfData.totalMonthTarget) * 100)}%` : '—'}
+   569→   569→                  </p>
+   570→   570→                </div>
+   571→   571→              </div>
+   572→   572→
+   573→   573→              {/* Bar Chart */}
+   574→   574→              {chartData.length > 0 && (
+   575→   575→                <div className="h-56">
+   576→   576→                  <ResponsiveContainer width="100%" height="100%">
+   577→   577→                    <BarChart data={chartData} barGap={4}>
+   578→   578→                      <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+   579→   579→                      <XAxis dataKey="name" className="text-xs" tick={{ fontSize: 11 }} />
+   580→   580→                      <YAxis className="text-xs" tick={{ fontSize: 11 }} />
+   581→   581→                      <Tooltip
+   582→   582→                        contentStyle={{
+   583→   583→                          backgroundColor: 'var(--card)',
+   584→   584→                          border: '1px solid var(--border)',
+   585→   585→                          borderRadius: '8px',
+   586→   586→                          fontSize: '12px',
+   587→   587→                        }}
+   588→   588→                        formatter={(value: number, name: string) => [fmt(value), name === 'ventas' ? 'Ventas' : 'Meta']}
+   589→   589→                        labelFormatter={(_, payload) => payload?.[0]?.payload?.fullName || ''}
+   590→   590→                      />
+   591→   591→                      <Bar dataKey="meta" fill="var(--muted-foreground)" opacity={0.25} radius={[4, 4, 0, 0]} name="meta" />
+   592→   592→                      <Bar dataKey="ventas" radius={[4, 4, 0, 0]} name="ventas">
+   593→   593→                        {chartData.map((entry, index) => (
+   594→   594→                          <Cell
+   595→   595→                            key={index}
+   596→   596→                            fill={entry.achieved ? '#22c55e' : entry.percent >= 70 ? '#f59e0b' : 'var(--primary)'}
+   597→   597→                          />
+   598→   598→                        ))}
+   599→   599→                      </Bar>
+   600→   600→                    </BarChart>
+   601→   601→                  </ResponsiveContainer>
+   602→   602→                </div>
+   603→   603→              )}
+   604→   604→
+   605→   605→              {/* Vendor Breakdown */}
+   606→   606→              <div className="space-y-3">
+   607→   607→                {perfData.performance.map((p) => (
+   608→   608→                  <div key={p.userId} className="rounded-lg border p-3">
+   609→   609→                    <div className="flex items-center justify-between mb-1.5">
+   610→   610→                      <div className="flex items-center gap-2">
+   611→   611→                        <span className="text-sm font-medium">{p.userName}</span>
+   612→   612→                        {p.target > 0 && (
+   613→   613→                          p.achieved ? (
+   614→   614→                            <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-green-200 dark:border-green-800 text-[10px]">
+   615→   615→                              <CheckCircle2 className="h-3 w-3 mr-0.5" /> Cumplido
+   616→   616→                            </Badge>
+   617→   617→                          ) : (
+   618→   618→                            <Badge variant="outline" className="text-[10px]">
+   619→   619→                              <XCircle className="h-3 w-3 mr-0.5 text-amber-500" />
+   620→   620→                              Faltan {fmt(p.remaining)}
+   621→   621→                            </Badge>
+   622→   622→                          )
+   623→   623→                        )}
+   624→   624→                      </div>
+   625→   625→                      <span className="text-sm font-bold">{fmt(p.totalSales)}</span>
+   626→   626→                    </div>
+   627→   627→                    {p.target > 0 && (
+   628→   628→                      <div className="space-y-1">
+   629→   629→                        <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+   630→   630→                          <span>Productos: {fmt(p.productSales)}</span>
+   631→   631→                          <span>Renovaciones: {fmt(p.renewalSales)}</span>
+   632→   632→                          <span>Meta: {fmt(p.target)} — {p.percent}%</span>
+   633→   633→                        </div>
+   634→   634→                        <div className="h-2 rounded-full bg-muted overflow-hidden">
+   635→   635→                          <div
+   636→   636→                            className={`h-full rounded-full transition-all duration-500 ${
+   637→   637→                              p.achieved ? 'bg-green-500' : p.percent >= 70 ? 'bg-amber-500' : 'bg-primary'
+   638→   638→                            }`}
+   639→   639→                            style={{ width: `${Math.min(p.percent, 100)}%` }}
+   640→   640→                          />
+   641→   641→                        </div>
+   642→   642→                        {p.overTarget > 0 && (
+   643→   643→                          <p className="text-[10px] text-green-600 font-medium">
+   644→   644→                            <TrendingUp className="h-3 w-3 inline mr-0.5" />
+   645→   645→                            Supera la meta por {fmt(p.overTarget)}
+   646→   646→                          </p>
+   647→   647→                        )}
+   648→   648→                      </div>
+   649→   649→                    )}
+   650→   650→                  </div>
+   651→   651→                ))}
+   652→   652→              </div>
+   653→   653→            </div>
+   654→   654→          ) : (
+   655→   655→            <p className="text-sm text-muted-foreground text-center py-6">
+   656→   656→              {perfData ? 'Sin datos de ventas para este mes' : 'Sin vendedores activos'}
+   657→   657→            </p>
+   658→   658→          )}
+   659→   659→        </CardContent>
+   660→   660→      </Card>
+   661→   661→
+   662→   662→      {/* Target Configuration Dialog */}
+   663→   663→      <Dialog open={showTargetDialog} onOpenChange={setShowTargetDialog}>
+   664→   664→        <DialogContent className="max-w-md">
+   665→   665→          <DialogHeader>
+   666→   666→            <DialogTitle>Configurar Metas de Vendedores</DialogTitle>
+   667→   667→            <DialogDescription>
+   668→   668→              Establece la meta de ventas para cada vendedor en el mes {perfMonth}. Deja vacio si no tiene meta.
+   669→   669→            </DialogDescription>
+   670→   670→          </DialogHeader>
+   671→   671→          <div className="space-y-3 max-h-80 overflow-y-auto">
+   672→   672→            {Object.entries(targetInputs).map(([userId, value]) => {
+   673→   673→              const perf = perfData?.performance.find(p => p.userId === userId)
+   674→   674→              return (
+   675→   675→                <div key={userId} className="flex items-center gap-3">
+   676→   676→                  <div className="flex-1 min-w-0">
+   677→   677→                    <Label className="text-sm">{perf?.userName || userId}</Label>
+   678→   678→                    {perf && perf.totalSales > 0 && (
+   679→   679→                      <p className="text-[10px] text-muted-foreground">Ventas actuales: {fmt(perf.totalSales)}</p>
+   680→   680→                    )}
+   681→   681→                  </div>
+   682→   682→                  <Input
+   683→   683→                    type="number"
+   684→   684→                    min="0"
+   685→   685→                    step="1000"
+   686→   686→                    placeholder="0"
+   687→   687→                    value={value}
+   688→   688→                    onChange={(e) => setTargetInputs(prev => ({ ...prev, [userId]: e.target.value }))}
+   689→   689→                    className="w-32 text-right"
+   690→   690→                  />
+   691→   691→                </div>
+   692→   692→              )
+   693→   693→            })}
+   694→   694→          </div>
+   695→   695→          <div className="flex justify-end gap-2 pt-2">
+   696→   696→            <Button variant="outline" onClick={() => setShowTargetDialog(false)}>Cancelar</Button>
+   697→   697→            <Button onClick={handleSaveTargets} disabled={savingTargets}>
+   698→   698→              {savingTargets && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+   699→   699→              Guardar Metas
+   700→   700→            </Button>
+   701→   701→          </div>
+   702→   702→        </DialogContent>
+   703→   703→      </Dialog>
+   704→   704→    </div>
+   705→   705→  )
+   706→   706→}
+   707→   707→
