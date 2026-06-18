@@ -1173,11 +1173,11 @@ export function ClientsTable() {
                       )}
                       {client.pendingBalance > 0 && (
                         <>
-                          <Button size="sm" variant="outline" className="h-7 w-7 p-0 text-primary hover:text-primary" onClick={() => openPayment(client)} title="Cobrar">
-                            <DollarSign className="h-3 w-3" />
+                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-primary hover:text-primary" onClick={() => openPayment(client)} title="Cobrar">
+                            <DollarSign className="h-3.5 w-3.5" />
                           </Button>
                           {canManage && (
-                            <Button size="sm" variant="outline" className="h-7 w-7 p-0 text-red-500 border-red-200 hover:text-red-600 hover:bg-red-50 dark:border-red-800 dark:hover:bg-red-950/40" title="Quitar deuda (si fue asignada por error)" onClick={() => {
+                            <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40" title="Quitar deuda (si fue asignada por error)" onClick={() => {
                               const pendingReceivables = client.receivables?.filter(r => r.pendingBalance > 0) || []
                               if (pendingReceivables.length > 0) {
                                 setRemoveDebtClient(client)
