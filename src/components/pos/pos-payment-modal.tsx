@@ -60,6 +60,7 @@ interface PaymentMethodItem {
 interface ClientOption {
   id: string
   name: string
+  lastName: string | null
   phone: string | null
   email: string | null
 }
@@ -408,7 +409,7 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
                             }}
                           >
                             <User className={`h-3.5 w-3.5 shrink-0 ${clientId === client.id ? 'text-primary' : 'text-muted-foreground'}`} />
-                            <span className="truncate flex-1">{client.name}</span>
+                            <span className="truncate flex-1">{client.name}{client.lastName ? ` ${client.lastName}` : ''}</span>
                             {client.phone && (
                               <span className="text-xs text-muted-foreground shrink-0">{client.phone}</span>
                             )}
