@@ -184,8 +184,11 @@ export async function GET(request: NextRequest) {
       where: { branchId, product: { active: true } },
     })
 
-    // ─── Active clients count ───
-    const totalClientesActivos = await db.client.count({ where: { deletedAt: null } })
+    // ─── Active clients with subscription count ───
+    const totalClientesActivos = await db.clientMembership.groupBy({
+      by: ['clientId'],
+      where: { status: 'Activo' },
+    }).then(groups => groups.length)
 
     // ─── Alerts: low stock ───
     const lowStockItems = await db.inventory.findMany({
