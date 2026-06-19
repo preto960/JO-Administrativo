@@ -600,7 +600,11 @@ export function SettingsView() {
                           const res = await fetch('/api/upload', { method: 'POST', body: formData })
                           const data = await res.json()
                           if (data.url) {
-                            setSettings({ ...settings, logoUrl: data.url })
+                            const updated = { ...settings, logoUrl: data.url }
+                            setSettings(updated)
+                            setAppSettings(updated as unknown as AppSettings)
+                            // Auto-save logo to DB
+                            api.put('/api/settings', { logoUrl: data.url }).catch(() => {})
                           } else {
                             toast.error(data.error || 'Error al subir imagen')
                           }
