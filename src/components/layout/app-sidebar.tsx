@@ -124,12 +124,12 @@ export function AppSidebar() {
             </SidebarMenuItem>
           </SidebarMenu>
         )}
-        <div className="px-4 pb-2 group-data-[collapsible=icon]:hidden">
-          <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+        <div className="px-4 pb-2 group-data-[collapsible=icon]:hidden flex items-center justify-between">
+          <p className="text-[10px] text-muted-foreground">v1.0.0</p>
+          <div className="flex items-center gap-0.5 text-[10px] text-muted-foreground">
             <Copyright className="h-3 w-3" />
             <span>JO-System</span>
           </div>
-          <p className="text-[10px] text-muted-foreground mt-0.5">v1.0.0</p>
         </div>
       </SidebarFooter>
       <SidebarRail />
