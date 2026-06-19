@@ -70,10 +70,10 @@ export function AppSidebar() {
             <img
               src={logoUrl}
               alt={businessName}
-              className={`rounded-lg object-contain ${isWideLogo ? 'h-8 max-w-full' : 'h-8 w-8'}`}
+              className={`rounded-lg object-contain ${isWideLogo ? 'h-10 max-w-full' : 'h-8 w-8'}`}
               onLoad={(e) => {
                 const img = e.currentTarget
-                setIsWideLogo(img.naturalWidth > img.naturalHeight * 1.2)
+                setIsWideLogo(img.naturalWidth > img.naturalHeight * 1.1)
               }}
             />
           ) : (
