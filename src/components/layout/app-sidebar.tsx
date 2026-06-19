@@ -64,13 +64,13 @@ export function AppSidebar() {
 
   return (
     <Sidebar collapsible={isMobile ? 'offcanvas' : 'icon'}>
-      <SidebarHeader className="p-4">
+      <SidebarHeader className={`${isWideLogo ? 'px-3 py-3' : 'p-4'}`}>
         <div className={`flex items-center ${isWideLogo ? 'justify-center' : 'gap-2'}`}>
           {logoUrl ? (
             <img
               src={logoUrl}
               alt={businessName}
-              className={`rounded-lg object-contain ${isWideLogo ? 'h-10 max-w-full' : 'h-8 w-8'}`}
+              className={`rounded-lg object-contain ${isWideLogo ? 'h-10 w-full' : 'h-8 w-8'}`}
               onLoad={(e) => {
                 const img = e.currentTarget
                 setIsWideLogo(img.naturalWidth > img.naturalHeight * 1.1)
