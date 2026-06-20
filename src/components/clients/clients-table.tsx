@@ -1162,7 +1162,12 @@ export function ClientsTable() {
                 <div className="flex items-center gap-1 pt-2 border-t">
                   {!client.deletedAt && (
                     <>
-                      {canManage && isGym && client.membership?.status === 'Activo' && (
+                      {isGym && (canManage || canMarkAtt) && (
+                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-blue-500 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950/40" title="Renovar Plan" onClick={() => openRenew(client)}>
+                          <RefreshCw className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                      {canMarkAtt && isGym && client.membership?.status === 'Activo' && (
                         <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-emerald-500 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40" title="Marcar Asistencia" onClick={() => openAttendance(client)}>
                           <CalendarCheck className="h-3.5 w-3.5" />
                         </Button>
