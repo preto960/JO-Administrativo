@@ -390,6 +390,14 @@ export function ClientsTable() {
   const [renewCurrencies, setRenewCurrencies] = useState<{ id: string; code: string; symbol: string; isBase: boolean }[]>([])
   const [renewSuccess, setRenewSuccess] = useState(false)
 
+  // Expired today report
+  const [showExpiredModal, setShowExpiredModal] = useState(false)
+  const [loadingExpired, setLoadingExpired] = useState(false)
+  const [expiredClients, setExpiredClients] = useState<Array<{
+    index: number; fullName: string; cedula: string; email: string; phone: string; tarifa: string; fechaVencimiento: string; diasRestantes: number
+  }> | null>(null)
+  const [expiredCount, setExpiredCount] = useState(0)
+
   // Attendance dialog
   const [attClient, setAttClient] = useState<Client | null>(null)
   const [showAttDialog, setShowAttDialog] = useState(false)
@@ -413,6 +421,24 @@ export function ClientsTable() {
       .then(data => setPlans(Array.isArray(data) ? data.filter(p => p.active) : []))
       .catch(() => {})
   }, [])
+
+  const openExpiredReport = async () => {
+    setLoadingExpired(true)
+    try {
+      const data = await api.get<{ clients: typeof expiredClients; total: number }>('/api/clients/expired-today')
+      setExpiredClients(data.clients || [])
+      setExpiredCount(data.total || 0)
+      setShowExpiredModal(true)
+    } catch {
+      toast.error('Error al consultar clientes vencidos')
+    } finally {
+      setLoadingExpired(false)
+    }
+  }
+
+  const downloadExpiredPdf = () => {
+    window.open('/api/clients/expired-today/pdf', '_blank')
+  }
 
   const openCreate = () => {
     setEditingClient(null)
@@ -999,9 +1025,14 @@ export function ClientsTable() {
           {canManage && (
             <div className="flex items-center gap-2">
               {isGym && (
+              <>
+              <Button variant="outline" onClick={openExpiredReport} disabled={loadingExpired} className="text-red-600 border-red-300 hover:bg-red-50 dark:text-red-400 dark:border-red-800 dark:hover:bg-red-950/40">
+                <FileText className="mr-2 h-4 w-4" /> Vencidos Hoy {expiredCount > 0 && `(${expiredCount})`}
+              </Button>
               <Button variant="outline" onClick={() => setBulkImportOpen(true)} className="text-primary border-primary/30 hover:bg-primary/5">
                 <Upload className="mr-2 h-4 w-4" /> Carga Masiva
               </Button>
+              </>
               )}
               <Button onClick={openCreate} className="bg-primary hover:bg-primary/90 text-white">
                 <Plus className="mr-2 h-4 w-4" /> Nuevo Cliente
@@ -2412,6 +2443,71 @@ export function ClientsTable() {
       </AlertDialog>
 
       {isGym && <ClientBulkImport open={bulkImportOpen} onOpenChange={setBulkImportOpen} />}
+
+      {/* Expired Today Report Modal */}
+      <Dialog open={showExpiredModal} onOpenChange={setShowExpiredModal}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-red-500" />
+              Clientes con Plan Vencido Hoy
+            </DialogTitle>
+            <DialogDescription>
+              {expiredClients && expiredClients.length > 0
+                ? `Se encontraron ${expiredClients.length} cliente${expiredClients.length !== 1 ? 's' : ''} con vencimiento hoy.`
+                : 'No hay clientes con plan vencido hoy.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          {expiredClients && expiredClients.length > 0 ? (
+            <>
+              <div className="flex-1 overflow-auto rounded-md border">
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0 bg-muted z-10">
+                    <tr>
+                      <th className="text-left px-3 py-2 font-medium text-muted-foreground w-8">#</th>
+                      <th className="text-left px-3 py-2 font-medium text-muted-foreground">Nombre</th>
+                      <th className="text-left px-3 py-2 font-medium text-muted-foreground">Cedula</th>
+                      <th className="text-left px-3 py-2 font-medium text-muted-foreground">Celular</th>
+                      <th className="text-left px-3 py-2 font-medium text-muted-foreground">Correo</th>
+                      <th className="text-left px-3 py-2 font-medium text-muted-foreground">Plan</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {expiredClients.map((c) => (
+                      <tr key={c.index} className="border-t hover:bg-muted/50">
+                        <td className="px-3 py-2 text-muted-foreground">{c.index}</td>
+                        <td className="px-3 py-2 font-medium">{c.fullName}</td>
+                        <td className="px-3 py-2">{c.cedula}</td>
+                        <td className="px-3 py-2">{c.phone || '—'}</td>
+                        <td className="px-3 py-2 text-xs">{c.email || '—'}</td>
+                        <td className="px-3 py-2">
+                          <span className="inline-flex items-center rounded-full bg-red-100 dark:bg-red-900/30 px-2 py-0.5 text-xs font-medium text-red-700 dark:text-red-400">
+                            {c.tarifa}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="flex items-center justify-between pt-4 border-t">
+                <span className="text-sm text-muted-foreground">
+                  Total: {expiredClients.length} cliente{expiredClients.length !== 1 ? 's' : ''}
+                </span>
+                <Button onClick={downloadExpiredPdf} className="bg-primary hover:bg-primary/90 text-white">
+                  <Printer className="mr-2 h-4 w-4" /> Descargar Informe PDF
+                </Button>
+              </div>
+            </>
+          ) : expiredClients && expiredClients.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
+              <CheckCircle2 className="h-10 w-10 mb-2 text-emerald-500" />
+              <p className="text-sm">Ningun cliente con vencimiento hoy</p>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
