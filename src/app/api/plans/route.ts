@@ -8,10 +8,7 @@ const VALID_DURATION_TYPES = ['1_mes', 'bimestral', 'anual', 'dia', 'otro'] as c
 export async function GET() {
   const auth = await requireAuth()
   if ('status' in auth) return auth
-  const perms = getPermissions(auth.role)
-  if (!perms.canManageClients) {
-    return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
-  }
+  // GET is read-only (used in selectors) — any authenticated user can fetch plans
 
   try {
     const plans = await db.plan.findMany({
