@@ -1,23 +1,26 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 
-// GET /api/cash-register/check?userId=xxx
-// Returns the status of the open register for a specific user
+// GET /api/cash-register/check?userId=xxx&since=xxx
+// Returns whether a register was closed AFTER the given timestamp
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const userId = searchParams.get('userId')
+    const since = searchParams.get('since')
 
     if (!userId) {
       return NextResponse.json({ error: 'userId es requerido' }, { status: 400 })
     }
+
+    const sinceDate = since ? new Date(parseInt(since)) : new Date(Date.now() - 60 * 1000)
 
     const register = await db.cashRegister.findFirst({
       where: {
         userId,
         status: 'cerrada',
         closingDate: {
-          gte: new Date(Date.now() - 24 * 60 * 60 * 1000), // Last 24 hours
+          gte: sinceDate,
         },
       },
       orderBy: { closingDate: 'desc' },

@@ -106,8 +106,9 @@ export function AppHeader() {
   // For cashiers, poll for register closure every 30 seconds
   useEffect(() => {
     if (!isCashier || !user?.id) return
+    const pageLoadTime = Date.now()
     const interval = setInterval(() => {
-      api.get<{ wasClosed: boolean; register?: { name: string | null; branchName: string; closingDate: string; actual: number } }>(`/api/cash-register/check?userId=${user.id}`)
+      api.get<{ wasClosed: boolean; register?: { name: string | null; branchName: string; closingDate: string; actual: number } }>(`/api/cash-register/check?userId=${user.id}&since=${pageLoadTime}`)
         .then((result) => {
           if (result.wasClosed) {
             // Clear the interval and show alert
