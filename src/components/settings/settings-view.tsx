@@ -153,6 +153,7 @@ interface CurrencyItem {
 export function SettingsView() {
   const [settings, setSettings] = useState<Settings | null>(null)
   const setAppSettings = useAppStore((s) => s.setSettings)
+  const setGlobalBranches = useAppStore((s) => s.setBranches)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [fetchingRate, setFetchingRate] = useState(false)
@@ -1157,7 +1158,9 @@ export function SettingsView() {
                                 onClick={async () => {
                                   try {
                                     await api.put(`/api/branches/${branch.id}`, { active: !branch.active })
-                                    setBranches(prev => prev.map(b => b.id === branch.id ? { ...b, active: !branch.active } : b))
+                                    const toggled = branches.map(b => b.id === branch.id ? { ...b, active: !branch.active } : b)
+                                    setBranches(toggled)
+                                    setGlobalBranches(toggled)
                                     toast.success(branch.active ? 'Sucursal desactivada' : 'Sucursal reactivada')
                                   } catch {
                                     toast.error('Error al cambiar estado')
@@ -1609,6 +1612,7 @@ export function SettingsView() {
                 setShowBranchDialog(false)
                 const updated = await api.get<Branch[]>('/api/branches')
                 setBranches(updated)
+                setGlobalBranches(updated)
               } catch {
                 toast.error('Error al guardar sucursal')
               } finally {
