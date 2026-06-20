@@ -1228,15 +1228,15 @@ export function ClientsTable() {
                         </DropdownMenuContent>
                       </DropdownMenu>
                       <div className="flex-1" />
+                      {(canManage || canMarkAtt) && (
+                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Editar" onClick={() => openEdit(client)}>
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
                       {canManage && (
-                        <>
-                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Editar" onClick={() => openEdit(client)}>
-                            <Pencil className="h-3.5 w-3.5" />
-                          </Button>
-                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-400 hover:text-red-600" title="Eliminar" onClick={() => setDeleteTarget(client)}>
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        </>
+                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-400 hover:text-red-600" title="Eliminar" onClick={() => setDeleteTarget(client)}>
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
                       )}
                     </>
                   )}
