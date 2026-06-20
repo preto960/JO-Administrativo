@@ -273,7 +273,7 @@ export function ProductImportDialog({ open, onOpenChange, onImportComplete }: {
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) reset(); onOpenChange(v) }}>
-      <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
+      <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col overflow-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileSpreadsheet className="h-5 w-5" />
@@ -336,7 +336,7 @@ export function ProductImportDialog({ open, onOpenChange, onImportComplete }: {
 
         {/* Step: Preview */}
         {step === 'preview' && (
-          <div className="flex-1 flex flex-col gap-3 py-2 min-h-0 overflow-hidden">
+          <div className="flex-1 flex flex-col gap-3 py-2 min-h-0">
             <div className="flex items-center gap-2 text-sm">
               <Badge variant="secondary">{fileName}</Badge>
               <Badge variant="outline">{parsedRows.length} productos</Badge>
@@ -392,7 +392,7 @@ export function ProductImportDialog({ open, onOpenChange, onImportComplete }: {
               )}
             </ScrollArea>
 
-            <DialogFooter>
+            <DialogFooter className="shrink-0">
               <Button variant="outline" onClick={() => setStep('upload')}>Volver</Button>
               <Button onClick={handleImport} disabled={importing || parsedRows.length === 0}>
                 {importing ? (
