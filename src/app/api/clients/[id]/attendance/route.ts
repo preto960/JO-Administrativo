@@ -39,7 +39,7 @@ export async function GET(
   const auth = await requireAuth()
   if ('status' in auth) return auth
   const perms = getPermissions(auth.role)
-  if (!perms.canManageClients) {
+  if (!perms.canManageClients && !perms.canMarkAttendance) {
     return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
   }
 
@@ -115,7 +115,7 @@ export async function POST(
   const auth = await requireAuth()
   if ('status' in auth) return auth
   const perms = getPermissions(auth.role)
-  if (!perms.canManageClients) {
+  if (!perms.canManageClients && !perms.canMarkAttendance) {
     return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
   }
 
