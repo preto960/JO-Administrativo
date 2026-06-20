@@ -82,7 +82,7 @@ const defaultRolePermissions: Record<string, UserPermissions> = {
   },
   cajero: {
     role: 'cajero',
-    views: ['pos', 'cash'],
+    views: ['pos', 'cash', 'clients'],
     canManageUsers: false,
     canAccessSettings: false,
     canManageProducts: false,

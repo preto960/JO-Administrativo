@@ -52,7 +52,7 @@ import {
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Separator } from '@/components/ui/separator'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Plus, Search, Users, DollarSign, Loader2, Receipt, Truck, X, Trash2, Printer, FileText, Mail, Pencil, Phone, MapPin, ShoppingCart, Eye, EyeOff, AlertTriangle, Upload, ChevronLeft, ChevronRight, Filter, UserCheck, UserX, UsersRound, RefreshCw, CalendarCheck, CalendarDays, CheckCircle2, CreditCard, Banknote, ArrowLeftRight, Clock, Smartphone, CircleDollarSign, Ban, MoreHorizontal, type LucideIcon } from 'lucide-react'
+import { Plus, Search, Users, DollarSign, Loader2, Receipt, Truck, X, Trash2, Printer, FileText, Mail, Pencil, Phone, MapPin, ShoppingCart, Eye, EyeOff, AlertTriangle, Upload, ChevronLeft, ChevronRight, Filter, UserCheck, UserX, UsersRound, RefreshCw, CalendarCheck, CalendarDays, CheckCircle2, CreditCard, Banknote, ArrowLeftRight, Clock, Smartphone, CircleDollarSign, Ban, MoreHorizontal, AlertCircle, type LucideIcon } from 'lucide-react'
 import { ClientBulkImport } from './client-bulk-import'
 import { FALLBACK_METHODS } from '@/lib/payment-methods'
 import { toast } from 'sonner'
@@ -267,7 +267,7 @@ export function ClientsTable() {
 
   // Show deleted clients toggle
   const [showInactive, setShowInactive] = useState(false)
-  const [membershipFilter, setMembershipFilter] = useState<'todos' | 'activo' | 'vencido' | 'sin'>('activo')
+  const [membershipFilter, setMembershipFilter] = useState<'todos' | 'activo' | 'vencido' | 'sin' | 'deudas'>('activo')
   const [currentPage, setCurrentPage] = useState(1)
   const PAGE_SIZE = 20
 
@@ -334,6 +334,7 @@ export function ClientsTable() {
   const activeCount = clients.filter((c) => !c.deletedAt && c.membership?.status === 'Activo').length
   const expiredCount = clients.filter((c) => !c.deletedAt && c.membership?.status === 'Vencido').length
   const noMembershipCount = clients.filter((c) => !c.deletedAt && (!c.membership?.status || c.membership?.status === 'Sin membresia')).length
+  const debtCount = clients.filter((c) => !c.deletedAt && c.receivables?.some((r: { pendingBalance: number; status: string }) => r.pendingBalance > 0 && r.status === 'pendiente')).length
 
   const searchLower = search.toLowerCase().trim()
   const filtered = clients.filter((c) => {
@@ -345,6 +346,7 @@ export function ClientsTable() {
       if (membershipFilter === 'activo' && c.membership?.status !== 'Activo') return false
       if (membershipFilter === 'vencido' && c.membership?.status !== 'Vencido') return false
       if (membershipFilter === 'sin' && c.membership?.status && c.membership?.status !== 'Sin membresia') return false
+      if (membershipFilter === 'deudas' && !c.receivables?.some((r: { pendingBalance: number; status: string }) => r.pendingBalance > 0 && r.status === 'pendiente')) return false
     }
 
     // Search filter
@@ -361,6 +363,10 @@ export function ClientsTable() {
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
   const paginatedClients = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
   useEffect(() => { setCurrentPage(1) }, [search, membershipFilter, showInactive])
+  // Reset filter to 'activo' when switching away from gym or when deudas filter is selected but not gym
+  useEffect(() => {
+    if (!isGym) setMembershipFilter('todos')
+  }, [isGym])
 
   // Plans state
   const [plans, setPlans] = useState<PlanOption[]>([])
@@ -1014,6 +1020,7 @@ export function ClientsTable() {
             { key: 'activo' as const, label: 'Activos', count: activeCount, icon: <UserCheck className="h-3.5 w-3.5" /> },
             { key: 'vencido' as const, label: 'Vencidos', count: expiredCount, icon: <UserX className="h-3.5 w-3.5" /> },
             { key: 'sin' as const, label: 'Sin membresía', count: noMembershipCount, icon: <Users className="h-3.5 w-3.5" /> },
+            { key: 'deudas' as const, label: 'Deudas', count: debtCount, icon: <AlertCircle className="h-3.5 w-3.5" /> },
           ]).map((opt) => (
             <button
               key={opt.key}
