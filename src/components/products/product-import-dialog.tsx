@@ -273,7 +273,7 @@ export function ProductImportDialog({ open, onOpenChange, onImportComplete }: {
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) reset(); onOpenChange(v) }}>
-      <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col overflow-hidden">
+      <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileSpreadsheet className="h-5 w-5" />
@@ -288,7 +288,7 @@ export function ProductImportDialog({ open, onOpenChange, onImportComplete }: {
 
         {/* Step: Upload */}
         {step === 'upload' && (
-          <div className="flex-1 flex flex-col gap-4 py-4">
+          <div className="flex flex-col gap-4 py-4">
             <div
               className="flex-1 border-2 border-dashed rounded-lg flex flex-col items-center justify-center gap-3 p-8 cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-colors"
               onClick={() => fileInputRef.current?.click()}
@@ -336,63 +336,65 @@ export function ProductImportDialog({ open, onOpenChange, onImportComplete }: {
 
         {/* Step: Preview */}
         {step === 'preview' && (
-          <div className="flex-1 flex flex-col gap-3 py-2 min-h-0">
-            <div className="flex items-center gap-2 text-sm">
-              <Badge variant="secondary">{fileName}</Badge>
-              <Badge variant="outline">{parsedRows.length} productos</Badge>
-              {unmappedHeaders.length > 0 && (
-                <Badge variant="outline" className="text-amber-600">
-                  Columnas ignoradas: {unmappedHeaders.join(', ')}
-                </Badge>
-              )}
-            </div>
+          <>
+            <div className="flex flex-col gap-3 py-2">
+              <div className="flex items-center gap-2 text-sm">
+                <Badge variant="secondary">{fileName}</Badge>
+                <Badge variant="outline">{parsedRows.length} productos</Badge>
+                {unmappedHeaders.length > 0 && (
+                  <Badge variant="outline" className="text-amber-600">
+                    Columnas ignoradas: {unmappedHeaders.join(', ')}
+                  </Badge>
+                )}
+              </div>
 
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id="update-existing"
-                checked={updateExisting}
-                onCheckedChange={(v) => setUpdateExisting(!!v)}
-              />
-              <label htmlFor="update-existing" className="text-sm cursor-pointer">
-                Actualizar productos existentes (por nombre o SKU)
-              </label>
-            </div>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="update-existing"
+                  checked={updateExisting}
+                  onCheckedChange={(v) => setUpdateExisting(!!v)}
+                />
+                <label htmlFor="update-existing" className="text-sm cursor-pointer">
+                  Actualizar productos existentes (por nombre o SKU)
+                </label>
+              </div>
 
-            <ScrollArea className="flex-1 border rounded-lg min-h-0">
-              <table className="w-full text-xs">
-                <thead className="bg-muted/50 sticky top-0">
-                  <tr>
-                    <th className="text-left p-2 font-medium">#</th>
-                    <th className="text-left p-2 font-medium">Nombre</th>
-                    <th className="text-left p-2 font-medium">SKU</th>
-                    <th className="text-right p-2 font-medium">Precio</th>
-                    <th className="text-right p-2 font-medium">Costo</th>
-                    <th className="text-right p-2 font-medium">Stock</th>
-                    <th className="text-left p-2 font-medium">Categoría</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {parsedRows.slice(0, 100).map((row, idx) => (
-                    <tr key={idx} className={idx % 2 === 0 ? 'bg-background' : 'bg-muted/20'}>
-                      <td className="p-2 text-muted-foreground">{idx + 1}</td>
-                      <td className="p-2 font-medium">{row.name}</td>
-                      <td className="p-2 text-muted-foreground">{row.sku || '—'}</td>
-                      <td className="p-2 text-right">{row.price > 0 ? `$${row.price.toFixed(2)}` : <span className="text-red-500">Falta</span>}</td>
-                      <td className="p-2 text-right">{row.cost > 0 ? `$${row.cost.toFixed(2)}` : '—'}</td>
-                      <td className="p-2 text-right">{row.stock}</td>
-                      <td className="p-2 text-muted-foreground">{row.category || '—'}</td>
+              <ScrollArea className="border rounded-lg max-h-[45vh]">
+                <table className="w-full text-xs">
+                  <thead className="bg-muted/50 sticky top-0">
+                    <tr>
+                      <th className="text-left p-2 font-medium">#</th>
+                      <th className="text-left p-2 font-medium">Nombre</th>
+                      <th className="text-left p-2 font-medium">SKU</th>
+                      <th className="text-right p-2 font-medium">Precio</th>
+                      <th className="text-right p-2 font-medium">Costo</th>
+                      <th className="text-right p-2 font-medium">Stock</th>
+                      <th className="text-left p-2 font-medium">Categoría</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-              {parsedRows.length > 100 && (
-                <p className="text-xs text-muted-foreground text-center py-2">
-                  ... y {parsedRows.length - 100} productos más
-                </p>
-              )}
-            </ScrollArea>
+                  </thead>
+                  <tbody>
+                    {parsedRows.slice(0, 100).map((row, idx) => (
+                      <tr key={idx} className={idx % 2 === 0 ? 'bg-background' : 'bg-muted/20'}>
+                        <td className="p-2 text-muted-foreground">{idx + 1}</td>
+                        <td className="p-2 font-medium">{row.name}</td>
+                        <td className="p-2 text-muted-foreground">{row.sku || '—'}</td>
+                        <td className="p-2 text-right">{row.price > 0 ? `$${row.price.toFixed(2)}` : <span className="text-red-500">Falta</span>}</td>
+                        <td className="p-2 text-right">{row.cost > 0 ? `$${row.cost.toFixed(2)}` : '—'}</td>
+                        <td className="p-2 text-right">{row.stock}</td>
+                        <td className="p-2 text-muted-foreground">{row.category || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {parsedRows.length > 100 && (
+                  <p className="text-xs text-muted-foreground text-center py-2">
+                    ... y {parsedRows.length - 100} productos más
+                  </p>
+                )}
+              </ScrollArea>
+            </div>
 
-            <DialogFooter className="shrink-0">
+            <DialogFooter>
               <Button variant="outline" onClick={() => setStep('upload')}>Volver</Button>
               <Button onClick={handleImport} disabled={importing || parsedRows.length === 0}>
                 {importing ? (
@@ -405,7 +407,7 @@ export function ProductImportDialog({ open, onOpenChange, onImportComplete }: {
                 )}
               </Button>
             </DialogFooter>
-          </div>
+          </>
         )}
 
         {/* Step: Result */}
