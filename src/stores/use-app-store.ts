@@ -105,8 +105,18 @@ export const useAppStore = create<AppState>()(
         }
       },
       setSettings: (settings) => set({ settings }),
-      setSelectedBranchId: (id) => set({ selectedBranchId: id }),
-      setBranches: (branches) => set({ branches }),
+      setSelectedBranchId: (id) => {
+        // Avoid unnecessary state updates that cause re-renders
+        const current = useAppStore.getState().selectedBranchId
+        if (current === id) return
+        set({ selectedBranchId: id })
+      },
+      setBranches: (branches) => {
+        // Avoid unnecessary state updates if branch list is identical
+        const current = useAppStore.getState().branches
+        if (current.length === branches.length && current.every((b, i) => b.id === branches[i].id)) return
+        set({ branches })
+      },
       bumpPermissions: () => set((s) => ({ permissionsVersion: s.permissionsVersion + 1 })),
       navigateToClient: (clientId) => set({ activeView: 'clients', pendingClientId: clientId }),
       clearPendingClient: () => set({ pendingClientId: null }),

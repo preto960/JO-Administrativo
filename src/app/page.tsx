@@ -10,7 +10,7 @@ const AppShell = dynamic(
 
 export default function Home() {
   return (
-    <SessionProvider refetchOnWindowFocus={true} refetchWhenOffline={false}>
+    <SessionProvider refetchOnWindowFocus={false} refetchWhenOffline={false}>
       <AppShell />
     </SessionProvider>
   )

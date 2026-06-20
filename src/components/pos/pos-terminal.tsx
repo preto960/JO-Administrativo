@@ -112,12 +112,14 @@ export function PosTerminal() {
     }
   }, [selectedBranchId, validateBranch])
 
+  const productsRef = useRef<ProductWithInventory[]>([])
   const fetchProducts = useCallback(() => {
     setLoading(true)
     Promise.all([
       api.get<{ products: ProductWithInventory[] }>('/api/products?active=true&allInventories=true'),
       api.get<Category[]>('/api/categories'),
     ]).then(([res, cats]) => {
+      productsRef.current = res.products
       setProducts(res.products)
       setCategories(cats)
       setLoading(false)
@@ -213,16 +215,31 @@ export function PosTerminal() {
     }
   }
 
-  // Punto 2: Poll products every 30s to detect stock changes
+  // Poll products every 60s to detect stock changes — compare before updating to avoid unnecessary re-renders
   useEffect(() => {
     if (checkingCaja || !cajaOpen) return
     const interval = setInterval(() => {
       api.get<{ products: ProductWithInventory[] }>('/api/products?active=true&allInventories=true')
-        .then(res => setProducts(res.products))
+        .then(res => {
+          // Only update if stock/price data actually changed
+          const oldProducts = productsRef.current
+          const changed = res.products.length !== oldProducts.length ||
+            res.products.some((p, i) => {
+              const old = oldProducts[i]
+              if (!old || old.id !== p.id) return true
+              const oldInv = old.inventories.find(inv => inv.branchId === selectedBranchId)
+              const newInv = p.inventories.find(inv => inv.branchId === selectedBranchId)
+              return oldInv?.stock !== newInv?.stock || oldInv?.price !== newInv?.price
+            })
+          if (changed) {
+            productsRef.current = res.products
+            setProducts(res.products)
+          }
+        })
         .catch(() => {})
-    }, 30000)
+    }, 60000)
     return () => clearInterval(interval)
-  }, [checkingCaja, cajaOpen])
+  }, [checkingCaja, cajaOpen, selectedBranchId])
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
