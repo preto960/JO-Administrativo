@@ -396,7 +396,7 @@ export function ClientsTable() {
   const [expiredClients, setExpiredClients] = useState<Array<{
     index: number; fullName: string; cedula: string; email: string; phone: string; tarifa: string; fechaVencimiento: string; diasRestantes: number
   }> | null>(null)
-  const [expiredCount, setExpiredCount] = useState(0)
+  const [expiredTodayCount, setExpiredTodayCount] = useState(0)
 
   // Attendance dialog
   const [attClient, setAttClient] = useState<Client | null>(null)
@@ -427,7 +427,7 @@ export function ClientsTable() {
     try {
       const data = await api.get<{ clients: typeof expiredClients; total: number }>('/api/clients/expired-today')
       setExpiredClients(data.clients || [])
-      setExpiredCount(data.total || 0)
+      setExpiredTodayCount(data.total || 0)
       setShowExpiredModal(true)
     } catch {
       toast.error('Error al consultar clientes vencidos')
@@ -1027,7 +1027,7 @@ export function ClientsTable() {
               {isGym && (
               <>
               <Button variant="outline" onClick={openExpiredReport} disabled={loadingExpired} className="text-red-600 border-red-300 hover:bg-red-50 dark:text-red-400 dark:border-red-800 dark:hover:bg-red-950/40">
-                <FileText className="mr-2 h-4 w-4" /> Vencidos Hoy {expiredCount > 0 && `(${expiredCount})`}
+                <FileText className="mr-2 h-4 w-4" /> Vencidos Hoy {expiredTodayCount > 0 && `(${expiredTodayCount})`}
               </Button>
               <Button variant="outline" onClick={() => setBulkImportOpen(true)} className="text-primary border-primary/30 hover:bg-primary/5">
                 <Upload className="mr-2 h-4 w-4" /> Carga Masiva
