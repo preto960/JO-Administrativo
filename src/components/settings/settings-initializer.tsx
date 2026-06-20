@@ -203,7 +203,7 @@ export function SettingsInitializer() {
 
           // Update page title
           if (s.businessName) {
-            document.title = `${s.businessName} - ERP/POS`
+            document.title = s.businessName
           }
 
           // Update favicon with company logo

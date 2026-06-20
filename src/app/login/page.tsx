@@ -27,8 +27,23 @@ export default function LoginPage() {
     fetch('/api/settings')
       .then(r => r.json())
       .then(s => {
-        if (s?.businessName) setBusinessName(s.businessName)
-        if (s?.logoUrl) setLogoUrl(s.logoUrl)
+        if (s?.businessName) {
+          setBusinessName(s.businessName)
+          document.title = s.businessName
+        }
+        if (s?.logoUrl) {
+          setLogoUrl(s.logoUrl)
+          // Update favicon
+          const link = document.querySelector<HTMLLinkElement>("link[rel~='icon']")
+          if (link) {
+            link.href = s.logoUrl
+          } else {
+            const newLink = document.createElement('link')
+            newLink.rel = 'icon'
+            newLink.href = s.logoUrl
+            document.head.appendChild(newLink)
+          }
+        }
         if (s?.primaryColor) {
           applyBothColors(s.primaryColor, s.secondaryColor || 'slate')
         }

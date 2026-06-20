@@ -15,12 +15,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "JO-Administrativo - ERP/POS",
-  description: "Sistema ERP/POS para gestión empresarial. Ventas, inventario, caja, compras y finanzas.",
+  title: "JO-Administrativo",
+  description: "Sistema para gestión empresarial. Ventas, inventario, caja, compras y finanzas.",
   keywords: ["ERP", "POS", "Sistema de Gestión", "Ventas", "Inventario", "Latinoamérica"],
-  icons: {
-    icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
-  },
 };
 
 export default function RootLayout({
