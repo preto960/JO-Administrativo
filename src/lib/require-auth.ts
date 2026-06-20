@@ -1,6 +1,7 @@
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { NextResponse } from 'next/server'
+import { getPermissions } from '@/lib/permissions'
 
 /**
  * Validates that the current request has an authenticated session.
@@ -36,7 +37,7 @@ export async function requireAdmin(): Promise<
 }
 
 /**
- * Validates that the current user can manage users.
+ * Validates that the current user can manage users (checks canManageUsers permission).
  */
 export async function requireManageUsers(): Promise<
   | { session: Awaited<ReturnType<typeof getServerSession>>; role: string; userId: string }
@@ -44,7 +45,8 @@ export async function requireManageUsers(): Promise<
 > {
   const result = await requireAuth()
   if ('status' in result) return result
-  if (result.role !== 'admin') {
+  const perms = getPermissions(result.role)
+  if (!perms.canManageUsers) {
     return NextResponse.json({ error: 'Acceso denegado' }, { status: 403 })
   }
   return result

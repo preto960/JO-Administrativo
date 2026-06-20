@@ -2,17 +2,19 @@ import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { getPermissions } from '@/lib/permissions'
 
 export async function GET(request: NextRequest) {
   try {
-    // Check admin role
+    // Check permission (not just admin role)
     const session = await getServerSession(authOptions)
     if (!session?.user) {
       return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
     }
     const userRole = (session.user as Record<string, unknown>).role as string
-    if (userRole !== 'admin') {
-      return NextResponse.json({ error: 'Acceso denegado. Solo administradores.' }, { status: 403 })
+    const perms = getPermissions(userRole)
+    if (!perms.canViewAudit) {
+      return NextResponse.json({ error: 'Acceso denegado' }, { status: 403 })
     }
 
     const { searchParams } = new URL(request.url)

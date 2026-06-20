@@ -46,7 +46,7 @@ const viewLabels: Record<string, string> = {
 export function AppHeader() {
   const { activeView, setActiveView, selectedBranchId, setSelectedBranchId, branches, setBranches } = useAppStore()
   const { setTheme, theme } = useTheme()
-  const { user } = useAuth()
+  const { user, permissions } = useAuth()
   const [loading, setLoading] = useState(true)
   const [cashRegisterInfo, setCashRegisterInfo] = useState<{ name: string | null; branchName: string } | null>(null)
 
@@ -217,13 +217,13 @@ export function AppHeader() {
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            {user?.role === 'admin' && (
+            {permissions.canAccessSettings && (
               <DropdownMenuItem onClick={() => setActiveView('settings')}>
                 <Settings className="mr-2 h-4 w-4" />
                 Configuración
               </DropdownMenuItem>
             )}
-            {user?.role === 'admin' && <DropdownMenuSeparator />}
+            {permissions.canAccessSettings && <DropdownMenuSeparator />}
             <DropdownMenuItem onClick={startTutorial}>
               <BookOpen className="mr-2 h-4 w-4" />
               Ver Tutorial

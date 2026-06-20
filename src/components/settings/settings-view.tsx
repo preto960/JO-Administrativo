@@ -439,7 +439,7 @@ export function SettingsView() {
               <span>Categorías</span>
             </TabsTrigger>
           )}
-          {settings.businessType === 'gym' && (
+          {settings.businessType === 'gym' && userPerms?.canAccessTabPlanes && (
           <TabsTrigger data-tutorial="settings-tab-planes" value="planes" className="gap-1.5">
             <Wallet className="h-3.5 w-3.5 hidden sm:block" />
             <span>Planes</span>
@@ -1266,21 +1266,21 @@ export function SettingsView() {
         )}
 
         {/* ── Tutorial Tab ───────────────────────────────── */}
-        {isAdmin && (
+        {userPerms?.canAccessTabTutorial && (
         <TabsContent value="tutorial">
           <TutorialTextsEditor />
         </TabsContent>
         )}
 
         {/* ── Roles & Permisos Tab ────────────────────────── */}
-        {canManageUsers && (
+        {userPerms?.canAccessTabRoles && (
         <TabsContent value="roles">
           <RolePermissionsEditor />
         </TabsContent>
         )}
 
         {/* ── Sistema Tab ───────────────────────────────── */}
-        {isAdmin && (
+        {userPerms?.canAccessTabSistema && (
         <TabsContent value="sistema">
           <Card>
             <CardHeader>
@@ -1478,7 +1478,7 @@ export function SettingsView() {
         </TabsContent>
 
         {/* ── Plans Tab (solo gym) ────────────────────── */}
-        {settings.businessType === 'gym' && (
+        {settings.businessType === 'gym' && userPerms?.canAccessTabPlanes && (
         <TabsContent value="planes">
           <PlansTab />
         </TabsContent>

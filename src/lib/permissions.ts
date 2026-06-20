@@ -9,6 +9,10 @@ export interface UserPermissions {
   canManageExpenses: boolean
   canManageSuppliers: boolean
   canViewAudit: boolean
+  // Acciones granulares
+  canMarkAttendance: boolean
+  canManageBranches: boolean
+  canExportData: boolean
   // Pestañas de Configuración
   canAccessTabEmpresa: boolean
   canAccessTabMoneda: boolean
@@ -20,6 +24,7 @@ export interface UserPermissions {
   canAccessTabSistema: boolean
   canAccessTabApariencia: boolean
   canAccessTabTutorial: boolean
+  canAccessTabPlanes: boolean
 }
 
 const defaultRolePermissions: Record<string, UserPermissions> = {
@@ -34,6 +39,9 @@ const defaultRolePermissions: Record<string, UserPermissions> = {
     canManageExpenses: true,
     canManageSuppliers: true,
     canViewAudit: true,
+    canMarkAttendance: true,
+    canManageBranches: true,
+    canExportData: true,
     canAccessTabEmpresa: true,
     canAccessTabMoneda: true,
     canAccessTabIva: true,
@@ -44,6 +52,7 @@ const defaultRolePermissions: Record<string, UserPermissions> = {
     canAccessTabSistema: true,
     canAccessTabApariencia: true,
     canAccessTabTutorial: true,
+    canAccessTabPlanes: true,
   },
   gerente: {
     role: 'gerente',
@@ -56,6 +65,9 @@ const defaultRolePermissions: Record<string, UserPermissions> = {
     canManageExpenses: true,
     canManageSuppliers: true,
     canViewAudit: true,
+    canMarkAttendance: true,
+    canManageBranches: false,
+    canExportData: true,
     canAccessTabEmpresa: true,
     canAccessTabMoneda: true,
     canAccessTabIva: true,
@@ -66,6 +78,7 @@ const defaultRolePermissions: Record<string, UserPermissions> = {
     canAccessTabSistema: false,
     canAccessTabApariencia: true,
     canAccessTabTutorial: false,
+    canAccessTabPlanes: true,
   },
   cajero: {
     role: 'cajero',
@@ -78,6 +91,9 @@ const defaultRolePermissions: Record<string, UserPermissions> = {
     canManageExpenses: false,
     canManageSuppliers: false,
     canViewAudit: false,
+    canMarkAttendance: true,
+    canManageBranches: false,
+    canExportData: false,
     canAccessTabEmpresa: false,
     canAccessTabMoneda: false,
     canAccessTabIva: false,
@@ -88,6 +104,7 @@ const defaultRolePermissions: Record<string, UserPermissions> = {
     canAccessTabSistema: false,
     canAccessTabApariencia: false,
     canAccessTabTutorial: false,
+    canAccessTabPlanes: false,
   },
   vendedor: {
     role: 'vendedor',
@@ -100,6 +117,9 @@ const defaultRolePermissions: Record<string, UserPermissions> = {
     canManageExpenses: false,
     canManageSuppliers: false,
     canViewAudit: false,
+    canMarkAttendance: true,
+    canManageBranches: false,
+    canExportData: false,
     canAccessTabEmpresa: false,
     canAccessTabMoneda: false,
     canAccessTabIva: false,
@@ -110,6 +130,7 @@ const defaultRolePermissions: Record<string, UserPermissions> = {
     canAccessTabSistema: false,
     canAccessTabApariencia: false,
     canAccessTabTutorial: false,
+    canAccessTabPlanes: false,
   },
 }
 

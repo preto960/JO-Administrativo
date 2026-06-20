@@ -133,7 +133,7 @@ interface PaginationInfo {
 // ── Component ─────────────────────────────────────────────────────────
 
 export function AuditLogView() {
-  const { user } = useAuth()
+  const { user, permissions } = useAuth()
 
   // Filters
   const [search, setSearch] = useState('')
@@ -241,8 +241,8 @@ export function AuditLogView() {
     toast.success('Archivo CSV descargado')
   }
 
-  // Non-admin should not see this view
-  if (user && user.role !== 'admin') {
+  // Check permission (not just admin role)
+  if (user && !permissions.canViewAudit) {
     return (
       <Card>
         <CardContent className="flex items-center justify-center p-12">

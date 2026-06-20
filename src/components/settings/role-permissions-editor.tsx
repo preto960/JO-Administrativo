@@ -22,6 +22,9 @@ const DEFAULT_PERMISSIONS: Record<string, UserPermissions> = {
     canManageExpenses: true,
     canManageSuppliers: true,
     canViewAudit: true,
+    canMarkAttendance: true,
+    canManageBranches: true,
+    canExportData: true,
     canAccessTabEmpresa: true,
     canAccessTabMoneda: true,
     canAccessTabIva: true,
@@ -32,6 +35,7 @@ const DEFAULT_PERMISSIONS: Record<string, UserPermissions> = {
     canAccessTabSistema: true,
     canAccessTabApariencia: true,
     canAccessTabTutorial: true,
+    canAccessTabPlanes: true,
   },
   gerente: {
     role: 'gerente',
@@ -44,6 +48,9 @@ const DEFAULT_PERMISSIONS: Record<string, UserPermissions> = {
     canManageExpenses: true,
     canManageSuppliers: true,
     canViewAudit: true,
+    canMarkAttendance: true,
+    canManageBranches: false,
+    canExportData: true,
     canAccessTabEmpresa: true,
     canAccessTabMoneda: true,
     canAccessTabIva: true,
@@ -54,6 +61,7 @@ const DEFAULT_PERMISSIONS: Record<string, UserPermissions> = {
     canAccessTabSistema: false,
     canAccessTabApariencia: true,
     canAccessTabTutorial: false,
+    canAccessTabPlanes: true,
   },
   cajero: {
     role: 'cajero',
@@ -66,6 +74,9 @@ const DEFAULT_PERMISSIONS: Record<string, UserPermissions> = {
     canManageExpenses: false,
     canManageSuppliers: false,
     canViewAudit: false,
+    canMarkAttendance: true,
+    canManageBranches: false,
+    canExportData: false,
     canAccessTabEmpresa: false,
     canAccessTabMoneda: false,
     canAccessTabIva: false,
@@ -76,6 +87,7 @@ const DEFAULT_PERMISSIONS: Record<string, UserPermissions> = {
     canAccessTabSistema: false,
     canAccessTabApariencia: false,
     canAccessTabTutorial: false,
+    canAccessTabPlanes: false,
   },
   vendedor: {
     role: 'vendedor',
@@ -88,6 +100,9 @@ const DEFAULT_PERMISSIONS: Record<string, UserPermissions> = {
     canManageExpenses: false,
     canManageSuppliers: false,
     canViewAudit: false,
+    canMarkAttendance: true,
+    canManageBranches: false,
+    canExportData: false,
     canAccessTabEmpresa: false,
     canAccessTabMoneda: false,
     canAccessTabIva: false,
@@ -98,6 +113,7 @@ const DEFAULT_PERMISSIONS: Record<string, UserPermissions> = {
     canAccessTabSistema: false,
     canAccessTabApariencia: false,
     canAccessTabTutorial: false,
+    canAccessTabPlanes: false,
   },
 }
 
@@ -127,9 +143,12 @@ const ABILITY_ROWS: PermRow[] = [
   { id: 'can-access-settings', label: 'Acceder a Configuración', description: 'Permitir entrada a la configuración', icon: '🔧', type: 'ability', key: 'canAccessSettings' },
   { id: 'can-manage-products', label: 'Gestionar Productos', description: 'Crear, editar y eliminar productos', icon: '✏', type: 'ability', key: 'canManageProducts' },
   { id: 'can-manage-clients', label: 'Gestionar Clientes', description: 'Crear, editar y eliminar clientes', icon: '✏', type: 'ability', key: 'canManageClients' },
+  { id: 'can-mark-attendance', label: 'Marcar Asistencia', description: 'Registrar asistencia de clientes', icon: '✓', type: 'ability', key: 'canMarkAttendance' },
   { id: 'can-manage-cash', label: 'Gestionar Caja', description: 'Abrir, cerrar y manejar caja', icon: '✏', type: 'ability', key: 'canManageCash' },
   { id: 'can-manage-expenses', label: 'Gestionar Gastos', description: 'Crear, editar y eliminar gastos', icon: '✏', type: 'ability', key: 'canManageExpenses' },
   { id: 'can-manage-suppliers', label: 'Gestionar Proveedores', description: 'Crear, editar y eliminar proveedores', icon: '✏', type: 'ability', key: 'canManageSuppliers' },
+  { id: 'can-manage-branches', label: 'Gestionar Sucursales', description: 'Crear, editar y eliminar sucursales', icon: '🏪', type: 'ability', key: 'canManageBranches' },
+  { id: 'can-export-data', label: 'Exportar Datos', description: 'Descargar reportes y datos en archivos', icon: '📥', type: 'ability', key: 'canExportData' },
 ]
 
 const TAB_ROWS: PermRow[] = [
@@ -144,6 +163,7 @@ const TAB_ROWS: PermRow[] = [
   { id: 'tab-apariencia', label: 'Apariencia', description: 'Colores y tema visual', icon: '🎨', type: 'tab', key: 'canAccessTabApariencia' },
   { id: 'tab-audit', label: 'Auditoría', description: 'Registro de auditoría', icon: '📋', type: 'tab', key: 'canViewAudit' },
   { id: 'tab-tutorial', label: 'Tutorial', description: 'Textos del tutorial guiado', icon: '📖', type: 'tab', key: 'canAccessTabTutorial' },
+  { id: 'tab-planes', label: 'Planes', description: 'Planes de membresía (gimnasio)', icon: '🏅', type: 'tab', key: 'canAccessTabPlanes' },
 ]
 
 const ROLE_COLORS: Record<string, string> = {

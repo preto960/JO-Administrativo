@@ -176,6 +176,7 @@ interface DispatchLine {
 export function ClientsTable() {
   const { user, permissions } = useAuth()
   const canManage = permissions.canManageClients
+  const canMarkAtt = permissions.canMarkAttendance
   const selectedBranchId = useAppStore((s) => s.selectedBranchId)
   const isGym = useSetting('businessType') === 'gym'
   const [clients, setClients] = useState<Client[]>([])
@@ -2236,8 +2237,8 @@ export function ClientsTable() {
                 </div>
               )}
 
-              {/* Mark attendance button — always available, attendance is just tracking */}
-              {canManage && (
+              {/* Mark attendance button */}
+              {(canManage || canMarkAtt) && (
                 <Button
                   className="w-full bg-blue-600 hover:bg-blue-700 text-white"
                   onClick={markAttendance}
@@ -2248,7 +2249,7 @@ export function ClientsTable() {
                 </Button>
               )}
 
-              {!canManage && (
+              {!canManage && !canMarkAtt && (
                 <div className="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-3 text-sm text-amber-700 dark:text-amber-400 flex items-center gap-2">
                   <AlertTriangle className="h-4 w-4 shrink-0" />
                   Solo usuarios con permisos pueden marcar asistencia.
