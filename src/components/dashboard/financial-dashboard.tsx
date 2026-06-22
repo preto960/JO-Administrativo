@@ -143,10 +143,13 @@ export function FinancialDashboard() {
   const [customTo, setCustomTo] = useState('')
 
   // Sales Performance / Targets
-  const now = new Date()
-  const bogotaOffset = now.toLocaleString('en-US', { timeZone: 'America/Bogota' })
-  const bogotaNow = new Date(bogotaOffset)
-  const [perfMonth, setPerfMonth] = useState(`${bogotaNow.getFullYear()}-${String(bogotaNow.getMonth() + 1).padStart(2, '0')}`)
+  const [perfMonth, setPerfMonth] = useState(() => {
+    const now = new Date()
+    const tz = (typeof window !== 'undefined' && (window as any).__APP_TZ__) || 'America/Bogota'
+    const localStr = now.toLocaleString('en-US', { timeZone: tz })
+    const localNow = new Date(localStr)
+    return `${localNow.getFullYear()}-${String(localNow.getMonth() + 1).padStart(2, '0')}`
+  })
   const [perfData, setPerfData] = useState<SalesPerformanceData | null>(null)
   const [perfLoading, setPerfLoading] = useState(false)
   const [showTargetDialog, setShowTargetDialog] = useState(false)

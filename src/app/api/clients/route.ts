@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { logAction } from '@/lib/audit-log'
 import { requireAuth } from '@/lib/require-auth'
 import { getPermissions } from '@/lib/permissions'
-import { todayBogota } from '@/lib/bogota-time'
+import { todayApp } from '@/lib/app-time'
 
 function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
@@ -14,10 +14,10 @@ function isValidPhone(phone: string): boolean {
   return /^\+?\d{7,}$/.test(phone.replace(/[\s\-()]/g, ''))
 }
 
-/** Calculate dynamic days remaining based on endDate vs today (Bogota) */
-function calcDaysRemaining(endDate: Date | null): number {
+/** Calculate dynamic days remaining based on endDate vs today (app timezone) */
+async function calcDaysRemaining(endDate: Date | null): Promise<number> {
   if (!endDate) return 0
-  const today = todayBogota()
+  const today = await todayApp()
   const end = new Date(endDate)
   const diff = end.getTime() - today.getTime()
   const days = diff / (1000 * 60 * 60 * 24)
@@ -67,7 +67,7 @@ export async function GET(request: NextRequest) {
     })
 
     // Compute pending balance and membership for each client
-    const clientsWithBalance = clients.map(client => {
+    const clientsWithBalance = await Promise.all(clients.map(async client => {
       const pendingBalance = client.receivables.reduce((sum, r) => sum + r.pendingBalance, 0)
       const membership = client.memberships[0] || null
       return {
@@ -87,12 +87,12 @@ export async function GET(request: NextRequest) {
           tarifa: membership.tarifa,
           endDate: membership.endDate,
           daysRemaining: membership.endDate
-            ? calcDaysRemaining(membership.endDate)
+            ? await calcDaysRemaining(membership.endDate)
             : membership.daysRemaining,
           ticketsRemaining: membership.ticketsRemaining,
         } : null,
       }
-    })
+    }))
 
     return NextResponse.json(clientsWithBalance)
   } catch (error) {

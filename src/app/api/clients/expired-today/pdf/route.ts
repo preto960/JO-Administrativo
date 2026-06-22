@@ -1,11 +1,10 @@
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/require-auth'
-import { todayBogota } from '@/lib/bogota-time'
+import { todayApp, getAppTz } from '@/lib/app-time'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 
-// Color name → RGB mapping (matches color-picker.tsx)
 const COLOR_MAP: Record<string, number[]> = {
   emerald: [5, 150, 105],
   blue: [37, 99, 235],
@@ -37,10 +36,6 @@ function resolveColor(primaryColor: string): number[] {
   return COLOR_MAP[primaryColor] || hexToRgb(primaryColor) || [37, 99, 235]
 }
 
-function getTodayBogotaStr(): string {
-  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
-}
-
 function formatCedula(c: string): string {
   const digits = c.replace(/\D/g, '')
   if (digits.length <= 3) return digits
@@ -49,21 +44,11 @@ function formatCedula(c: string): string {
   return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`
 }
 
-function formatTime(): string {
-  const now = new Date()
-  const h = parseInt(now.toLocaleString('en-US', { timeZone: 'America/Bogota', hour: 'numeric', hour12: false }))
-  const m = now.toLocaleString('en-US', { timeZone: 'America/Bogota', minute: '2-digit' })
-  const ampm = h >= 12 ? 'pm' : 'am'
-  const h12 = h % 12 || 12
-  return `${h12}:${m} ${ampm}`
-}
-
 export async function GET() {
   const auth = await requireAuth()
   if ('status' in auth) return auth
 
   try {
-    // Fetch settings
     const settings = await db.settings.findFirst()
     const businessName = settings?.businessName || 'Mi Empresa'
     const logoUrl = settings?.logoUrl || ''
@@ -72,18 +57,27 @@ export async function GET() {
     const email = settings?.email || ''
     const rif = settings?.rif || ''
     const primaryColor = resolveColor(settings?.primaryColor || 'blue')
+    const appTz = await getAppTz()
 
-    // Fetch clients expired today
-    const today = todayBogota()
+    const today = await todayApp()
     const tomorrow = new Date(today)
     tomorrow.setUTCDate(tomorrow.getUTCDate() + 1)
+
+    const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: appTz.timezone })
+
+    const now = new Date()
+    const h = parseInt(now.toLocaleString('en-US', { timeZone: appTz.timezone, hour: 'numeric', hour12: false }))
+    const m = now.toLocaleString('en-US', { timeZone: appTz.timezone, minute: '2-digit' })
+    const ampm = h >= 12 ? 'pm' : 'am'
+    const h12 = h % 12 || 12
+    const timeStr = `${h12}:${m} ${ampm}`
 
     const clients = await db.client.findMany({
       where: {
         deletedAt: null,
         memberships: {
           some: {
-            endDate: { gte: bogota, lt: tomorrow },
+            endDate: { gte: today, lt: tomorrow },
             status: { in: ['Vencido', 'Activo'] },
           },
         },
@@ -95,7 +89,7 @@ export async function GET() {
         email: true,
         phone: true,
         memberships: {
-          where: { endDate: { gte: bogota, lt: tomorrow } },
+          where: { endDate: { gte: today, lt: tomorrow } },
           orderBy: { createdAt: 'desc' },
           take: 1,
           select: { tarifa: true, endDate: true, daysRemaining: true },
@@ -104,16 +98,13 @@ export async function GET() {
       orderBy: { name: 'asc' },
     })
 
-    // ── Build PDF ──
     const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' })
     const pw = doc.internal.pageSize.getWidth()
     let y = 0
 
-    // Header band
     doc.setFillColor(...primaryColor)
     doc.rect(0, 0, pw, 90, 'F')
 
-    // Logo
     let logoDrawn = false
     if (logoUrl) {
       try {
@@ -127,7 +118,6 @@ export async function GET() {
       } catch { /* skip logo */ }
     }
 
-    // Business name + date
     const textX = logoDrawn ? 115 : 40
     doc.setTextColor(255, 255, 255)
     doc.setFontSize(18)
@@ -136,10 +126,9 @@ export async function GET() {
 
     doc.setFontSize(10)
     doc.setFont('helvetica', 'normal')
-    doc.text(`Fecha de Expedici\u00f3n: ${getTodayBogotaStr()}`, textX, 58)
-    doc.text(`Hora: ${formatTime()}`, textX, 73)
+    doc.text(`Fecha de Expedici\u00f3n: ${todayStr}`, textX, 58)
+    doc.text(`Hora: ${timeStr}`, textX, 73)
 
-    // Sub-header info bar
     y = 100
     doc.setFillColor(245, 247, 250)
     doc.rect(30, y, pw - 60, 25, 'F')
@@ -151,7 +140,6 @@ export async function GET() {
     doc.setFont('helvetica', 'normal')
     if (address) doc.text(address, 420, y + 16)
 
-    // Table
     y = 135
     const tableBody = clients.map((c, i) => [
       i + 1,
@@ -198,7 +186,6 @@ export async function GET() {
       },
     })
 
-    // Footer on each page
     const totalPages = doc.getNumberOfPages()
     for (let i = 1; i <= totalPages; i++) {
       doc.setPage(i)
@@ -213,7 +200,7 @@ export async function GET() {
     return new NextResponse(pdfBuffer, {
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `inline; filename="Informe_Vencidos_${getTodayBogotaStr()}.pdf"`,
+        'Content-Disposition': `inline; filename="Informe_Vencidos_${todayStr}.pdf"`,
       },
     })
   } catch (error) {

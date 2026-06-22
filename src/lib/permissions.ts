@@ -152,7 +152,16 @@ export function setCustomPermissions(perms: Record<string, UserPermissions>) {
     const defaults = defaultRolePermissions[role]
     if (defaults) {
       // Spread defaults first, then overlay DB values on top
-      customPermissions[role] = { ...defaults, ...dbPerms, views: dbPerms.views || defaults.views }
+      let views = dbPerms.views || defaults.views
+      // Auto-add 'expenses' to views if canManageExpenses is true but missing
+      if (dbPerms.canManageExpenses && !views.includes('expenses')) {
+        views = [...views, 'expenses']
+      }
+      // Auto-add 'dashboard' to views if not present (safe default)
+      if (!views.includes('dashboard')) {
+        views = [...views, 'dashboard']
+      }
+      customPermissions[role] = { ...defaults, ...dbPerms, views }
     } else {
       customPermissions[role] = dbPerms
     }

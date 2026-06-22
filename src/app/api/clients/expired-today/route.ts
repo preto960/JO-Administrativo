@@ -1,21 +1,20 @@
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/require-auth'
-import { todayBogota } from '@/lib/bogota-time'
+import { todayApp } from '@/lib/app-time'
 
-function getTomorrowBogota(): Date {
-  const d = todayBogota()
+async function getTomorrowApp(): Promise<Date> {
+  const d = await todayApp()
   d.setUTCDate(d.getUTCDate() + 1)
   return d
 }
 
-// GET /api/clients/expired-today — clients whose plan expired today
 export async function GET() {
   const auth = await requireAuth()
   if ('status' in auth) return auth
 
-  const today = todayBogota()
-  const tomorrow = getTomorrowBogota()
+  const today = await todayApp()
+  const tomorrow = await getTomorrowApp()
 
   try {
     const clients = await db.client.findMany({
@@ -50,7 +49,6 @@ export async function GET() {
       orderBy: { name: 'asc' },
     })
 
-    // Format cedula with dots
     const formatted = clients.map((c, i) => ({
       index: i + 1,
       id: c.id,

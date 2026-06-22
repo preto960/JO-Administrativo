@@ -2,7 +2,7 @@ import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/require-auth'
 import { getPermissions } from '@/lib/permissions'
-import { todayBogota, nowBogota, monthStartBogota, monthEndBogota } from '@/lib/bogota-time'
+import { todayApp, nowApp, monthStartApp, monthEndApp, getAppTz } from '@/lib/app-time'
 
 function getPlanDays(durationType: string, durationDays: number | null): number {
   switch (durationType) {
@@ -15,16 +15,14 @@ function getPlanDays(durationType: string, durationDays: number | null): number 
   }
 }
 
-/** Get days remaining between now (Bogota) and endDate */
-function calcDaysRemaining(endDate: Date): number {
-  const today = todayBogota()
+async function calcDaysRemaining(endDate: Date): Promise<number> {
+  const today = await todayApp()
   const end = new Date(endDate)
   const diff = end.getTime() - today.getTime()
   const days = diff / (1000 * 60 * 60 * 24)
   return Math.max(0, Math.round(days))
 }
 
-// GET /api/clients/[id]/attendance — get attendance history + stats
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -54,31 +52,28 @@ export async function GET(
     }
 
     const membership = client.memberships[0] || null
+    const appTz = await getAppTz()
 
-    // All attendance records ordered by date desc
     const attendances = await db.attendance.findMany({
       where: { clientId: id },
       orderBy: { date: 'desc' },
     })
 
-    // Current month attendance (Bogota timezone)
-    const bogotaNow = nowBogota()
-    const monthStart = monthStartBogota(bogotaNow)
-    const monthEnd = monthEndBogota(bogotaNow)
+    const appNow = await nowApp()
+    const monthStart = await monthStartApp(appNow)
+    const monthEnd = await monthEndApp(appNow)
     const monthAttendances = attendances.filter(
       (a) => a.date >= monthStart && a.date < monthEnd
     )
 
-    // Plan info — days remaining calculated dynamically
     const totalPlanDays = membership?.plan
       ? getPlanDays(membership.plan.durationType, membership.plan.durationDays)
       : (membership?.daysRemaining || 0)
     const planName = membership?.plan?.name || membership?.tarifa || null
     const daysRemaining = membership?.endDate
-      ? calcDaysRemaining(membership.endDate)
+      ? await calcDaysRemaining(membership.endDate)
       : (membership?.daysRemaining || 0)
 
-    // Stats
     const totalAttendances = attendances.length
     const monthAttendanceCount = monthAttendances.length
 
@@ -90,7 +85,7 @@ export async function GET(
         daysRemaining,
         totalAttendances,
         monthAttendanceCount,
-        monthName: bogotaNow.toLocaleDateString('es-CO', { timeZone: 'America/Bogota', month: 'long', year: 'numeric' }),
+        monthName: appNow.toLocaleDateString(appTz.locale, { timeZone: appTz.timezone, month: 'long', year: 'numeric' }),
       },
     })
   } catch (error) {
@@ -99,8 +94,6 @@ export async function GET(
   }
 }
 
-// POST /api/clients/[id]/attendance — mark today's attendance (Bogota timezone)
-// Attendance is purely for tracking — it does NOT deduct days
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -120,10 +113,8 @@ export async function POST(
       return NextResponse.json({ error: 'Cliente no encontrado' }, { status: 404 })
     }
 
-    // Today in Bogota timezone (start of day)
-    const today = todayBogota()
+    const today = await todayApp()
 
-    // Check if already marked today
     const existing = await db.attendance.findUnique({
       where: {
         clientId_date: {
@@ -136,7 +127,6 @@ export async function POST(
       return NextResponse.json({ error: 'Ya se marcó la asistencia de hoy para este cliente' }, { status: 409 })
     }
 
-    // Create attendance record only
     const attendance = await db.attendance.create({
       data: {
         clientId: id,
@@ -144,7 +134,6 @@ export async function POST(
       },
     })
 
-    // Update client lastAttendance
     await db.client.update({
       where: { id },
       data: { lastAttendance: new Date() },

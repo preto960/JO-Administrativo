@@ -1,17 +1,18 @@
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
 import { formatCurrency } from '@/lib/currency'
+import { nowApp, getAppTz } from '@/lib/app-time'
 
-// Number of days before due date to trigger a warning notification
 const WARNING_DAYS = 3
 
 export async function POST() {
   try {
-    const now = new Date()
-    const warningDate = new Date()
+    const appNow = await nowApp()
+    const appTz = await getAppTz()
+    const now = appNow
+    const warningDate = new Date(now)
     warningDate.setDate(warningDate.getDate() + WARNING_DAYS)
 
-    // Get all admin and gerente users who should receive notifications
     const users = await db.user.findMany({
       where: { role: { in: ['admin', 'gerente'] }, active: true },
       select: { id: true },
@@ -24,7 +25,6 @@ export async function POST() {
     let createdCount = 0
 
     for (const user of users) {
-      // Check supplier payables approaching due date
       const supplierPayables = await db.accountPayable.findMany({
         where: {
           status: { in: ['pendiente', 'parcial'] },
@@ -44,7 +44,6 @@ export async function POST() {
           (new Date(payable.dueDate!).getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
         )
 
-        // Check if we already sent a notification for this payable recently (within 24h)
         const existingNotif = await db.notification.findFirst({
           where: {
             userId: user.id,
@@ -61,7 +60,7 @@ export async function POST() {
               title: daysLeft <= 0
                 ? `Pago vencido a proveedor`
                 : `Pago a proveedor vence en ${daysLeft} día${daysLeft !== 1 ? 's' : ''}`,
-              message: `Deuda con ${payable.supplier?.name || 'Desconocido'} por ${formatCurrency(payable.pendingBalance)} ${daysLeft <= 0 ? 'vencida' : `vence el ${new Date(payable.dueDate!).toLocaleDateString('es-VE')}`}. [ID: ${payable.id}]`,
+              message: `Deuda con ${payable.supplier?.name || 'Desconocido'} por ${formatCurrency(payable.pendingBalance)} ${daysLeft <= 0 ? 'vencida' : `vence el ${new Date(payable.dueDate!).toLocaleDateString(appTz.locale)}`}. [ID: ${payable.id}]`,
               type: daysLeft <= 0 ? 'error' : 'warning',
             },
           })
@@ -69,7 +68,6 @@ export async function POST() {
         }
       }
 
-      // Check client receivables approaching due date
       const clientReceivables = await db.accountReceivable.findMany({
         where: {
           status: { in: ['pendiente', 'parcial'] },
@@ -105,7 +103,7 @@ export async function POST() {
               title: daysLeft <= 0
                 ? `Cuenta de cliente vencida`
                 : `Cuenta de cliente vence en ${daysLeft} día${daysLeft !== 1 ? 's' : ''}`,
-              message: `Cuenta por cobrar a ${receivable.client?.name || 'Desconocido'} por ${formatCurrency(receivable.pendingBalance)} ${daysLeft <= 0 ? 'vencida' : `vence el ${new Date(receivable.dueDate!).toLocaleDateString('es-VE')}`}.`,
+              message: `Cuenta por cobrar a ${receivable.client?.name || 'Desconocido'} por ${formatCurrency(receivable.pendingBalance)} ${daysLeft <= 0 ? 'vencida' : `vence el ${new Date(receivable.dueDate!).toLocaleDateString(appTz.locale)}`}.`,
               type: daysLeft <= 0 ? 'error' : 'warning',
               clientId: receivable.clientId,
               clientName: receivable.client?.name || null,

@@ -4,7 +4,7 @@ import { requireAuth } from '@/lib/require-auth'
 import { getPermissions } from '@/lib/permissions'
 import { logAction } from '@/lib/audit-log'
 import { getPaymentMethodsFromDB, FALLBACK_METHODS } from '@/lib/payment-methods'
-import { todayBogota } from '@/lib/bogota-time'
+import { todayApp } from '@/lib/app-time'
 
 function getPlanDays(durationType: string, durationDays: number | null): number {
   switch (durationType) {
@@ -71,7 +71,7 @@ export async function POST(
 
     const totalDays = getPlanDays(plan.durationType, plan.durationDays)
     const cost = plan.cost
-    const today = todayBogota()
+    const today = await todayApp()
     const effectiveBranchId = branchId || null
 
     // Resolve currency

@@ -1,25 +1,15 @@
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/require-auth'
-import { todayBogota } from '@/lib/bogota-time'
+import { todayApp } from '@/lib/app-time'
 
-/**
- * GET /api/clients/check-expirations
- *
- * Finds all memberships with status "Activo" where endDate <= today (Bogota),
- * updates them to "Vencido" with 0 daysRemaining, and creates notifications.
- *
- * Called automatically when the clients page or dashboard loads.
- * Can also be called via Vercel Cron.
- */
 export async function GET() {
   const auth = await requireAuth()
   if ('status' in auth) return auth
 
-  const today = todayBogota()
+  const today = await todayApp()
 
   try {
-    // Find active memberships whose endDate has passed (Bogota)
     const expiredMemberships = await db.clientMembership.findMany({
       where: {
         status: 'Activo',
@@ -41,11 +31,9 @@ export async function GET() {
       return NextResponse.json({ checked: true, expired: 0 })
     }
 
-    // Update each membership to Vencido and create notifications
     const results: Array<{ membershipId: string; clientName: string; planName: string }> = []
 
     for (const m of expiredMemberships) {
-      // Update membership
       await db.clientMembership.update({
         where: { id: m.id },
         data: {
@@ -57,7 +45,6 @@ export async function GET() {
       const clientFullName = `${m.client.name}${m.client.lastName ? ' ' + m.client.lastName : ''}`
       const planLabel = m.plan?.name || m.tarifa || 'Membresía'
 
-      // Create notification for each admin user
       const admins = await db.user.findMany({
         where: { active: true },
         select: { id: true },

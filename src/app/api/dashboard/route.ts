@@ -1,11 +1,20 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { resolveBranchId } from '@/lib/resolve-branch'
-import { todayBogota, nowBogota, monthStartBogota, monthEndBogota } from '@/lib/bogota-time'
+import { todayApp, nowApp, monthStartApp, monthEndApp, getAppTz, getCachedOffsetHours } from '@/lib/app-time'
 
 /** Filter out credit sales — sales that have an AccountReceivable are credit and not collected yet */
 function filterNonCredit(sales: Array<{ total: number; receivables: Array<{ id: string }> }>) {
   return sales.filter(s => s.receivables.length === 0)
+}
+
+/**
+ * Build a midnight-UTC date for a given local date string (YYYY-MM-DD)
+ * adjusted by the app's timezone offset.
+ */
+function localDateToUtc(dateStr: string, offsetHours: number): Date {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  return new Date(Date.UTC(y, m - 1, d, -offsetHours, 0, 0, 0))
 }
 
 export async function GET(request: NextRequest) {
@@ -14,8 +23,11 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const period = searchParams.get('period') || 'month'
 
-    const today = todayBogota()
-    const bogotaNow = nowBogota()
+    const appTz = await getAppTz()
+    const offsetHours = getCachedOffsetHours()
+
+    const today = await todayApp()
+    const appNow = await nowApp()
 
     let startDate: Date
     let chartDays: number
@@ -34,13 +46,13 @@ export async function GET(request: NextRequest) {
         chartLabel = '7 días'
         break
       case 'year':
-        startDate = new Date(Date.UTC(today.getUTCFullYear(), 0, 1, 5, 0, 0, 0))
+        startDate = new Date(Date.UTC(today.getUTCFullYear(), 0, 1, -offsetHours, 0, 0, 0))
         chartDays = 12
         chartLabel = '12 meses'
         break
       case 'month':
       default:
-        startDate = monthStartBogota(bogotaNow)
+        startDate = await monthStartApp(appNow)
         chartDays = 7
         chartLabel = '7 días'
         break
@@ -48,20 +60,19 @@ export async function GET(request: NextRequest) {
 
     const customFrom = searchParams.get('from')
     const customTo = searchParams.get('to')
-    let endDate = monthEndBogota(bogotaNow)
+    let endDate = await monthEndApp(appNow)
     let isCustom = false
     if (customFrom) {
-      const [fy, fm, fd] = customFrom.split('-').map(Number)
-      startDate = new Date(Date.UTC(fy, fm - 1, fd, 5, 0, 0, 0))
+      startDate = localDateToUtc(customFrom, offsetHours)
       isCustom = true
     }
     if (customTo) {
       const [ty, tm, td] = customTo.split('-').map(Number)
-      endDate = new Date(Date.UTC(ty, tm - 1, td, 29, 59, 59, 999))
+      endDate = new Date(Date.UTC(ty, tm - 1, td, 24 - offsetHours, 59, 59, 999))
       isCustom = true
     }
     if (isCustom) {
-      const fmt = (d: Date) => d.toLocaleDateString('es-VE', { day: 'numeric', month: 'short' })
+      const fmt = (d: Date) => d.toLocaleDateString(appTz.locale, { timeZone: appTz.timezone, day: 'numeric', month: 'short' })
       chartLabel = `${fmt(startDate)} – ${fmt(endDate)}`
       chartDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
       chartDays = Math.min(chartDays, 365)
@@ -83,7 +94,7 @@ export async function GET(request: NextRequest) {
     })
     const expensesToday = await db.expense.findMany({ where: { date: { gte: today }, branchId, deletedAt: null } })
 
-    const monthStart = monthStartBogota(bogotaNow)
+    const monthStart = await monthStartApp(appNow)
     const salesMonth = await db.sale.findMany({
       where: { date: { gte: monthStart }, status: 'completada', branchId },
       include: {
@@ -134,7 +145,6 @@ export async function GET(request: NextRequest) {
     const gastosMes = Math.round(expensesMonth.reduce((s, e) => s + e.amount, 0) * 100) / 100
 
     // ─── Utility calculations (month) ───
-    // Only count cost from non-credit sales (credit hasn't been collected)
     const costoVentasMes = nonCreditMonth.reduce((s, sale) =>
       s + (sale as typeof sale & { lines: Array<{ unitCost: number; quantity: number }> }).lines.reduce((ls, l) => ls + (l.unitCost * l.quantity), 0), 0)
     const utilidadBrutaMes = Math.round((ingresosMes - costoVentasMes) * 100) / 100
@@ -203,7 +213,7 @@ export async function GET(request: NextRequest) {
 
     // ─── Alerts: overdue receivables ───
     const overdueReceivables = await db.accountReceivable.findMany({
-      where: { status: 'pendiente', dueDate: { lt: bogotaNow } },
+      where: { status: 'pendiente', dueDate: { lt: appNow } },
       include: { client: { select: { name: true, lastName: true } } },
     })
     const overdueAlerts = overdueReceivables.map(r => ({
@@ -214,7 +224,7 @@ export async function GET(request: NextRequest) {
 
     // ─── Alerts: overdue payables ───
     const overduePayables = await db.accountPayable.findMany({
-      where: { status: 'pendiente', dueDate: { lt: bogotaNow } },
+      where: { status: 'pendiente', dueDate: { lt: appNow } },
       include: { supplier: { select: { name: true } } }
     })
     const overduePayableAlerts = overduePayables.map(p => ({
@@ -230,10 +240,10 @@ export async function GET(request: NextRequest) {
     const creditSaleIdsPeriodStart = isCustom
       ? startDate
       : period === 'year'
-        ? new Date(Date.UTC(today.getUTCFullYear(), 0, 1, 5, 0, 0, 0))
+        ? new Date(Date.UTC(today.getUTCFullYear(), 0, 1, -offsetHours, 0, 0, 0))
         : period === 'today'
           ? today
-          : monthStartBogota(bogotaNow)
+          : await monthStartApp(appNow)
 
     const creditSaleIds = new Set(
       (await db.accountReceivable.findMany({
@@ -246,30 +256,32 @@ export async function GET(request: NextRequest) {
 
     if (period === 'year') {
       for (let i = 11; i >= 0; i--) {
-        const mStart = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - i, 1, 5, 0, 0, 0))
-        const mEnd = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - i + 1, 1, 5, 0, 0, 0))
+        const mStart = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - i, 1, -offsetHours, 0, 0, 0))
+        const mEnd = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - i + 1, 1, -offsetHours, 0, 0, 0))
         const monthSales = await db.sale.findMany({
           where: { date: { gte: mStart, lt: mEnd }, status: 'completada', branchId },
         })
         const nonCreditMonthSales = monthSales.filter(s => !creditSaleIds.has(s.id))
         const monthTotal = nonCreditMonthSales.reduce((s, sale) => s + sale.total, 0)
         chartData.push({
-          date: mStart.toLocaleDateString('es-CO', { timeZone: 'America/Bogota', month: 'short' }),
+          date: mStart.toLocaleDateString(appTz.locale, { timeZone: appTz.timezone, month: 'short' }),
           total: Math.round(monthTotal * 100) / 100,
           count: nonCreditMonthSales.length,
         })
       }
     } else if (period === 'today') {
       for (let h = 0; h < 24; h++) {
-        // Bogota hour h in UTC = h+5
-        const hStart = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate(), h + 5, 0, 0, 0))
-        const hEnd = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate(), h + 6, 0, 0, 0))
+        // Local hour h in UTC = h - offsetHours
+        const hStart = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate(), h - offsetHours, 0, 0, 0))
+        const hEnd = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate(), h + 1 - offsetHours, 0, 0, 0))
         const hourSales = await db.sale.findMany({
           where: { date: { gte: hStart, lt: hEnd }, status: 'completada', branchId },
         })
         const nonCreditHourSales = hourSales.filter(s => !creditSaleIds.has(s.id))
         const hourTotal = nonCreditHourSales.reduce((s, sale) => s + sale.total, 0)
-        if (hourTotal > 0 || h <= bogotaNow.getUTCHours() - 5) {
+        // Show hours up to the current local hour
+        const currentLocalHour = appNow.getUTCHours() + offsetHours
+        if (hourTotal > 0 || h <= currentLocalHour) {
           chartData.push({
             date: `${h}:00`,
             total: Math.round(hourTotal * 100) / 100,
@@ -280,7 +292,7 @@ export async function GET(request: NextRequest) {
     } else {
       const rangeStart = isCustom ? new Date(startDate) : new Date(today)
       if (!isCustom) rangeStart.setUTCDate(rangeStart.getUTCDate() - (chartDays - 1))
-      const rangeEnd = isCustom ? new Date(endDate) : monthEndBogota(bogotaNow)
+      const rangeEnd = isCustom ? new Date(endDate) : await monthEndApp(appNow)
       const totalDays = Math.ceil((rangeEnd.getTime() - rangeStart.getTime()) / (1000 * 60 * 60 * 24)) + 1
       const groupByDays = totalDays > 60 ? 7 : 1
       for (let i = 0; i < totalDays; i += groupByDays) {
@@ -293,7 +305,7 @@ export async function GET(request: NextRequest) {
         const nonCreditDaySales = daySales.filter(s => !creditSaleIds.has(s.id))
         const dayTotal = nonCreditDaySales.reduce((s, sale) => s + sale.total, 0)
         chartData.push({
-          date: d.toLocaleDateString('es-CO', { timeZone: 'America/Bogota', weekday: 'short', day: 'numeric', month: 'short' }),
+          date: d.toLocaleDateString(appTz.locale, { timeZone: appTz.timezone, weekday: 'short', day: 'numeric', month: 'short' }),
           total: Math.round(dayTotal * 100) / 100,
           count: nonCreditDaySales.length,
         })

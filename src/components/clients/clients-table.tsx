@@ -2312,10 +2312,11 @@ export function ClientsTable() {
                       <div className="divide-y">
                         {attData.attendances.map((att) => {
                           const attDate = new Date(att.date)
-                          const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
-                          const attStr = attDate.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
+                          const tz = (window as any).__APP_TZ__ || 'America/Bogota'
+                          const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: tz })
+                          const attStr = attDate.toLocaleDateString('en-CA', { timeZone: tz })
                           const isToday = attStr === todayStr
-                          const dayNum = attDate.toLocaleDateString('en-CA', { timeZone: 'America/Bogota', day: 'numeric' })
+                          const dayNum = attDate.toLocaleDateString('en-CA', { timeZone: tz, day: 'numeric' })
                           return (
                             <div key={att.id} className="flex items-center gap-3 px-4 py-2.5">
                               <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
@@ -2327,10 +2328,10 @@ export function ClientsTable() {
                               </div>
                               <div className="flex-1 min-w-0">
                                 <p className="text-sm font-medium">
-                                  {attDate.toLocaleDateString('es-CO', { timeZone: 'America/Bogota', weekday: 'long', day: 'numeric', month: 'short' })}
+                                  {attDate.toLocaleDateString('es', { timeZone: tz, weekday: 'long', day: 'numeric', month: 'short' })}
                                 </p>
                                 <p className="text-xs text-muted-foreground">
-                                  {attDate.toLocaleDateString('es-CO', { timeZone: 'America/Bogota', year: 'numeric' })}
+                                  {attDate.toLocaleDateString('es', { timeZone: tz, year: 'numeric' })}
                                 </p>
                               </div>
                               {isToday && (

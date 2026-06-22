@@ -41,9 +41,9 @@ interface SettingsData {
   exchangeRate: number
 }
 
-// ── Auto-fetch exchange rates on schedule (Venezuela time) ──
+// ── Auto-fetch exchange rates on schedule (app timezone) ──
 
-/** Scheduled times in America/Caracas timezone */
+/** Scheduled times in local app timezone */
 const AUTO_FETCH_SCHEDULE = [
   { hour: 8, minute: 30 },   // 8:30 AM
   { hour: 10, minute: 0 },   // 10:00 AM
@@ -51,15 +51,23 @@ const AUTO_FETCH_SCHEDULE = [
   { hour: 16, minute: 0 },   // 4:00 PM
 ]
 
-const VENEZUELA_TZ = 'America/Caracas'
 const AUTO_FETCH_KEY_PREFIX = 'rate-auto-fetch-'
 const CHECK_INTERVAL_MS = 30_000 // check every 30 seconds
 
-/** Get current time parts in Venezuela timezone */
-function getVenezuelaTimeParts() {
+/** Country → timezone mapping (client-side subset) */
+const COUNTRY_TZ_CLIENT: Record<string, string> = {
+  VE: 'America/Caracas', CO: 'America/Bogota', MX: 'America/Mexico_City',
+  AR: 'America/Argentina/Buenos_Aires', PE: 'America/Lima', CL: 'America/Santiago',
+  EC: 'America/Guayaquil', PA: 'America/Panama', DO: 'America/Santo_Domingo',
+  ES: 'Europe/Madrid', US: 'America/New_York', BR: 'America/Sao_Paulo',
+}
+
+/** Get current time parts in the app's configured timezone */
+function getAppTimeParts(country: string) {
+  const tz = COUNTRY_TZ_CLIENT[country] || 'America/Caracas'
   const now = new Date()
   const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: VENEZUELA_TZ,
+    timeZone: tz,
     hour: 'numeric',
     minute: 'numeric',
     hour12: false,
@@ -84,8 +92,8 @@ function slotKey(dateStr: string, hour: number, minute: number) {
 }
 
 /** Check if the current time matches any scheduled slot that hasn't fired yet */
-function shouldAutoFetch(): string | null {
-  const { hour, minute, dateStr } = getVenezuelaTimeParts()
+function shouldAutoFetch(country: string): string | null {
+  const { hour, minute, dateStr } = getAppTimeParts(country)
   const nowTotal = hour * 60 + minute
 
   for (const slot of AUTO_FETCH_SCHEDULE) {
@@ -168,7 +176,10 @@ async function performAutoFetch(
       }
     }
 
-    const timeStr = new Date().toLocaleString('es-VE', { timeZone: VENEZUELA_TZ })
+    const settings = useAppStore.getState().settings
+    const tz = COUNTRY_TZ_CLIENT[settings?.country || 'VE'] || 'America/Caracas'
+    const locale = settings?.country === 'CO' ? 'es-CO' : settings?.country === 'MX' ? 'es-MX' : 'es-VE'
+    const timeStr = new Date().toLocaleString(locale, { timeZone: tz })
     console.log(`[Auto-rates] Tasas actualizadas automaticamente a las ${timeStr} (fuente: ${source})`)
   } catch (error) {
     console.error('[Auto-rates] Error en actualizacion automatica:', error)
@@ -189,6 +200,15 @@ export function SettingsInitializer() {
         const s = await api.get<SettingsData>('/api/settings')
         if (s) {
           setSettings(s as AppSettings)
+
+          // Expose app timezone globally for client-side components
+          const tzMap: Record<string, string> = {
+            VE: 'America/Caracas', CO: 'America/Bogota', MX: 'America/Mexico_City',
+            AR: 'America/Argentina/Buenos_Aires', PE: 'America/Lima', CL: 'America/Santiago',
+            EC: 'America/Guayaquil', PA: 'America/Panama', DO: 'America/Santo_Domingo',
+            ES: 'Europe/Madrid', US: 'America/New_York', BR: 'America/Sao_Paulo',
+          }
+          ;(window as any).__APP_TZ__ = tzMap[(s as AppSettings).country || 'VE'] || 'America/Caracas'
 
           // Apply both colors at once via <style> injection (reliable method)
           applyBothColors(s.primaryColor || 'blue', s.secondaryColor || 'slate')
@@ -232,7 +252,8 @@ export function SettingsInitializer() {
       const settings = useAppStore.getState().settings
       if (!settings?.multiCurrencyEnabled) return
 
-      const key = shouldAutoFetch()
+      const country = settings?.country || 'VE'
+      const key = shouldAutoFetch(country)
       if (key) {
         // Mark this slot as fulfilled
         localStorage.setItem(key, new Date().toISOString())
