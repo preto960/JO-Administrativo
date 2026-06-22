@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { logAction } from '@/lib/audit-log'
 import { requireAuth } from '@/lib/require-auth'
 import { getPermissions } from '@/lib/permissions'
+import { todayBogota } from '@/lib/bogota-time'
 
 function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
@@ -13,18 +14,10 @@ function isValidPhone(phone: string): boolean {
   return /^\+?\d{7,}$/.test(phone.replace(/[\s\-()]/g, ''))
 }
 
-/** Get today at midnight in Colombia timezone */
-function getTodayBogota(): Date {
-  const now = new Date()
-  const bogota = new Date(now.toLocaleString('en-US', { timeZone: 'America/Bogota' }))
-  bogota.setHours(0, 0, 0, 0)
-  return bogota
-}
-
 /** Calculate dynamic days remaining based on endDate vs today (Bogota) */
 function calcDaysRemaining(endDate: Date | null): number {
   if (!endDate) return 0
-  const today = getTodayBogota()
+  const today = todayBogota()
   const end = new Date(endDate)
   const diff = end.getTime() - today.getTime()
   const days = diff / (1000 * 60 * 60 * 24)

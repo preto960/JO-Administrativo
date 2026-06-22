@@ -1,14 +1,7 @@
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/require-auth'
-
-/** Get today at midnight in Colombia timezone */
-function getTodayBogota(): Date {
-  const now = new Date()
-  const bogota = new Date(now.toLocaleString('en-US', { timeZone: 'America/Bogota' }))
-  bogota.setHours(0, 0, 0, 0)
-  return bogota
-}
+import { todayBogota } from '@/lib/bogota-time'
 
 /**
  * GET /api/clients/check-expirations
@@ -23,7 +16,7 @@ export async function GET() {
   const auth = await requireAuth()
   if ('status' in auth) return auth
 
-  const today = getTodayBogota()
+  const today = todayBogota()
 
   try {
     // Find active memberships whose endDate has passed (Bogota)

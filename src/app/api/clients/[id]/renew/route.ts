@@ -4,6 +4,7 @@ import { requireAuth } from '@/lib/require-auth'
 import { getPermissions } from '@/lib/permissions'
 import { logAction } from '@/lib/audit-log'
 import { getPaymentMethodsFromDB, FALLBACK_METHODS } from '@/lib/payment-methods'
+import { todayBogota } from '@/lib/bogota-time'
 
 function getPlanDays(durationType: string, durationDays: number | null): number {
   switch (durationType) {
@@ -14,14 +15,6 @@ function getPlanDays(durationType: string, durationDays: number | null): number 
     case 'otro': return durationDays || 0
     default: return 30
   }
-}
-
-/** Get today at midnight in Colombia timezone */
-function getTodayBogota(): Date {
-  const now = new Date()
-  const bogota = new Date(now.toLocaleString('en-US', { timeZone: 'America/Bogota' }))
-  bogota.setHours(0, 0, 0, 0)
-  return bogota
 }
 
 // POST /api/clients/[id]/renew — assign/renew a plan for a client
@@ -78,7 +71,7 @@ export async function POST(
 
     const totalDays = getPlanDays(plan.durationType, plan.durationDays)
     const cost = plan.cost
-    const today = getTodayBogota()
+    const today = todayBogota()
     const effectiveBranchId = branchId || null
 
     // Resolve currency

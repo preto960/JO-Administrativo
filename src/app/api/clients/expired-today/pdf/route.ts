@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/require-auth'
+import { todayBogota } from '@/lib/bogota-time'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 
@@ -36,10 +37,8 @@ function resolveColor(primaryColor: string): number[] {
   return COLOR_MAP[primaryColor] || hexToRgb(primaryColor) || [37, 99, 235]
 }
 
-function getTodayBogota(): string {
-  const now = new Date()
-  const bogota = new Date(now.toLocaleString('en-US', { timeZone: 'America/Bogota' }))
-  return bogota.toISOString().split('T')[0]
+function getTodayBogotaStr(): string {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
 }
 
 function formatCedula(c: string): string {
@@ -52,9 +51,8 @@ function formatCedula(c: string): string {
 
 function formatTime(): string {
   const now = new Date()
-  const bogota = new Date(now.toLocaleString('en-US', { timeZone: 'America/Bogota' }))
-  const h = bogota.getHours()
-  const m = bogota.getMinutes().toString().padStart(2, '0')
+  const h = parseInt(now.toLocaleString('en-US', { timeZone: 'America/Bogota', hour: 'numeric', hour12: false }))
+  const m = now.toLocaleString('en-US', { timeZone: 'America/Bogota', minute: '2-digit' })
   const ampm = h >= 12 ? 'pm' : 'am'
   const h12 = h % 12 || 12
   return `${h12}:${m} ${ampm}`
@@ -76,11 +74,9 @@ export async function GET() {
     const primaryColor = resolveColor(settings?.primaryColor || 'blue')
 
     // Fetch clients expired today
-    const today = new Date()
-    const bogota = new Date(today.toLocaleString('en-US', { timeZone: 'America/Bogota' }))
-    bogota.setHours(0, 0, 0, 0)
-    const tomorrow = new Date(bogota)
-    tomorrow.setDate(tomorrow.getDate() + 1)
+    const today = todayBogota()
+    const tomorrow = new Date(today)
+    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1)
 
     const clients = await db.client.findMany({
       where: {
@@ -140,7 +136,7 @@ export async function GET() {
 
     doc.setFontSize(10)
     doc.setFont('helvetica', 'normal')
-    doc.text(`Fecha de Expedici\u00f3n: ${getTodayBogota()}`, textX, 58)
+    doc.text(`Fecha de Expedici\u00f3n: ${getTodayBogotaStr()}`, textX, 58)
     doc.text(`Hora: ${formatTime()}`, textX, 73)
 
     // Sub-header info bar
@@ -217,7 +213,7 @@ export async function GET() {
     return new NextResponse(pdfBuffer, {
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `inline; filename="Informe_Vencidos_${getTodayBogota()}.pdf"`,
+        'Content-Disposition': `inline; filename="Informe_Vencidos_${getTodayBogotaStr()}.pdf"`,
       },
     })
   } catch (error) {

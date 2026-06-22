@@ -1,17 +1,11 @@
 import { db } from '@/lib/db'
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/require-auth'
-
-function getTodayBogota(): Date {
-  const now = new Date()
-  const bogota = new Date(now.toLocaleString('en-US', { timeZone: 'America/Bogota' }))
-  bogota.setHours(0, 0, 0, 0)
-  return bogota
-}
+import { todayBogota } from '@/lib/bogota-time'
 
 function getTomorrowBogota(): Date {
-  const d = getTodayBogota()
-  d.setDate(d.getDate() + 1)
+  const d = todayBogota()
+  d.setUTCDate(d.getUTCDate() + 1)
   return d
 }
 
@@ -20,7 +14,7 @@ export async function GET() {
   const auth = await requireAuth()
   if ('status' in auth) return auth
 
-  const today = getTodayBogota()
+  const today = todayBogota()
   const tomorrow = getTomorrowBogota()
 
   try {

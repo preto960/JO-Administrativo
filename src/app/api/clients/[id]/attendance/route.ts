@@ -2,6 +2,7 @@ import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/require-auth'
 import { getPermissions } from '@/lib/permissions'
+import { todayBogota, nowBogota, monthStartBogota, monthEndBogota } from '@/lib/bogota-time'
 
 function getPlanDays(durationType: string, durationDays: number | null): number {
   switch (durationType) {
@@ -14,17 +15,9 @@ function getPlanDays(durationType: string, durationDays: number | null): number 
   }
 }
 
-/** Get today's date in Colombia timezone (America/Bogota) */
-function getTodayBogota(): Date {
-  const now = new Date()
-  const bogota = new Date(now.toLocaleString('en-US', { timeZone: 'America/Bogota' }))
-  bogota.setHours(0, 0, 0, 0)
-  return bogota
-}
-
 /** Get days remaining between now (Bogota) and endDate */
 function calcDaysRemaining(endDate: Date): number {
-  const today = getTodayBogota()
+  const today = todayBogota()
   const end = new Date(endDate)
   const diff = end.getTime() - today.getTime()
   const days = diff / (1000 * 60 * 60 * 24)
@@ -69,9 +62,9 @@ export async function GET(
     })
 
     // Current month attendance (Bogota timezone)
-    const bogotaNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Bogota' }))
-    const monthStart = new Date(bogotaNow.getFullYear(), bogotaNow.getMonth(), 1)
-    const monthEnd = new Date(bogotaNow.getFullYear(), bogotaNow.getMonth() + 1, 1)
+    const bogotaNow = nowBogota()
+    const monthStart = monthStartBogota(bogotaNow)
+    const monthEnd = monthEndBogota(bogotaNow)
     const monthAttendances = attendances.filter(
       (a) => a.date >= monthStart && a.date < monthEnd
     )
@@ -97,7 +90,7 @@ export async function GET(
         daysRemaining,
         totalAttendances,
         monthAttendanceCount,
-        monthName: bogotaNow.toLocaleDateString('es-CO', { month: 'long', year: 'numeric' }),
+        monthName: bogotaNow.toLocaleDateString('es-CO', { timeZone: 'America/Bogota', month: 'long', year: 'numeric' }),
       },
     })
   } catch (error) {
@@ -128,7 +121,7 @@ export async function POST(
     }
 
     // Today in Bogota timezone (start of day)
-    const today = getTodayBogota()
+    const today = todayBogota()
 
     // Check if already marked today
     const existing = await db.attendance.findUnique({
