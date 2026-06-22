@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { resolveBranchId } from '@/lib/resolve-branch'
+import { todayBogota, nowBogota, monthStartBogota, monthEndBogota } from '@/lib/bogota-time'
 
 /** Filter out credit sales — sales that have an AccountReceivable are credit and not collected yet */
 function filterNonCredit(sales: Array<{ total: number; receivables: Array<{ id: string }> }>) {
@@ -13,8 +14,8 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const period = searchParams.get('period') || 'month'
 
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
+    const today = todayBogota()
+    const bogotaNow = nowBogota()
 
     let startDate: Date
     let chartDays: number
@@ -28,18 +29,18 @@ export async function GET(request: NextRequest) {
         break
       case 'week':
         startDate = new Date(today)
-        startDate.setDate(startDate.getDate() - 7)
+        startDate.setUTCDate(startDate.getUTCDate() - 7)
         chartDays = 7
         chartLabel = '7 días'
         break
       case 'year':
-        startDate = new Date(today.getFullYear(), 0, 1)
+        startDate = new Date(Date.UTC(today.getUTCFullYear(), 0, 1, 5, 0, 0, 0))
         chartDays = 12
         chartLabel = '12 meses'
         break
       case 'month':
       default:
-        startDate = new Date(today.getFullYear(), today.getMonth(), 1)
+        startDate = monthStartBogota(bogotaNow)
         chartDays = 7
         chartLabel = '7 días'
         break
@@ -47,17 +48,16 @@ export async function GET(request: NextRequest) {
 
     const customFrom = searchParams.get('from')
     const customTo = searchParams.get('to')
-    let endDate = new Date()
-    endDate.setHours(23, 59, 59, 999)
+    let endDate = monthEndBogota(bogotaNow)
     let isCustom = false
     if (customFrom) {
-      startDate = new Date(customFrom)
-      startDate.setHours(0, 0, 0, 0)
+      const [fy, fm, fd] = customFrom.split('-').map(Number)
+      startDate = new Date(Date.UTC(fy, fm - 1, fd, 5, 0, 0, 0))
       isCustom = true
     }
     if (customTo) {
-      endDate = new Date(customTo)
-      endDate.setHours(23, 59, 59, 999)
+      const [ty, tm, td] = customTo.split('-').map(Number)
+      endDate = new Date(Date.UTC(ty, tm - 1, td, 29, 59, 59, 999))
       isCustom = true
     }
     if (isCustom) {
@@ -83,7 +83,7 @@ export async function GET(request: NextRequest) {
     })
     const expensesToday = await db.expense.findMany({ where: { date: { gte: today }, branchId, deletedAt: null } })
 
-    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1)
+    const monthStart = monthStartBogota(bogotaNow)
     const salesMonth = await db.sale.findMany({
       where: { date: { gte: monthStart }, status: 'completada', branchId },
       include: {
@@ -203,7 +203,7 @@ export async function GET(request: NextRequest) {
 
     // ─── Alerts: overdue receivables ───
     const overdueReceivables = await db.accountReceivable.findMany({
-      where: { status: 'pendiente', dueDate: { lt: new Date() } },
+      where: { status: 'pendiente', dueDate: { lt: bogotaNow } },
       include: { client: { select: { name: true, lastName: true } } },
     })
     const overdueAlerts = overdueReceivables.map(r => ({
@@ -214,8 +214,8 @@ export async function GET(request: NextRequest) {
 
     // ─── Alerts: overdue payables ───
     const overduePayables = await db.accountPayable.findMany({
-      where: { status: 'pendiente', dueDate: { lt: new Date() } },
-      include: { supplier: { select: { name: true } } },
+      where: { status: 'pendiente', dueDate: { lt: bogotaNow } },
+      include: { supplier: { select: { name: true } } }
     })
     const overduePayableAlerts = overduePayables.map(p => ({
       supplierName: p.supplier?.name || 'Desconocido',
@@ -230,10 +230,10 @@ export async function GET(request: NextRequest) {
     const creditSaleIdsPeriodStart = isCustom
       ? startDate
       : period === 'year'
-        ? new Date(today.getFullYear(), 0, 1)
+        ? new Date(Date.UTC(today.getUTCFullYear(), 0, 1, 5, 0, 0, 0))
         : period === 'today'
           ? today
-          : new Date(today.getFullYear(), today.getMonth(), 1)
+          : monthStartBogota(bogotaNow)
 
     const creditSaleIds = new Set(
       (await db.accountReceivable.findMany({
@@ -246,29 +246,30 @@ export async function GET(request: NextRequest) {
 
     if (period === 'year') {
       for (let i = 11; i >= 0; i--) {
-        const mStart = new Date(today.getFullYear(), today.getMonth() - i, 1)
-        const mEnd = new Date(today.getFullYear(), today.getMonth() - i + 1, 1)
+        const mStart = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - i, 1, 5, 0, 0, 0))
+        const mEnd = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - i + 1, 1, 5, 0, 0, 0))
         const monthSales = await db.sale.findMany({
           where: { date: { gte: mStart, lt: mEnd }, status: 'completada', branchId },
         })
         const nonCreditMonthSales = monthSales.filter(s => !creditSaleIds.has(s.id))
         const monthTotal = nonCreditMonthSales.reduce((s, sale) => s + sale.total, 0)
         chartData.push({
-          date: mStart.toLocaleDateString('es-VE', { month: 'short' }),
+          date: mStart.toLocaleDateString('es-CO', { timeZone: 'America/Bogota', month: 'short' }),
           total: Math.round(monthTotal * 100) / 100,
           count: nonCreditMonthSales.length,
         })
       }
     } else if (period === 'today') {
       for (let h = 0; h < 24; h++) {
-        const hStart = new Date(today); hStart.setHours(h, 0, 0, 0)
-        const hEnd = new Date(today); hEnd.setHours(h + 1, 0, 0, 0)
+        // Bogota hour h in UTC = h+5
+        const hStart = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate(), h + 5, 0, 0, 0))
+        const hEnd = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate(), h + 6, 0, 0, 0))
         const hourSales = await db.sale.findMany({
           where: { date: { gte: hStart, lt: hEnd }, status: 'completada', branchId },
         })
         const nonCreditHourSales = hourSales.filter(s => !creditSaleIds.has(s.id))
         const hourTotal = nonCreditHourSales.reduce((s, sale) => s + sale.total, 0)
-        if (hourTotal > 0 || h <= new Date().getHours()) {
+        if (hourTotal > 0 || h <= bogotaNow.getUTCHours() - 5) {
           chartData.push({
             date: `${h}:00`,
             total: Math.round(hourTotal * 100) / 100,
@@ -277,16 +278,14 @@ export async function GET(request: NextRequest) {
         }
       }
     } else {
-      const rangeStart = isCustom ? new Date(startDate) : new Date()
-      if (!isCustom) rangeStart.setDate(rangeStart.getDate() - (chartDays - 1))
-      rangeStart.setHours(0, 0, 0, 0)
-      const rangeEnd = isCustom ? new Date(endDate) : new Date()
-      rangeEnd.setHours(23, 59, 59, 999)
+      const rangeStart = isCustom ? new Date(startDate) : new Date(today)
+      if (!isCustom) rangeStart.setUTCDate(rangeStart.getUTCDate() - (chartDays - 1))
+      const rangeEnd = isCustom ? new Date(endDate) : monthEndBogota(bogotaNow)
       const totalDays = Math.ceil((rangeEnd.getTime() - rangeStart.getTime()) / (1000 * 60 * 60 * 24)) + 1
       const groupByDays = totalDays > 60 ? 7 : 1
       for (let i = 0; i < totalDays; i += groupByDays) {
-        const d = new Date(rangeStart); d.setDate(d.getDate() + i); d.setHours(0, 0, 0, 0)
-        const nextD = new Date(d); nextD.setDate(nextD.getDate() + groupByDays)
+        const d = new Date(rangeStart); d.setUTCDate(d.getUTCDate() + i)
+        const nextD = new Date(d); nextD.setUTCDate(nextD.getUTCDate() + groupByDays)
         if (nextD > rangeEnd) nextD.setTime(rangeEnd.getTime())
         const daySales = await db.sale.findMany({
           where: { date: { gte: d, lt: nextD }, status: 'completada', branchId },
@@ -294,7 +293,7 @@ export async function GET(request: NextRequest) {
         const nonCreditDaySales = daySales.filter(s => !creditSaleIds.has(s.id))
         const dayTotal = nonCreditDaySales.reduce((s, sale) => s + sale.total, 0)
         chartData.push({
-          date: d.toLocaleDateString('es-VE', { weekday: 'short', day: 'numeric', month: 'short' }),
+          date: d.toLocaleDateString('es-CO', { timeZone: 'America/Bogota', weekday: 'short', day: 'numeric', month: 'short' }),
           total: Math.round(dayTotal * 100) / 100,
           count: nonCreditDaySales.length,
         })
