@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { logAction } from '@/lib/audit-log'
 import { requireAuth } from '@/lib/require-auth'
 import { getPermissions } from '@/lib/permissions'
-import { todayApp } from '@/lib/app-time'
+import { getCountryTz } from '@/lib/country-timezone'
 
 function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
@@ -14,7 +14,30 @@ function isValidPhone(phone: string): boolean {
   return /^\+?\d{7,}$/.test(phone.replace(/[\s\-()]/g, ''))
 }
 
-/** Calculate dynamic days remaining based on endDate vs today (app timezone) */
+/** Get today's midnight in the app timezone, expressed as UTC */
+async function getTodayInAppTz(): Promise<Date> {
+  try {
+    const settings = await db.settings.findFirst({ select: { country: true } })
+    const country = settings?.country || 'VE'
+    const { timezone } = getCountryTz(country)
+    const now = new Date()
+    const dateStr = now.toLocaleDateString('en-CA', { timeZone: timezone })
+    const [year, month, day] = dateStr.split('-').map(Number)
+    // Simple approach: midnight in that timezone as UTC
+    const localMidnight = new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0))
+    // Calculate offset by comparing UTC midnight vs local midnight display
+    const utcDate = new Date(`${dateStr}T00:00:00`)
+    const localDate = new Date(utcDate.toLocaleString('en-US', { timeZone: timezone }))
+    const offsetMs = localDate.getTime() - utcDate.getTime()
+    return new Date(localMidnight.getTime() - offsetMs)
+  } catch {
+    // Fallback: use server local date (may be off by timezone but won't crash)
+    const now = new Date()
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  }
+}
+
+/** Calculate days remaining based on endDate vs today */
 function calcDaysRemaining(endDate: Date | null, today: Date): number {
   if (!endDate) return 0
   const end = new Date(endDate)
@@ -65,8 +88,8 @@ export async function GET(request: NextRequest) {
       orderBy: { name: 'asc' },
     })
 
-    // Get today ONCE in app timezone (avoids N DB calls inside the loop)
-    const today = await todayApp()
+    // Get today ONCE in app timezone
+    const today = await getTodayInAppTz()
 
     // Compute pending balance and membership for each client
     const clientsWithBalance = clients.map(client => {
