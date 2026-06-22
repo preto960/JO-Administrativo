@@ -104,29 +104,6 @@ export async function GET(request: NextRequest) {
     })
     const expensesMonth = await db.expense.findMany({ where: { date: { gte: monthStart }, branchId, deletedAt: null } })
 
-    // ─── Renewal income from subscription Sales (no lines), excluding credit ───
-    const branchRegIds = (await db.cashRegister.findMany({ where: { branchId }, select: { id: true } })).map(r => r.id)
-    const subSalesToday = await db.sale.findMany({
-      where: {
-        cashRegId: { in: branchRegIds },
-        date: { gte: today },
-        status: 'completada',
-        lines: { none: {} },
-      },
-      include: { receivables: { select: { id: true } } },
-    })
-    const subSalesMonth = await db.sale.findMany({
-      where: {
-        cashRegId: { in: branchRegIds },
-        date: { gte: monthStart },
-        status: 'completada',
-        lines: { none: {} },
-      },
-      include: { receivables: { select: { id: true } } },
-    })
-    const renewalHoy = filterNonCredit(subSalesToday).reduce((s, sale) => s + sale.total, 0)
-    const renewalMes = filterNonCredit(subSalesMonth).reduce((s, sale) => s + sale.total, 0)
-
     // ─── Expenses & Adjustments in period ───
     const expensesPeriod = await db.expense.findMany({ where: { date: { gte: startDate, lte: endDate }, branchId, deletedAt: null } })
     const adjustmentsPeriod = await db.inventoryAdjustment.findMany({
@@ -139,17 +116,41 @@ export async function GET(request: NextRequest) {
     const nonCreditMonth = filterNonCredit(salesMonth)
     const nonCreditPeriod = filterNonCredit(salesPeriod)
 
-    const ingresosHoy = Math.round((nonCreditToday.reduce((s, sale) => s + sale.total, 0) + renewalHoy) * 100) / 100
+    // FIX: nonCreditMonth/Yoday ya incluyen renovaciones, no sumar renewalMes/Hoy de nuevo
+    const ingresosHoy = Math.round(nonCreditToday.reduce((s, sale) => s + sale.total, 0) * 100) / 100
     const gastosHoy = Math.round(expensesToday.reduce((s, e) => s + e.amount, 0) * 100) / 100
-    const ingresosMes = Math.round((nonCreditMonth.reduce((s, sale) => s + sale.total, 0) + renewalMes) * 100) / 100
+    const ingresosMes = Math.round(nonCreditMonth.reduce((s, sale) => s + sale.total, 0) * 100) / 100
     const gastosMes = Math.round(expensesMonth.reduce((s, e) => s + e.amount, 0) * 100) / 100
 
-    // ─── Utility calculations (month) ───
+    // ─── Costo de ventas (solo líneas de productos, las suscripciones no tienen líneas → costo 0) ───
     const costoVentasMes = nonCreditMonth.reduce((s, sale) =>
       s + (sale as typeof sale & { lines: Array<{ unitCost: number; quantity: number }> }).lines.reduce((ls, l) => ls + (l.unitCost * l.quantity), 0), 0)
+
+    // ─── Utilidad Bruta = Ingreso - Costo ───
     const utilidadBrutaMes = Math.round((ingresosMes - costoVentasMes) * 100) / 100
-    const perdidasMes = adjustmentsPeriod.reduce((s, a) => s + (a.quantity * (a.product?.costAvg || 0)), 0)
-    const utilidadNetaMes = Math.round((utilidadBrutaMes - gastosMes - perdidasMes) * 100) / 100
+
+    // ─── Datos extra para Utilidad Neta (rango MES) ───
+    // Impuesto: 0% por defecto, configurable después desde Settings
+    const impuestoMes = 0
+    // Intereses: 0 por defecto, configurable después
+    const interesesMes = 0
+    // Cuentas por cobrar pendientes creadas este mes
+    const cxcMes = await db.accountReceivable.aggregate({
+      where: { createdAt: { gte: monthStart }, status: { in: ['pendiente', 'parcial'] } },
+      _sum: { pendingBalance: true },
+    })
+    const cuentasPorCobrarMes = Math.round((cxcMes._sum.pendingBalance || 0) * 100) / 100
+    // Pérdidas de inventario del mes (ajustes con quantity negativa = merma/daño)
+    const adjustmentsMes = await db.inventoryAdjustment.findMany({
+      where: { createdAt: { gte: monthStart }, branchId },
+      include: { product: true },
+    })
+    const perdidasMes = Math.round(adjustmentsMes
+      .filter(a => a.quantity < 0)
+      .reduce((s, a) => s + Math.abs(a.quantity) * (a.product?.costAvg || 0), 0) * 100) / 100
+
+    // ─── Utilidad Neta = Ingreso - (Costo + Gasto + Impuesto + CxC + Pérdidas - Intereses) ───
+    const utilidadNetaMes = Math.round((ingresosMes - costoVentasMes - gastosMes - impuestoMes - cuentasPorCobrarMes - perdidasMes + interesesMes) * 100) / 100
 
     // ─── Period totals ───
     const ingresosPeriodo = Math.round(nonCreditPeriod.reduce((s, sale) => s + sale.total, 0) * 100) / 100
@@ -158,8 +159,17 @@ export async function GET(request: NextRequest) {
     const costoVentasPeriodo = nonCreditPeriod.reduce((s, sale) =>
       s + sale.lines.reduce((ls, l) => ls + (l.unitCost * l.quantity), 0), 0)
     const utilidadBrutaPeriodo = Math.round((ingresosPeriodo - costoVentasPeriodo) * 100) / 100
-    const perdidasPeriodo = adjustmentsPeriod.reduce((s, a) => s + (a.quantity * (a.product?.costAvg || 0)), 0)
-    const utilidadNetaPeriodo = Math.round((utilidadBrutaPeriodo - gastosPeriodo - perdidasPeriodo) * 100) / 100
+
+    // Period: CxC y pérdidas del periodo seleccionado
+    const cxcPeriodo = await db.accountReceivable.aggregate({
+      where: { createdAt: { gte: startDate }, status: { in: ['pendiente', 'parcial'] } },
+      _sum: { pendingBalance: true },
+    })
+    const cuentasPorCobrarPeriodo = Math.round((cxcPeriodo._sum.pendingBalance || 0) * 100) / 100
+    const perdidasPeriodo = Math.round(adjustmentsPeriod
+      .filter(a => a.quantity < 0)
+      .reduce((s, a) => s + Math.abs(a.quantity) * (a.product?.costAvg || 0), 0) * 100) / 100
+    const utilidadNetaPeriodo = Math.round((ingresosPeriodo - costoVentasPeriodo - gastosPeriodo - 0 - cuentasPorCobrarPeriodo - perdidasPeriodo + 0) * 100) / 100
 
     // ─── Top 5 products by revenue (non-credit POS sales only) ───
     const productRevenue: Record<string, { name: string; revenue: number; qty: number }> = {}
@@ -323,6 +333,7 @@ export async function GET(request: NextRequest) {
       ingresosPeriodo, gastosPeriodo,
       utilidadBrutaMes, utilidadNetaMes,
       utilidadBrutaPeriodo, utilidadNetaPeriodo,
+      costoVentasMes, cuentasPorCobrarMes, perdidasMes,
       topProducts, recentSales,
       totalProductosActivos, totalClientesActivos,
       lowStockAlerts, overdueAlerts, overduePayableAlerts,
