@@ -15,9 +15,8 @@ function isValidPhone(phone: string): boolean {
 }
 
 /** Calculate dynamic days remaining based on endDate vs today (app timezone) */
-async function calcDaysRemaining(endDate: Date | null): Promise<number> {
+function calcDaysRemaining(endDate: Date | null, today: Date): number {
   if (!endDate) return 0
-  const today = await todayApp()
   const end = new Date(endDate)
   const diff = end.getTime() - today.getTime()
   const days = diff / (1000 * 60 * 60 * 24)
@@ -66,8 +65,11 @@ export async function GET(request: NextRequest) {
       orderBy: { name: 'asc' },
     })
 
+    // Get today ONCE in app timezone (avoids N DB calls inside the loop)
+    const today = await todayApp()
+
     // Compute pending balance and membership for each client
-    const clientsWithBalance = await Promise.all(clients.map(async client => {
+    const clientsWithBalance = clients.map(client => {
       const pendingBalance = client.receivables.reduce((sum, r) => sum + r.pendingBalance, 0)
       const membership = client.memberships[0] || null
       return {
@@ -87,15 +89,16 @@ export async function GET(request: NextRequest) {
           tarifa: membership.tarifa,
           endDate: membership.endDate,
           daysRemaining: membership.endDate
-            ? await calcDaysRemaining(membership.endDate)
+            ? calcDaysRemaining(membership.endDate, today)
             : membership.daysRemaining,
           ticketsRemaining: membership.ticketsRemaining,
         } : null,
       }
-    }))
+    })
 
     return NextResponse.json(clientsWithBalance)
   } catch (error) {
+    console.error('[GET /api/clients]', error)
     return NextResponse.json({ error: 'Error al obtener clientes' }, { status: 500 })
   }
 }
