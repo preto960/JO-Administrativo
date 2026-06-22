@@ -1,7 +1,7 @@
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/require-auth'
-import { todayApp, getAppTz } from '@/lib/app-time'
+import { fetchAppTz, fetchToday } from '@/lib/tz-helpers'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 
@@ -57,9 +57,8 @@ export async function GET() {
     const email = settings?.email || ''
     const rif = settings?.rif || ''
     const primaryColor = resolveColor(settings?.primaryColor || 'blue')
-    const appTz = await getAppTz()
-
-    const today = await todayApp()
+    const appTz = await fetchAppTz()
+    const today = await fetchToday(appTz.timezone)
     const tomorrow = new Date(today)
     tomorrow.setUTCDate(tomorrow.getUTCDate() + 1)
 

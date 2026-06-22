@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { logAction } from '@/lib/audit-log'
 import { requireAuth } from '@/lib/require-auth'
 import { getPermissions } from '@/lib/permissions'
-import { getCountryTz } from '@/lib/country-timezone'
+import { fetchToday } from '@/lib/tz-helpers'
 
 function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
@@ -12,29 +12,6 @@ function isValidEmail(email: string): boolean {
 function isValidPhone(phone: string): boolean {
   // Allow optional + prefix, then at least 7 digits
   return /^\+?\d{7,}$/.test(phone.replace(/[\s\-()]/g, ''))
-}
-
-/** Get today's midnight in the app timezone, expressed as UTC */
-async function getTodayInAppTz(): Promise<Date> {
-  try {
-    const settings = await db.settings.findFirst({ select: { country: true } })
-    const country = settings?.country || 'VE'
-    const { timezone } = getCountryTz(country)
-    const now = new Date()
-    const dateStr = now.toLocaleDateString('en-CA', { timeZone: timezone })
-    const [year, month, day] = dateStr.split('-').map(Number)
-    // Simple approach: midnight in that timezone as UTC
-    const localMidnight = new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0))
-    // Calculate offset by comparing UTC midnight vs local midnight display
-    const utcDate = new Date(`${dateStr}T00:00:00`)
-    const localDate = new Date(utcDate.toLocaleString('en-US', { timeZone: timezone }))
-    const offsetMs = localDate.getTime() - utcDate.getTime()
-    return new Date(localMidnight.getTime() - offsetMs)
-  } catch {
-    // Fallback: use server local date (may be off by timezone but won't crash)
-    const now = new Date()
-    return new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  }
 }
 
 /** Calculate days remaining based on endDate vs today */
@@ -89,7 +66,7 @@ export async function GET(request: NextRequest) {
     })
 
     // Get today ONCE in app timezone
-    const today = await getTodayInAppTz()
+    const today = await fetchToday()
 
     // Compute pending balance and membership for each client
     const clientsWithBalance = clients.map(client => {

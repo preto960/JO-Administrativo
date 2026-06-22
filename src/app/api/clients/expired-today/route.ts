@@ -1,22 +1,17 @@
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/require-auth'
-import { todayApp } from '@/lib/app-time'
-
-async function getTomorrowApp(): Promise<Date> {
-  const d = await todayApp()
-  d.setUTCDate(d.getUTCDate() + 1)
-  return d
-}
+import { fetchToday } from '@/lib/tz-helpers'
 
 export async function GET() {
   const auth = await requireAuth()
   if ('status' in auth) return auth
 
-  const today = await todayApp()
-  const tomorrow = await getTomorrowApp()
-
   try {
+    const today = await fetchToday()
+    const tomorrow = new Date(today)
+    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1)
+
     const clients = await db.client.findMany({
       where: {
         deletedAt: null,

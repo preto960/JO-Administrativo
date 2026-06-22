@@ -1,14 +1,14 @@
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
 import { formatCurrency } from '@/lib/currency'
-import { nowApp, getAppTz } from '@/lib/app-time'
+import { fetchNow, fetchAppTz } from '@/lib/tz-helpers'
 
 const WARNING_DAYS = 3
 
 export async function POST() {
   try {
-    const appNow = await nowApp()
-    const appTz = await getAppTz()
+    const appNow = await fetchNow()
+    const appTz = await fetchAppTz()
     const now = appNow
     const warningDate = new Date(now)
     warningDate.setDate(warningDate.getDate() + WARNING_DAYS)

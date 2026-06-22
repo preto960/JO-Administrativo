@@ -2,7 +2,7 @@ import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/require-auth'
 import { getPermissions } from '@/lib/permissions'
-import { todayApp, nowApp, monthStartApp, monthEndApp, getAppTz } from '@/lib/app-time'
+import { fetchAppTz, fetchToday, fetchNow, getMonthStart, getMonthEnd } from '@/lib/tz-helpers'
 
 function getPlanDays(durationType: string, durationDays: number | null): number {
   switch (durationType) {
@@ -15,8 +15,7 @@ function getPlanDays(durationType: string, durationDays: number | null): number 
   }
 }
 
-async function calcDaysRemaining(endDate: Date): Promise<number> {
-  const today = await todayApp()
+function calcDaysRemaining(endDate: Date, today: Date): number {
   const end = new Date(endDate)
   const diff = end.getTime() - today.getTime()
   const days = diff / (1000 * 60 * 60 * 24)
@@ -52,16 +51,16 @@ export async function GET(
     }
 
     const membership = client.memberships[0] || null
-    const appTz = await getAppTz()
+    const appTz = await fetchAppTz()
 
     const attendances = await db.attendance.findMany({
       where: { clientId: id },
       orderBy: { date: 'desc' },
     })
 
-    const appNow = await nowApp()
-    const monthStart = await monthStartApp(appNow)
-    const monthEnd = await monthEndApp(appNow)
+    const appNow = await fetchNow(appTz.timezone)
+    const monthStart = getMonthStart(appNow, appTz.timezone)
+    const monthEnd = getMonthEnd(appNow, appTz.timezone)
     const monthAttendances = attendances.filter(
       (a) => a.date >= monthStart && a.date < monthEnd
     )
@@ -70,9 +69,12 @@ export async function GET(
       ? getPlanDays(membership.plan.durationType, membership.plan.durationDays)
       : (membership?.daysRemaining || 0)
     const planName = membership?.plan?.name || membership?.tarifa || null
-    const daysRemaining = membership?.endDate
-      ? await calcDaysRemaining(membership.endDate)
-      : (membership?.daysRemaining || 0)
+
+    let daysRemaining = membership?.daysRemaining || 0
+    if (membership?.endDate) {
+      const today = await fetchToday(appTz.timezone)
+      daysRemaining = calcDaysRemaining(membership.endDate, today)
+    }
 
     const totalAttendances = attendances.length
     const monthAttendanceCount = monthAttendances.length
@@ -113,7 +115,7 @@ export async function POST(
       return NextResponse.json({ error: 'Cliente no encontrado' }, { status: 404 })
     }
 
-    const today = await todayApp()
+    const today = await fetchToday()
 
     const existing = await db.attendance.findUnique({
       where: {

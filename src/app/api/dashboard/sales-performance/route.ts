@@ -1,7 +1,7 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/require-auth'
-import { getAppTz } from '@/lib/app-time'
+import { fetchAppTz } from '@/lib/tz-helpers'
 
 // GET /api/dashboard/sales-performance?month=2025-06
 // Returns per-vendor sales totals (products + renewals) + their targets for the selected month
@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const [year, mon] = month.split('-').map(Number)
-    const appTz = await getAppTz()
+    const appTz = await fetchAppTz()
 
     // Build first and last day of month in the app's timezone
     // We use toLocaleDateString to get the correct UTC representation

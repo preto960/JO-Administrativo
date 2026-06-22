@@ -1,7 +1,7 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { resolveBranchId } from '@/lib/resolve-branch'
-import { todayApp, nowApp, monthStartApp, monthEndApp, getAppTz, getCachedOffsetHours } from '@/lib/app-time'
+import { fetchAppTz, fetchToday, fetchNow, getMonthStart, getMonthEnd, getOffsetHours } from '@/lib/tz-helpers'
 
 /** Filter out credit sales — sales that have an AccountReceivable are credit and not collected yet */
 function filterNonCredit(sales: Array<{ total: number; receivables: Array<{ id: string }> }>) {
@@ -23,11 +23,11 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const period = searchParams.get('period') || 'month'
 
-    const appTz = await getAppTz()
-    const offsetHours = getCachedOffsetHours()
+    const appTz = await fetchAppTz()
+    const offsetHours = getOffsetHours(appTz.timezone)
 
-    const today = await todayApp()
-    const appNow = await nowApp()
+    const today = await fetchToday(appTz.timezone)
+    const appNow = await fetchNow(appTz.timezone)
 
     let startDate: Date
     let chartDays: number
@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
         break
       case 'month':
       default:
-        startDate = await monthStartApp(appNow)
+        startDate = getMonthStart(appNow, appTz.timezone)
         chartDays = 7
         chartLabel = '7 días'
         break
@@ -60,7 +60,7 @@ export async function GET(request: NextRequest) {
 
     const customFrom = searchParams.get('from')
     const customTo = searchParams.get('to')
-    let endDate = await monthEndApp(appNow)
+    let endDate = getMonthEnd(appNow, appTz.timezone)
     let isCustom = false
     if (customFrom) {
       startDate = localDateToUtc(customFrom, offsetHours)
@@ -94,7 +94,7 @@ export async function GET(request: NextRequest) {
     })
     const expensesToday = await db.expense.findMany({ where: { date: { gte: today }, branchId, deletedAt: null } })
 
-    const monthStart = await monthStartApp(appNow)
+    const monthStart = getMonthStart(appNow, appTz.timezone)
     const salesMonth = await db.sale.findMany({
       where: { date: { gte: monthStart }, status: 'completada', branchId },
       include: {
@@ -243,7 +243,7 @@ export async function GET(request: NextRequest) {
         ? new Date(Date.UTC(today.getUTCFullYear(), 0, 1, -offsetHours, 0, 0, 0))
         : period === 'today'
           ? today
-          : await monthStartApp(appNow)
+          : getMonthStart(appNow, appTz.timezone)
 
     const creditSaleIds = new Set(
       (await db.accountReceivable.findMany({
@@ -292,7 +292,7 @@ export async function GET(request: NextRequest) {
     } else {
       const rangeStart = isCustom ? new Date(startDate) : new Date(today)
       if (!isCustom) rangeStart.setUTCDate(rangeStart.getUTCDate() - (chartDays - 1))
-      const rangeEnd = isCustom ? new Date(endDate) : await monthEndApp(appNow)
+      const rangeEnd = isCustom ? new Date(endDate) : getMonthEnd(appNow, appTz.timezone)
       const totalDays = Math.ceil((rangeEnd.getTime() - rangeStart.getTime()) / (1000 * 60 * 60 * 24)) + 1
       const groupByDays = totalDays > 60 ? 7 : 1
       for (let i = 0; i < totalDays; i += groupByDays) {

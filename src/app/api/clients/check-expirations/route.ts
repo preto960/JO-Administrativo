@@ -1,15 +1,14 @@
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/require-auth'
-import { todayApp } from '@/lib/app-time'
+import { fetchToday } from '@/lib/tz-helpers'
 
 export async function GET() {
   const auth = await requireAuth()
   if ('status' in auth) return auth
 
-  const today = await todayApp()
-
   try {
+    const today = await fetchToday()
     const expiredMemberships = await db.clientMembership.findMany({
       where: {
         status: 'Activo',
