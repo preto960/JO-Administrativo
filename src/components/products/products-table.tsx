@@ -110,6 +110,7 @@ export function ProductsTable() {
   const [search, setSearch] = useState('')
   const [catFilter, setCatFilter] = useState('__all__')
   const [showInactive, setShowInactive] = useState(false)
+  const [showCost, setShowCost] = useState(false)
   const [loading, setLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
@@ -559,7 +560,7 @@ export function ProductsTable() {
                   <TableHead>Producto</TableHead>
                   <TableHead className="hidden sm:table-cell">SKU</TableHead>
                   <TableHead>Categoría</TableHead>
-                  <TableHead className="text-right">Costo</TableHead>
+                  <TableHead className="text-right">Costo <button type="button" onClick={() => setShowCost(!showCost)} className="ml-1 inline-flex"><Eye className={`h-3.5 w-3.5 ${showCost ? 'text-green-500' : 'text-green-500/40 hover:text-green-500'} transition-colors`} /></button></TableHead>
                   <TableHead className="text-right">Precio</TableHead>
                   <TableHead className="text-right hidden md:table-cell">Stock</TableHead>
                   <TableHead>Estado</TableHead>
@@ -587,7 +588,12 @@ export function ProductsTable() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
-                        {product.currency?.symbol || currencySym}{fmt(product.costAvg)}
+                        <button type="button" onClick={() => setShowCost(!showCost)} className="hover:opacity-80 transition-opacity">
+                          {showCost
+                            ? <>{product.currency?.symbol || currencySym}{fmt(product.costAvg)}</>
+                            : <span className="text-muted-foreground tracking-widest">•••••</span>
+                          }
+                        </button>
                       </TableCell>
                       <TableCell className="text-right font-semibold tabular-nums">
                         {product.currency?.symbol || currencySym}{fmt(effectivePrice)}
