@@ -35,6 +35,12 @@ interface DashboardData {
   utilidadNetaMes: number
   utilidadBrutaPeriodo: number
   utilidadNetaPeriodo: number
+  costoVentasMes: number
+  cuentasPorCobrarMes: number
+  perdidasMes: number
+  costoVentasPeriodo: number
+  cuentasPorCobrarPeriodo: number
+  perdidasPeriodo: number
   totalProductosActivos: number
   totalClientesActivos: number
   topProducts: { name: string; revenue: number; qty: number }[]
@@ -311,35 +317,35 @@ export function FinancialDashboard() {
         )}
       </div>
 
-      {/* KPI Cards - Row 1 */}
+      {/* KPI Cards - Row 1: All respect the selected period filter */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KpiCard
-          title="Ingresos Hoy"
-          value={fmt(data.ingresosHoy)}
+          title={`Ingresos (${data.chartLabel})`}
+          value={fmt(data.ingresosPeriodo)}
           icon={DollarSign}
           trend="up"
           color="primary"
         />
         <KpiCard
-          title="Gastos Hoy"
-          value={fmt(data.gastosHoy)}
+          title={`Gastos (${data.chartLabel})`}
+          value={fmt(data.gastosPeriodo)}
           icon={ShoppingCart}
-          trend={data.gastosHoy > 0 ? 'down' : 'up'}
+          trend={data.gastosPeriodo > 0 ? 'down' : 'up'}
           color="red"
         />
         <KpiCard
-          title="Utilidad Bruta (Mes)"
-          value={fmt(data.utilidadBrutaMes)}
+          title={`Util. Bruta (${data.chartLabel})`}
+          value={fmt(data.utilidadBrutaPeriodo)}
           icon={Target}
           color="violet"
-          subtitle="Ingresos - Costo de ventas (suma de costo unitario x cantidad por línea)"
+          subtitle="Ingresos - Costo de ventas"
         />
         <KpiCard
-          title="Utilidad Neta (Mes)"
-          value={fmt(data.utilidadNetaMes)}
+          title={`Util. Neta (${data.chartLabel})`}
+          value={fmt(data.utilidadNetaPeriodo)}
           icon={PiggyBank}
           color="amber"
-          subtitle="Utilidad Bruta - Gastos - Pérdidas por ajustes de inventario"
+          subtitle="Ingreso - (Costo + Gasto + Impuesto + CxC + Pérdidas - Intereses)"
         />
       </div>
 
@@ -353,11 +359,11 @@ export function FinancialDashboard() {
           color="primary"
         />
         <KpiCard
-          title={`Ingresos (${data.chartLabel})`}
-          value={fmt(data.ingresosPeriodo)}
-          icon={DollarSign}
-          trend="up"
-          color="primary"
+          title={`Costo de Ventas (${data.chartLabel})`}
+          value={fmt(data.costoVentasPeriodo)}
+          icon={TrendingDown}
+          color="red"
+          subtitle="Costo unitario × cantidad vendida"
         />
         <KpiCard
           title="Productos Activos"

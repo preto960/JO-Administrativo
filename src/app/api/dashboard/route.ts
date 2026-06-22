@@ -334,6 +334,7 @@ export async function GET(request: NextRequest) {
       utilidadBrutaMes, utilidadNetaMes,
       utilidadBrutaPeriodo, utilidadNetaPeriodo,
       costoVentasMes, cuentasPorCobrarMes, perdidasMes,
+      costoVentasPeriodo, cuentasPorCobrarPeriodo, perdidasPeriodo,
       topProducts, recentSales,
       totalProductosActivos, totalClientesActivos,
       lowStockAlerts, overdueAlerts, overduePayableAlerts,
