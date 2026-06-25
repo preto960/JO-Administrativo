@@ -10,6 +10,13 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
   Table,
   TableBody,
   TableCell,
@@ -34,10 +41,17 @@ import {
   AlertDialogAction,
   AlertDialogCancel,
 } from '@/components/ui/alert-dialog'
-import { Plus, Pencil, Trash2, Loader2, DollarSign, CalendarDays, Tag } from 'lucide-react'
+import { Plus, Pencil, Trash2, Loader2, DollarSign, CalendarDays, Tag, Clock, Ticket } from 'lucide-react'
 import { toast } from 'sonner'
 
+type PlanType = 'dias' | 'horario' | 'tickets'
 type DurationType = '1_mes' | 'bimestral' | 'anual' | 'dia' | 'otro'
+
+const PLAN_TYPE_OPTIONS: { value: PlanType; label: string; icon: React.ReactNode }[] = [
+  { value: 'dias', label: 'Por Días', icon: <CalendarDays className="h-4 w-4" /> },
+  { value: 'horario', label: 'Por Horario', icon: <Clock className="h-4 w-4" /> },
+  { value: 'tickets', label: 'Por Tickets', icon: <Ticket className="h-4 w-4" /> },
+]
 
 const DURATION_OPTIONS: { value: DurationType; label: string; icon: string }[] = [
   { value: '1_mes', label: '1 Mes', icon: '30' },
@@ -58,11 +72,33 @@ function getDurationLabel(type: DurationType, days?: number | null): string {
   }
 }
 
+function getPlanTypeLabel(planType: string): string {
+  switch (planType) {
+    case 'dias': return 'Por Días'
+    case 'horario': return 'Por Horario'
+    case 'tickets': return 'Por Tickets'
+    default: return planType
+  }
+}
+
+function getPlanTypeBadgeColor(planType: string): string {
+  switch (planType) {
+    case 'dias': return 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
+    case 'horario': return 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
+    case 'tickets': return 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300'
+    default: return 'bg-gray-100 text-gray-500'
+  }
+}
+
 interface Plan {
   id: string
   name: string
+  planType: string
   durationType: string
   durationDays: number | null
+  ticketCount: number
+  startTime: string | null
+  endTime: string | null
   cost: number
   description: string | null
   active: boolean
@@ -82,8 +118,12 @@ export function PlansTab() {
 
   // Form state
   const [formName, setFormName] = useState('')
+  const [formPlanType, setFormPlanType] = useState<PlanType>('dias')
   const [formDurationType, setFormDurationType] = useState<DurationType>('1_mes')
   const [formCustomDays, setFormCustomDays] = useState('')
+  const [formTicketCount, setFormTicketCount] = useState('')
+  const [formStartTime, setFormStartTime] = useState('')
+  const [formEndTime, setFormEndTime] = useState('')
   const [formCost, setFormCost] = useState('')
   const [formDescription, setFormDescription] = useState('')
   const [formActive, setFormActive] = useState(true)
@@ -103,8 +143,12 @@ export function PlansTab() {
 
   const resetForm = () => {
     setFormName('')
+    setFormPlanType('dias')
     setFormDurationType('1_mes')
     setFormCustomDays('')
+    setFormTicketCount('')
+    setFormStartTime('')
+    setFormEndTime('')
     setFormCost('')
     setFormDescription('')
     setFormActive(true)
@@ -119,8 +163,12 @@ export function PlansTab() {
   const openEdit = (plan: Plan) => {
     setEditingPlan(plan)
     setFormName(plan.name)
+    setFormPlanType(plan.planType as PlanType)
     setFormDurationType(plan.durationType as DurationType)
     setFormCustomDays(plan.durationDays ? String(plan.durationDays) : '')
+    setFormTicketCount(plan.ticketCount ? String(plan.ticketCount) : '')
+    setFormStartTime(plan.startTime || '')
+    setFormEndTime(plan.endTime || '')
     setFormCost(plan.cost ? String(plan.cost) : '')
     setFormDescription(plan.description || '')
     setFormActive(plan.active)
@@ -132,8 +180,18 @@ export function PlansTab() {
       toast.error('El nombre es obligatorio')
       return
     }
-    if (formDurationType === 'otro' && (!formCustomDays || Number(formCustomDays) <= 0)) {
+
+    // Validations per planType
+    if (formPlanType === 'dias' && formDurationType === 'otro' && (!formCustomDays || Number(formCustomDays) <= 0)) {
       toast.error('Especifica la cantidad de días')
+      return
+    }
+    if (formPlanType === 'horario' && (!formStartTime || !formEndTime)) {
+      toast.error('Especifica la hora de inicio y fin')
+      return
+    }
+    if (formPlanType === 'tickets' && (!formTicketCount || Number(formTicketCount) <= 0)) {
+      toast.error('Especifica la cantidad de tickets')
       return
     }
 
@@ -141,8 +199,12 @@ export function PlansTab() {
     try {
       const payload: Record<string, unknown> = {
         name: formName.trim(),
-        durationType: formDurationType,
-        durationDays: formDurationType === 'otro' ? Number(formCustomDays) : null,
+        planType: formPlanType,
+        durationType: formPlanType === 'dias' ? formDurationType : '1_mes',
+        durationDays: formPlanType === 'dias' && formDurationType === 'otro' ? Number(formCustomDays) : null,
+        ticketCount: formPlanType === 'tickets' ? Number(formTicketCount) : 0,
+        startTime: formPlanType === 'horario' ? formStartTime : null,
+        endTime: formPlanType === 'horario' ? formEndTime : null,
         cost: Number(formCost) || 0,
         description: formDescription.trim() || null,
       }
@@ -184,8 +246,12 @@ export function PlansTab() {
       await api.put('/api/plans', {
         id: plan.id,
         name: plan.name,
+        planType: plan.planType,
         durationType: plan.durationType,
         durationDays: plan.durationDays,
+        ticketCount: plan.ticketCount,
+        startTime: plan.startTime,
+        endTime: plan.endTime,
         cost: plan.cost,
         description: plan.description,
         active: !plan.active,
@@ -225,7 +291,8 @@ export function PlansTab() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Nombre</TableHead>
-                    <TableHead>Duración</TableHead>
+                    <TableHead>Tipo</TableHead>
+                    <TableHead>Detalles</TableHead>
                     <TableHead>Costo</TableHead>
                     <TableHead className="hidden md:table-cell">Descripción</TableHead>
                     <TableHead>Estado</TableHead>
@@ -237,10 +304,29 @@ export function PlansTab() {
                     <TableRow key={plan.id} className={!plan.active ? 'opacity-50' : ''}>
                       <TableCell className="font-medium">{plan.name}</TableCell>
                       <TableCell>
-                        <div className="flex items-center gap-1.5 text-sm">
-                          <CalendarDays className="h-3.5 w-3.5 text-muted-foreground" />
-                          {getDurationLabel(plan.durationType as DurationType, plan.durationDays)}
-                        </div>
+                        <Badge className={`text-[10px] ${getPlanTypeBadgeColor(plan.planType)}`}>
+                          {getPlanTypeLabel(plan.planType)}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {plan.planType === 'dias' && (
+                          <span className="flex items-center gap-1.5">
+                            <CalendarDays className="h-3.5 w-3.5" />
+                            {getDurationLabel(plan.durationType as DurationType, plan.durationDays)}
+                          </span>
+                        )}
+                        {plan.planType === 'horario' && (
+                          <span className="flex items-center gap-1.5">
+                            <Clock className="h-3.5 w-3.5" />
+                            {plan.startTime} - {plan.endTime}
+                          </span>
+                        )}
+                        {plan.planType === 'tickets' && (
+                          <span className="flex items-center gap-1.5">
+                            <Ticket className="h-3.5 w-3.5" />
+                            {plan.ticketCount} tickets
+                          </span>
+                        )}
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1.5 text-sm font-semibold">
@@ -317,41 +403,82 @@ export function PlansTab() {
               />
             </div>
 
-            {/* Duración - Quick Select */}
+            {/* Tipo de Plan */}
             <div className="space-y-2">
-              <Label>Duración *</Label>
-              <div className="flex flex-wrap gap-2">
-                {DURATION_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => setFormDurationType(opt.value)}
-                    className={`
-                      flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium
-                      border-2 transition-all duration-150
-                      ${formDurationType === opt.value
-                        ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
-                        : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-400 dark:hover:border-gray-500'
-                      }
-                    `}
-                  >
-                    <span className={`
-                      flex items-center justify-center w-5 h-5 rounded text-[10px] font-bold
-                      ${formDurationType === opt.value
-                        ? 'bg-blue-500 text-white'
-                        : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
-                      }
-                    `}>
-                      {opt.icon}
-                    </span>
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
+              <Label>Tipo de Plan *</Label>
+              <Select value={formPlanType} onValueChange={(v) => {
+                setFormPlanType(v as PlanType)
+                // Reset type-specific fields when switching
+                if (v === 'dias') {
+                  setFormTicketCount('')
+                  setFormStartTime('')
+                  setFormEndTime('')
+                } else if (v === 'horario') {
+                  setFormDurationType('1_mes')
+                  setFormCustomDays('')
+                  setFormTicketCount('')
+                } else if (v === 'tickets') {
+                  setFormDurationType('1_mes')
+                  setFormCustomDays('')
+                  setFormStartTime('')
+                  setFormEndTime('')
+                }
+              }}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccionar tipo..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {PLAN_TYPE_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      <div className="flex items-center gap-2">
+                        {opt.icon}
+                        <span>{opt.label}</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
-            {/* Custom days (only when "Otro" selected) */}
-            {formDurationType === 'otro' && (
+            {/* Campos condicionales según tipo de plan */}
+
+            {/* POR DÍAS: Selector de duración */}
+            {formPlanType === 'dias' && (
+              <div className="space-y-2 animate-in fade-in slide-in-from-top-2 duration-200">
+                <Label>Duración *</Label>
+                <div className="flex flex-wrap gap-2">
+                  {DURATION_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setFormDurationType(opt.value)}
+                      className={`
+                        flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium
+                        border-2 transition-all duration-150
+                        ${formDurationType === opt.value
+                          ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
+                          : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-400 dark:hover:border-gray-500'
+                        }
+                      `}
+                    >
+                      <span className={`
+                        flex items-center justify-center w-5 h-5 rounded text-[10px] font-bold
+                        ${formDurationType === opt.value
+                          ? 'bg-blue-500 text-white'
+                          : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
+                        }
+                      `}>
+                        {opt.icon}
+                      </span>
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* POR DÍAS: Días personalizados */}
+            {formPlanType === 'dias' && formDurationType === 'otro' && (
               <div className="space-y-2 animate-in fade-in slide-in-from-top-2 duration-200">
                 <Label htmlFor="plan-custom-days">Cantidad de días *</Label>
                 <Input
@@ -364,6 +491,51 @@ export function PlansTab() {
                 />
                 <p className="text-xs text-muted-foreground">
                   Ingresa la cantidad de días que durará el plan
+                </p>
+              </div>
+            )}
+
+            {/* POR HORARIO: Campos de hora */}
+            {formPlanType === 'horario' && (
+              <div className="grid grid-cols-2 gap-3 animate-in fade-in slide-in-from-top-2 duration-200">
+                <div className="space-y-2">
+                  <Label htmlFor="plan-start-time">Hora inicio *</Label>
+                  <Input
+                    id="plan-start-time"
+                    type="time"
+                    value={formStartTime}
+                    onChange={(e) => setFormStartTime(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="plan-end-time">Hora fin *</Label>
+                  <Input
+                    id="plan-end-time"
+                    type="time"
+                    value={formEndTime}
+                    onChange={(e) => setFormEndTime(e.target.value)}
+                  />
+                </div>
+                <p className="col-span-2 text-xs text-muted-foreground">
+                  Define la franja horaria en la que el cliente puede asistir
+                </p>
+              </div>
+            )}
+
+            {/* POR TICKETS: Cantidad de tickets */}
+            {formPlanType === 'tickets' && (
+              <div className="space-y-2 animate-in fade-in slide-in-from-top-2 duration-200">
+                <Label htmlFor="plan-ticket-count">Cantidad de Tickets *</Label>
+                <Input
+                  id="plan-ticket-count"
+                  type="number"
+                  min={1}
+                  value={formTicketCount}
+                  onChange={(e) => setFormTicketCount(e.target.value)}
+                  placeholder="Ej: 10, 20, 30..."
+                />
+                <p className="text-xs text-muted-foreground">
+                  Cada vez que el cliente marque asistencia se le descontará 1 ticket
                 </p>
               </div>
             )}

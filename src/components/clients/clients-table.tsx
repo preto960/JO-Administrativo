@@ -52,7 +52,7 @@ import {
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Separator } from '@/components/ui/separator'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Plus, Search, Users, DollarSign, Loader2, Receipt, Truck, X, Trash2, Printer, FileText, Mail, Pencil, Phone, MapPin, ShoppingCart, Eye, EyeOff, AlertTriangle, Upload, ChevronLeft, ChevronRight, Filter, UserCheck, UserX, UsersRound, RefreshCw, CalendarCheck, CalendarDays, CheckCircle2, CreditCard, Banknote, ArrowLeftRight, Clock, Smartphone, CircleDollarSign, Ban, MoreHorizontal, AlertCircle, type LucideIcon } from 'lucide-react'
+import { Plus, Search, Users, DollarSign, Loader2, Receipt, Truck, X, Trash2, Printer, FileText, Mail, Pencil, Phone, MapPin, ShoppingCart, Eye, EyeOff, AlertTriangle, Upload, ChevronLeft, ChevronRight, Filter, UserCheck, UserX, UsersRound, RefreshCw, CalendarCheck, CalendarDays, CheckCircle2, CreditCard, Banknote, ArrowLeftRight, Clock, Smartphone, CircleDollarSign, Ban, MoreHorizontal, AlertCircle, Ticket, type LucideIcon } from 'lucide-react'
 import { ClientBulkImport } from './client-bulk-import'
 import { FALLBACK_METHODS } from '@/lib/payment-methods'
 import { toast } from 'sonner'
@@ -98,10 +98,13 @@ interface Client {
   membership: {
     id: string
     status: string | null
+    planType: string
     tarifa: string | null
     endDate: string | null
     daysRemaining: number
     ticketsRemaining: number
+    startTime: string | null
+    endTime: string | null
   } | null
   receivables: Array<{ id: string; amount: number; pendingBalance: number; status: string; dueDate: string | null; createdAt: string }>
   _count: { sales: number }
@@ -110,8 +113,12 @@ interface Client {
 interface PlanOption {
   id: string
   name: string
+  planType: string
   durationType: string
   durationDays: number | null
+  ticketCount: number
+  startTime: string | null
+  endTime: string | null
   cost: number
   active: boolean
 }
@@ -406,9 +413,14 @@ export function ClientsTable() {
   const [attData, setAttData] = useState<{
     attendances: Array<{ id: string; date: string }>;
     stats: {
+      planType: string;
       totalPlanDays: number;
       planName: string | null;
       daysRemaining: number;
+      ticketsRemaining: number;
+      ticketTotal: number;
+      startTime: string | null;
+      endTime: string | null;
       totalAttendances: number;
       monthAttendanceCount: number;
       monthName: string;
@@ -1170,10 +1182,25 @@ export function ClientsTable() {
                       Vence: {new Date(client.membership!.endDate).toLocaleDateString('es-VE')}
                     </span>
                   )}
-                  {memStatus === 'Activo' && hasMembership && client.membership!.daysRemaining > 0 && (
+                  {memStatus === 'Activo' && hasMembership && client.membership!.daysRemaining > 0 && client.membership!.planType !== 'tickets' && (
                     <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
                       {client.membership!.daysRemaining}d restantes
                     </span>
+                  )}
+                  {/* Círculo de tickets para planes tipo tickets */}
+                  {memStatus === 'Activo' && hasMembership && client.membership!.planType === 'tickets' && (
+                    <div
+                      className={`
+                        inline-flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold
+                        ${client.membership!.ticketsRemaining > 0
+                          ? 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300 ring-2 ring-purple-300 dark:ring-purple-700'
+                          : 'bg-red-100 text-red-600 dark:bg-red-950 dark:text-red-400 ring-2 ring-red-300 dark:ring-red-700'
+                        }
+                      `}
+                      title={`${client.membership!.ticketsRemaining} tickets restantes`}
+                    >
+                      {client.membership!.ticketsRemaining}
+                    </div>
                   )}
                 </div>
                 )}
@@ -2089,6 +2116,30 @@ export function ClientsTable() {
                     <span className="text-muted-foreground">Días restantes:</span>
                     <span className="font-medium">{renewClient.membership.daysRemaining}</span>
                   </div>
+                  {renewClient.membership.planType === 'tickets' && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Tickets restantes:</span>
+                      <div className="flex items-center gap-2">
+                        <div
+                          className={`
+                            inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold
+                            ${renewClient.membership.ticketsRemaining > 0
+                              ? 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300'
+                              : 'bg-red-100 text-red-600 dark:bg-red-950 dark:text-red-400'
+                            }
+                          `}
+                        >
+                          {renewClient.membership.ticketsRemaining}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {renewClient.membership.planType === 'horario' && renewClient.membership.startTime && renewClient.membership.endTime && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Horario:</span>
+                      <span className="font-medium">{renewClient.membership.startTime} - {renewClient.membership.endTime}</span>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -2240,33 +2291,98 @@ export function ClientsTable() {
             <div className="h-48 rounded-lg bg-muted animate-pulse" />
           ) : attData ? (
             <div className="space-y-4 max-h-[65vh] overflow-y-auto">
-              {/* Stats cards */}
-              <div className="grid grid-cols-3 gap-3">
-                <Card>
-                  <CardContent className="p-3 text-center">
-                    <p className="text-xs text-muted-foreground">Plan</p>
-                    <p className="text-lg font-bold">{attData.stats.totalPlanDays || '—'}</p>
-                    <p className="text-[10px] text-muted-foreground">días total</p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="p-3 text-center">
-                    <p className="text-xs text-muted-foreground">Restantes</p>
-                    <p className={`text-lg font-bold ${attData.stats.daysRemaining <= 0 ? 'text-red-600' : 'text-emerald-600'}`}>
-                      {attData.stats.daysRemaining}
-                    </p>
-                    <p className="text-[10px] text-muted-foreground">de {attData.stats.totalPlanDays}
-                    </p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="p-3 text-center">
-                    <p className="text-xs text-muted-foreground">{attData.stats.monthName}</p>
-                    <p className="text-lg font-bold text-blue-600">{attData.stats.monthAttendanceCount}</p>
-                    <p className="text-[10px] text-muted-foreground">asistencias</p>
-                  </CardContent>
-                </Card>
-              </div>
+              {/* Stats cards — different layout per plan type */}
+              {(attData.stats.planType === 'tickets') ? (
+                /* TICKETS: Show ticket circle + total */
+                <div className="grid grid-cols-3 gap-3">
+                  <Card>
+                    <CardContent className="p-3 text-center">
+                      <p className="text-xs text-muted-foreground">Tipo</p>
+                      <p className="text-sm font-bold text-purple-600">Tickets</p>
+                      <p className="text-[10px] text-muted-foreground">plan</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="p-3 text-center">
+                      <p className="text-xs text-muted-foreground">Tickets</p>
+                      <div className="flex justify-center mt-1">
+                        <div
+                          className={`
+                            inline-flex items-center justify-center w-12 h-12 rounded-full text-xl font-bold
+                            ${(attData.stats.ticketsRemaining as number) > 0
+                              ? 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300 ring-3 ring-purple-300 dark:ring-purple-700'
+                              : 'bg-red-100 text-red-600 dark:bg-red-950 dark:text-red-400 ring-3 ring-red-300 dark:ring-red-700'
+                            }
+                          `}
+                        >
+                          {attData.stats.ticketsRemaining}
+                        </div>
+                      </div>
+                      <p className="text-[10px] text-muted-foreground mt-1">de {(attData.stats.ticketTotal as number) || '—'}</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="p-3 text-center">
+                      <p className="text-xs text-muted-foreground">{attData.stats.monthName}</p>
+                      <p className="text-lg font-bold text-blue-600">{attData.stats.monthAttendanceCount}</p>
+                      <p className="text-[10px] text-muted-foreground">asistencias</p>
+                    </CardContent>
+                  </Card>
+                </div>
+              ) : (attData.stats.planType === 'horario') ? (
+                /* HORARIO: Show schedule + days */
+                <div className="grid grid-cols-3 gap-3">
+                  <Card>
+                    <CardContent className="p-3 text-center">
+                      <p className="text-xs text-muted-foreground">Tipo</p>
+                      <p className="text-sm font-bold text-amber-600">Horario</p>
+                      <p className="text-[10px] text-muted-foreground">plan</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="p-3 text-center">
+                      <p className="text-xs text-muted-foreground">Horario</p>
+                      <p className="text-lg font-bold text-amber-600">{attData.stats.startTime} - {attData.stats.endTime}</p>
+                      <p className="text-[10px] text-muted-foreground">permitido</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="p-3 text-center">
+                      <p className="text-xs text-muted-foreground">{attData.stats.monthName}</p>
+                      <p className="text-lg font-bold text-blue-600">{attData.stats.monthAttendanceCount}</p>
+                      <p className="text-[10px] text-muted-foreground">asistencias</p>
+                    </CardContent>
+                  </Card>
+                </div>
+              ) : (
+                /* DÍAS: Original layout */
+                <div className="grid grid-cols-3 gap-3">
+                  <Card>
+                    <CardContent className="p-3 text-center">
+                      <p className="text-xs text-muted-foreground">Plan</p>
+                      <p className="text-lg font-bold">{attData.stats.totalPlanDays || '—'}</p>
+                      <p className="text-[10px] text-muted-foreground">días total</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="p-3 text-center">
+                      <p className="text-xs text-muted-foreground">Restantes</p>
+                      <p className={`text-lg font-bold ${attData.stats.daysRemaining <= 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                        {attData.stats.daysRemaining}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground">de {attData.stats.totalPlanDays}
+                      </p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="p-3 text-center">
+                      <p className="text-xs text-muted-foreground">{attData.stats.monthName}</p>
+                      <p className="text-lg font-bold text-blue-600">{attData.stats.monthAttendanceCount}</p>
+                      <p className="text-[10px] text-muted-foreground">asistencias</p>
+                    </CardContent>
+                  </Card>
+                </div>
+              )}
 
               {/* Plan name */}
               {attData.stats.planName && (

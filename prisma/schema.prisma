@@ -63,12 +63,15 @@ model ClientMembership {
   clientId         String
   status           String    @default("Sin membresia") // Activo, Vencido, Sin membresia
   planId           String?
+  planType         String    @default("dias") // "dias" | "horario" | "tickets"
   tarifa           String?   // tipo de tarifa: Mensual, Trimestral, etc.
   paymentDate      DateTime? // fecha del último pago
   startDate        DateTime? // inicio de la membresía
   endDate          DateTime? // vencimiento de la membresía
   daysRemaining    Int       @default(0)
   ticketsRemaining Int       @default(0)
+  startTime        String?   // Hora inicio (HH:mm) — solo para planType "horario"
+  endTime          String?   // Hora fin (HH:mm) — solo para planType "horario"
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
@@ -555,8 +558,12 @@ model AuditLog {
 model Plan {
   id            String   @id @default(cuid())
   name          String   @unique
-  durationType  String   @default("1_mes") // "1_mes" | "bimestral" | "anual" | "dia" | "otro"
+  planType      String   @default("dias") // "dias" | "horario" | "tickets"
+  durationType  String   @default("1_mes") // "1_mes" | "bimestral" | "anual" | "dia" | "otro" — solo para planType "dias"
   durationDays  Int?     // solo cuando durationType = "otro"
+  ticketCount   Int      @default(0) // cantidad de tickets — solo para planType "tickets"
+  startTime     String?  // Hora inicio (HH:mm) — solo para planType "horario"
+  endTime       String?  // Hora fin (HH:mm) — solo para planType "horario"
   cost          Float    @default(0)
   description   String?
   active        Boolean  @default(true)

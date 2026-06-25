@@ -69,8 +69,6 @@ export async function POST(
       }
     }
 
-    const totalDays = getPlanDays(plan.durationType, plan.durationDays)
-    const cost = plan.cost
     const today = await fetchToday()
     const effectiveBranchId = branchId || null
 
@@ -82,63 +80,80 @@ export async function POST(
       resolvedCurrencyId = refCurrency?.id || ''
     }
 
-    // ── Membership: accumulate days if active ──
+    // ── Determine membership values based on planType ──
+    const planType = plan.planType || 'dias' // backward compat
+    const totalDays = getPlanDays(plan.durationType, plan.durationDays)
+    const ticketCount = planType === 'tickets' ? plan.ticketCount : 0
+
+    // For "horario" type, we still set a reasonable duration (30 days default)
+    // so the membership has an expiration window
+    const effectiveDays = planType === 'horario' ? 30 : (planType === 'tickets' ? 90 : totalDays)
+
+    // ── Membership: create or update ──
     const existingMembership = await db.clientMembership.findFirst({
       where: { clientId: id },
       orderBy: { createdAt: 'desc' },
     })
 
     let membership
+
+    // Common membership data
+    const membershipData = {
+      status: 'Activo' as const,
+      planId: plan.id,
+      planType,
+      tarifa: plan.name,
+      paymentDate: new Date(),
+      // Reset tickets to 0 if changing FROM tickets TO another type
+      ticketsRemaining: planType === 'tickets' ? ticketCount : 0,
+      startTime: planType === 'horario' ? plan.startTime : null,
+      endTime: planType === 'horario' ? plan.endTime : null,
+    }
+
     if (existingMembership && existingMembership.endDate && existingMembership.status === 'Activo') {
+      // Active membership: accumulate days
       const existingEnd = new Date(existingMembership.endDate)
       const newEndDate = new Date(existingEnd)
-      newEndDate.setDate(newEndDate.getDate() + totalDays)
+      newEndDate.setDate(newEndDate.getDate() + effectiveDays)
 
       membership = await db.clientMembership.update({
         where: { id: existingMembership.id },
         data: {
-          status: 'Activo',
-          planId: plan.id,
-          tarifa: plan.name,
-          paymentDate: new Date(),
+          ...membershipData,
           endDate: newEndDate,
-          daysRemaining: totalDays,
-          ticketsRemaining: totalDays,
+          daysRemaining: planType === 'tickets' ? effectiveDays : (existingMembership.daysRemaining + effectiveDays),
+          // If switching plan type, ensure tickets reset
+          ticketsRemaining: planType === 'tickets' ? ticketCount : 0,
+        },
+      })
+    } else if (existingMembership) {
+      // Existing but not active: update it
+      const endDate = new Date(today)
+      endDate.setDate(endDate.getDate() + effectiveDays)
+
+      membership = await db.clientMembership.update({
+        where: { id: existingMembership.id },
+        data: {
+          ...membershipData,
+          startDate: today,
+          endDate,
+          daysRemaining: effectiveDays,
         },
       })
     } else {
+      // No existing membership: create new
       const endDate = new Date(today)
-      endDate.setDate(endDate.getDate() + totalDays)
+      endDate.setDate(endDate.getDate() + effectiveDays)
 
-      if (existingMembership) {
-        membership = await db.clientMembership.update({
-          where: { id: existingMembership.id },
-          data: {
-            status: 'Activo',
-            planId: plan.id,
-            tarifa: plan.name,
-            paymentDate: new Date(),
-            startDate: today,
-            endDate,
-            daysRemaining: totalDays,
-            ticketsRemaining: totalDays,
-          },
-        })
-      } else {
-        membership = await db.clientMembership.create({
-          data: {
-            clientId: id,
-            status: 'Activo',
-            planId: plan.id,
-            tarifa: plan.name,
-            paymentDate: new Date(),
-            startDate: today,
-            endDate,
-            daysRemaining: totalDays,
-            ticketsRemaining: totalDays,
-          },
-        })
-      }
+      membership = await db.clientMembership.create({
+        data: {
+          clientId: id,
+          ...membershipData,
+          startDate: today,
+          endDate,
+          daysRemaining: effectiveDays,
+        },
+      })
     }
 
     // ── Create Sale record for the subscription payment ──
@@ -163,15 +178,15 @@ export async function POST(
             clientId: id,
             cashRegId: cashRegId || null,
             userId: auth.userId,
-            branchId: effectiveBranchId,
-            total: cost,
+            branchId: effectiveBranchId ?? undefined,
+            total: plan.cost,
             status: 'completada',
             currencyId: resolvedCurrencyId,
             syncStatus: 'synced',
             payments: {
               create: {
                 method: paymentMethod,
-                amount: cost,
+                amount: plan.cost,
                 currencyId: resolvedCurrencyId,
                 reference: paymentReference?.trim() || null,
               },
@@ -186,7 +201,7 @@ export async function POST(
           if (register && register.status === 'abierta') {
             await db.cashRegister.update({
               where: { id: cashRegId },
-              data: { currentAmt: Math.round((register.currentAmt + cost) * 100) / 100 },
+              data: { currentAmt: Math.round((register.currentAmt + plan.cost) * 100) / 100 },
             })
           } else if (register && register.status !== 'abierta') {
             movementError = `Caja está cerrada (status: ${register.status})`
@@ -194,7 +209,6 @@ export async function POST(
         }
 
         // Create CashMovement for ALL payment methods (for visibility in cash register)
-        // But only affect balance if isCash (already done above)
         if (cashRegId) {
           const register = await db.cashRegister.findUnique({ where: { id: cashRegId } })
           if (register && register.status === 'abierta') {
@@ -206,7 +220,7 @@ export async function POST(
                   cashRegId,
                   userId: auth.userId,
                   type: 'entrada',
-                  amount: cost,
+                  amount: plan.cost,
                   concept: conceptWithId,
                   currencyId: resolvedCurrencyId,
                 },
@@ -224,8 +238,8 @@ export async function POST(
             data: {
               clientId: id,
               saleId: sale.id,
-              amount: cost,
-              pendingBalance: cost,
+              amount: plan.cost,
+              pendingBalance: plan.cost,
               status: 'pendiente',
               currencyId: resolvedCurrencyId,
               dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
@@ -246,8 +260,10 @@ export async function POST(
         action: 'renew_plan',
         planName: plan.name,
         planId: plan.id,
-        totalDays,
-        cost,
+        planType,
+        totalDays: effectiveDays,
+        ticketCount: planType === 'tickets' ? ticketCount : 0,
+        cost: plan.cost,
         paymentMethod: paymentMethod || null,
         saleId,
         movementId,
@@ -256,13 +272,19 @@ export async function POST(
       request,
     })
 
+    const detailMessage = planType === 'tickets'
+      ? `Plan "${plan.name}" asignado (${ticketCount} tickets)`
+      : planType === 'horario'
+        ? `Plan "${plan.name}" asignado (${plan.startTime} - ${plan.endTime}, ${effectiveDays} días)`
+        : `Plan "${plan.name}" asignado (+${effectiveDays} días)`
+
     return NextResponse.json({
       membership,
       saleId,
       movementId,
       movementError,
       receivableId,
-      message: `Plan "${plan.name}" asignado (+${totalDays} días)`,
+      message: detailMessage,
     }, { status: 201 })
   } catch (error) {
     console.error('[Renew POST]', error instanceof Error ? error.message : error)

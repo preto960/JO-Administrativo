@@ -4,6 +4,7 @@ import { requireAuth } from '@/lib/require-auth'
 import { getPermissions } from '@/lib/permissions'
 
 const VALID_DURATION_TYPES = ['1_mes', 'bimestral', 'anual', 'dia', 'otro'] as const
+const VALID_PLAN_TYPES = ['dias', 'horario', 'tickets'] as const
 
 export async function GET() {
   const auth = await requireAuth()
@@ -31,23 +32,48 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { name, durationType, durationDays, cost, description } = body
+    const { name, planType, durationType, durationDays, ticketCount, startTime, endTime, cost, description } = body
 
     if (!name?.trim()) {
       return NextResponse.json({ error: 'El nombre es obligatorio' }, { status: 400 })
     }
-    if (!durationType || !VALID_DURATION_TYPES.includes(durationType)) {
-      return NextResponse.json({ error: 'Tipo de duración inválido' }, { status: 400 })
+
+    const resolvedPlanType = planType || 'dias'
+    if (!VALID_PLAN_TYPES.includes(resolvedPlanType)) {
+      return NextResponse.json({ error: 'Tipo de plan inválido' }, { status: 400 })
     }
-    if (durationType === 'otro' && (!durationDays || durationDays <= 0)) {
-      return NextResponse.json({ error: 'Debes especificar los días para duración personalizada' }, { status: 400 })
+
+    // Validations per planType
+    if (resolvedPlanType === 'dias') {
+      if (!durationType || !VALID_DURATION_TYPES.includes(durationType)) {
+        return NextResponse.json({ error: 'Tipo de duración inválido' }, { status: 400 })
+      }
+      if (durationType === 'otro' && (!durationDays || durationDays <= 0)) {
+        return NextResponse.json({ error: 'Debes especificar los días para duración personalizada' }, { status: 400 })
+      }
+    }
+
+    if (resolvedPlanType === 'horario') {
+      if (!startTime || !endTime) {
+        return NextResponse.json({ error: 'Debes especificar la hora de inicio y fin' }, { status: 400 })
+      }
+    }
+
+    if (resolvedPlanType === 'tickets') {
+      if (!ticketCount || ticketCount <= 0) {
+        return NextResponse.json({ error: 'Debes especificar la cantidad de tickets' }, { status: 400 })
+      }
     }
 
     const plan = await db.plan.create({
       data: {
         name: name.trim(),
-        durationType,
-        durationDays: durationType === 'otro' ? Number(durationDays) : null,
+        planType: resolvedPlanType,
+        durationType: resolvedPlanType === 'dias' ? (durationType || '1_mes') : '1_mes',
+        durationDays: resolvedPlanType === 'dias' && durationType === 'otro' ? Number(durationDays) : null,
+        ticketCount: resolvedPlanType === 'tickets' ? Number(ticketCount) : 0,
+        startTime: resolvedPlanType === 'horario' ? startTime : null,
+        endTime: resolvedPlanType === 'horario' ? endTime : null,
         cost: Number(cost) || 0,
         description: description?.trim() || null,
       },
@@ -73,7 +99,7 @@ export async function PUT(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { id, name, durationType, durationDays, cost, description, active } = body
+    const { id, name, planType, durationType, durationDays, ticketCount, startTime, endTime, cost, description, active } = body
 
     if (!id) {
       return NextResponse.json({ error: 'ID requerido' }, { status: 400 })
@@ -81,19 +107,36 @@ export async function PUT(request: NextRequest) {
     if (!name?.trim()) {
       return NextResponse.json({ error: 'El nombre es obligatorio' }, { status: 400 })
     }
-    if (durationType && !VALID_DURATION_TYPES.includes(durationType)) {
+
+    const resolvedPlanType = planType || 'dias'
+    if (!VALID_PLAN_TYPES.includes(resolvedPlanType)) {
+      return NextResponse.json({ error: 'Tipo de plan inválido' }, { status: 400 })
+    }
+
+    // Validations per planType
+    if (resolvedPlanType === 'dias' && durationType && !VALID_DURATION_TYPES.includes(durationType)) {
       return NextResponse.json({ error: 'Tipo de duración inválido' }, { status: 400 })
     }
-    if (durationType === 'otro' && (!durationDays || durationDays <= 0)) {
+    if (resolvedPlanType === 'dias' && durationType === 'otro' && (!durationDays || durationDays <= 0)) {
       return NextResponse.json({ error: 'Debes especificar los días para duración personalizada' }, { status: 400 })
+    }
+    if (resolvedPlanType === 'horario' && (!startTime || !endTime)) {
+      return NextResponse.json({ error: 'Debes especificar la hora de inicio y fin' }, { status: 400 })
+    }
+    if (resolvedPlanType === 'tickets' && (!ticketCount || ticketCount <= 0)) {
+      return NextResponse.json({ error: 'Debes especificar la cantidad de tickets' }, { status: 400 })
     }
 
     const plan = await db.plan.update({
       where: { id },
       data: {
         name: name.trim(),
-        durationType: durationType || undefined,
-        durationDays: durationType === 'otro' ? Number(durationDays) : null,
+        planType: resolvedPlanType,
+        durationType: resolvedPlanType === 'dias' ? (durationType || '1_mes') : '1_mes',
+        durationDays: resolvedPlanType === 'dias' && durationType === 'otro' ? Number(durationDays) : null,
+        ticketCount: resolvedPlanType === 'tickets' ? Number(ticketCount) : 0,
+        startTime: resolvedPlanType === 'horario' ? startTime : null,
+        endTime: resolvedPlanType === 'horario' ? endTime : null,
         cost: cost !== undefined ? Number(cost) : undefined,
         description: description !== undefined ? (description?.trim() || null) : undefined,
         active: active !== undefined ? active : undefined,

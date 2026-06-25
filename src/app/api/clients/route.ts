@@ -86,12 +86,15 @@ export async function GET(request: NextRequest) {
         membership: membership ? {
           id: membership.id,
           status: membership.status,
+          planType: membership.planType || 'dias',
           tarifa: membership.tarifa,
           endDate: membership.endDate,
           daysRemaining: membership.endDate
             ? calcDaysRemaining(membership.endDate, today)
             : membership.daysRemaining,
           ticketsRemaining: membership.ticketsRemaining,
+          startTime: membership.startTime,
+          endTime: membership.endTime,
         } : null,
       }
     })
