@@ -1,14 +1,20 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
+import { getPaymentMethodsFromDB, FALLBACK_METHODS } from '@/lib/payment-methods'
 
 // GET /api/cash-register/[id]/sales-breakdown
 // Returns sales for a specific cash register, categorized as POS or Subscription
+// Includes payment method breakdown and credit sales separated
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params
+
+    // Get credit method codes to identify credit sales
+    const pmList = await getPaymentMethodsFromDB().catch(() => FALLBACK_METHODS)
+    const creditCodes = new Set(pmList.filter(m => m.isCredit).map(m => m.code))
 
     // Get sales for this cash register
     const sales = await db.sale.findMany({
@@ -27,39 +33,31 @@ export async function GET(
       orderBy: { createdAt: 'desc' },
     })
 
-    // Categorize sales: if sale has lines with products → POS, if no lines → Subscription
-    const posSales = sales.filter(s => s.lines.length > 0)
-    const subscriptionSales = sales.filter(s => s.lines.length === 0)
+    // Separate credit vs non-credit sales
+    const isCreditSale = (s: typeof sales[0]) => s.payments.some(p => creditCodes.has(p.method))
+    const creditSalesAll = sales.filter(isCreditSale)
+    const nonCreditSales = sales.filter(s => !isCreditSale(s))
 
-    // Parse plan name from concept string. Handles multiple formats:
-    // '[saleId] Suscripción plan "Diario" - Juan Pérez'
-    // 'Suscripción plan "Diario" - Juan Pérez'
-    // 'Suscripción plan "Diario -> Mensual" - Juan'
-    // 'Renovación plan: Diario - Juan Pérez'
+    const posSales = nonCreditSales.filter(s => s.lines.length > 0)
+    const subscriptionSales = nonCreditSales.filter(s => s.lines.length === 0)
+
+    // Parse plan name from concept string
     function parsePlanFromConcept(concept: string): string {
-      // Strip leading [saleId] prefix if present
       const stripped = concept.replace(/^\[[\w-]+\]\s*/, '')
-      // Try quoted format first: plan "Diario" or plan "Diario -> Mensual"
       const quoted = stripped.match(/plan\s+"([^"]+)"/)
       if (quoted) return quoted[1]
-      // Fallback: colon format: plan: Diario or plan: Diario -> Mensual
       const colon = stripped.match(/plan:\s*(.+?)(?:\s*[-–—]|\s*\()/)
       if (colon) return colon[1].trim()
       return ''
     }
 
-    // Build lookup: saleId → CashMovement (for plan name extraction)
-    // New movements have [saleId] prefix in concept
+    // Build lookup: saleId -> CashMovement
     const movementBySaleId = new Map<string, typeof movements[0]>()
     for (const m of movements) {
       const match = m.concept.match(/^\[([\w-]+)\]\s*/)
-      if (match) {
-        movementBySaleId.set(match[1], m)
-      }
+      if (match) movementBySaleId.set(match[1], m)
     }
 
-    // For old movements without [saleId], build a fallback lookup by amount + client name
-    // Only used for subscription sales that don't have a new-style movement
     const oldSubMovements = movements.filter(m =>
       m.type === 'entrada' &&
       (m.concept.includes('Suscripción') || m.concept.includes('Renovación')) &&
@@ -70,46 +68,54 @@ export async function GET(
       const saleClientName = s.client
         ? `${s.client.name}${s.client.lastName ? ' ' + s.client.lastName : ''}`
         : ''
-
       let planName = ''
-
-      // 1. Try new-style match by saleId (100% reliable)
       const matchedMovement = movementBySaleId.get(s.id)
       if (matchedMovement) {
         planName = parsePlanFromConcept(matchedMovement.concept)
       } else {
-        // 2. Fallback for old movements: match by amount + client name
         const oldMatch = oldSubMovements.find(m => {
           if (Math.abs(s.total - m.amount) >= 0.01) return false
           if (!saleClientName) return false
           if (!m.concept.includes(saleClientName)) return false
           return true
         })
-        if (oldMatch) {
-          planName = parsePlanFromConcept(oldMatch.concept)
-        }
+        if (oldMatch) planName = parsePlanFromConcept(oldMatch.concept)
       }
-
       const ref = s.payments[0]?.reference
       return {
-        id: s.id,
-        date: s.date,
-        total: s.total,
+        id: s.id, date: s.date, total: s.total,
         method: s.payments[0]?.method || '',
-        clientName: saleClientName || null,
-        planName,
+        clientName: saleClientName || null, planName,
         description: ref ? `Ref: ${ref}` : '',
       }
     })
 
+    // Payment method breakdown (non-credit only)
+    const methodTotals: Record<string, { amount: number; count: number }> = {}
+    for (const s of nonCreditSales) {
+      for (const p of s.payments) {
+        if (creditCodes.has(p.method)) continue
+        if (!methodTotals[p.method]) methodTotals[p.method] = { amount: 0, count: 0 }
+        methodTotals[p.method].amount += p.amount
+        methodTotals[p.method].count++
+      }
+    }
+
+    // Credit sales summary
+    const creditTotal = creditSalesAll.reduce((sum, s) => sum + s.total, 0)
+    const creditItems = creditSalesAll.map(s => ({
+      id: s.id, date: s.date, total: s.total,
+      clientName: s.client ? `${s.client.name}${s.client.lastName ? ' ' + s.client.lastName : ''}` : null,
+      description: s.lines.map(l => l.product?.name || 'Producto').join(', ')
+    }))
+
     const posTotal = posSales.reduce((sum, s) => sum + s.total, 0)
     const subTotal = subscriptionSales.reduce((sum, s) => sum + s.total, 0)
+    const realInRegister = posTotal + subTotal
 
     return NextResponse.json({
       posSales: posSales.map(s => ({
-        id: s.id,
-        date: s.date,
-        total: s.total,
+        id: s.id, date: s.date, total: s.total,
         method: s.payments[0]?.method || '',
         clientName: s.client ? `${s.client.name}${s.client.lastName ? ' ' + s.client.lastName : ''}` : null,
         description: s.lines.map(l => l.product?.name || 'Producto').join(', '),
@@ -117,7 +123,11 @@ export async function GET(
       subscriptionSales: subscriptionSalesWithPlan,
       posTotal,
       subTotal,
-      totalCount: posSales.length + subscriptionSales.length,
+      totalCount: nonCreditSales.length,
+      creditSales: creditItems,
+      creditTotal,
+      methodTotals,
+      realInRegister,
     })
   } catch (error) {
     console.error('[GET cash-register sales-breakdown]', error)

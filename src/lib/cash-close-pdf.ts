@@ -1,6 +1,7 @@
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import type { Prisma } from '@prisma/client'
+import { getPaymentMethodsFromDB, FALLBACK_METHODS } from './payment-methods'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -823,24 +824,30 @@ export async function buildReportFromRegister(
   ivaEnabled: boolean,
   ivaRate: number,
 ): Promise<CashCloseReport> {
-  const sales: SaleDetail[] = register.sales.map(s => ({
-    id: s.id,
-    date: s.date,
-    clientName: s.client?.name || null,
-    total: s.total,
-    lines: s.lines.map(l => ({
-      productName: l.product.name,
-      quantity: l.quantity,
-      unitPrice: l.unitPrice,
-      lineTotal: l.lineTotal,
-    })),
-    payments: s.payments.map(p => ({
-      method: p.method,
-      amount: p.amount,
-      currencyCode: p.currency.code,
-      reference: p.reference,
-    })),
-  }))
+  // Determine which payment methods are credit to exclude them from the report
+  const pmList = await getPaymentMethodsFromDB().catch(() => FALLBACK_METHODS)
+  const creditCodes = new Set(pmList.filter(m => m.isCredit).map(m => m.code))
+
+  const sales: SaleDetail[] = register.sales
+    .filter(s => !s.payments.some(p => creditCodes.has(p.method)))
+    .map(s => ({
+      id: s.id,
+      date: s.date,
+      clientName: s.client?.name || null,
+      total: s.total,
+      lines: s.lines.map(l => ({
+        productName: l.product.name,
+        quantity: l.quantity,
+        unitPrice: l.unitPrice,
+        lineTotal: l.lineTotal,
+      })),
+      payments: s.payments.map(p => ({
+        method: p.method,
+        amount: p.amount,
+        currencyCode: p.currency.code,
+        reference: p.reference,
+      })),
+    }))
 
   const expenses = register.movements
     .filter(m => m.type === 'salida')

@@ -286,6 +286,10 @@ export function CashRegisterView() {
     posTotal: number
     subTotal: number
     totalCount: number
+    creditSales: Array<{ id: string; date: string; total: number; clientName: string | null; description: string }>
+    creditTotal: number
+    methodTotals: Record<string, { amount: number; count: number }>
+    realInRegister: number
   } | null>(null)
   const [loadingBreakdown, setLoadingBreakdown] = useState(false)
   // Breakdown for close dialog
@@ -940,6 +944,39 @@ export function CashRegisterView() {
                             </div>
                           </div>
 
+                          {/* Real in register + Credit pending */}
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="rounded-md bg-green-50 dark:bg-green-950/30 p-2 text-center border border-green-200 dark:border-green-800">
+                              <p className="text-[10px] text-green-600 dark:text-green-400 uppercase font-medium">Real en Caja</p>
+                              <p className="text-sm font-bold text-green-700 dark:text-green-300">{fmtBase(breakdownData.realInRegister)}</p>
+                            </div>
+                            {breakdownData.creditTotal > 0 && (
+                              <div className="rounded-md bg-amber-50 dark:bg-amber-950/30 p-2 text-center border border-amber-200 dark:border-amber-800">
+                                <p className="text-[10px] text-amber-600 dark:text-amber-400 uppercase font-medium">Crédito Pendiente</p>
+                                <p className="text-sm font-bold text-amber-700 dark:text-amber-300">{fmtBase(breakdownData.creditTotal)}</p>
+                                <p className="text-[10px] text-muted-foreground">{breakdownData.creditSales.length} venta{breakdownData.creditSales.length !== 1 ? 's' : ''}</p>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Payment method breakdown */}
+                          {breakdownData.methodTotals && Object.keys(breakdownData.methodTotals).length > 0 && (
+                            <div className="space-y-1">
+                              <p className="text-[10px] font-semibold text-muted-foreground uppercase">Desglose por Método de Pago</p>
+                              <div className="grid grid-cols-2 gap-1">
+                                {Object.entries(breakdownData.methodTotals).map(([method, data]) => (
+                                  <div key={method} className="flex justify-between items-center text-xs bg-muted/50 rounded px-2 py-1">
+                                    <span className="capitalize text-muted-foreground">{method}</span>
+                                    <div className="text-right">
+                                      <span className="font-semibold">{fmtBase(data.amount)}</span>
+                                      <span className="text-muted-foreground ml-1">({data.count})</span>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
                           {/* POS Sales list */}
                           {breakdownData.posSales.length > 0 && (
                             <div className="space-y-1">
@@ -995,7 +1032,26 @@ export function CashRegisterView() {
                             </div>
                           )}
 
-                          {breakdownData.posSales.length === 0 && breakdownData.subscriptionSales.length === 0 && (
+                          {/* Credit sales list */}
+                          {breakdownData.creditSales.length > 0 && (
+                            <div className="space-y-1">
+                              <p className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 uppercase">Ventas a Crédito (Pendiente)</p>
+                              {breakdownData.creditSales.slice(0, 10).map(s => (
+                                <div key={s.id} className="flex items-center justify-between text-xs py-1 border-b last:border-b-0 border-amber-200 dark:border-amber-800">
+                                  <div className="min-w-0 flex-1">
+                                    <span className="font-medium truncate block">{s.description}</span>
+                                    {s.clientName && <span className="text-amber-600 dark:text-amber-400">{s.clientName}</span>}
+                                  </div>
+                                  <span className="font-semibold text-amber-700 dark:text-amber-300 shrink-0 ml-2">{fmtBase(s.total)}</span>
+                                </div>
+                              ))}
+                              {breakdownData.creditSales.length > 10 && (
+                                <p className="text-[10px] text-muted-foreground text-center">...y {breakdownData.creditSales.length - 10} más</p>
+                              )}
+                            </div>
+                          )}
+
+                          {breakdownData.posSales.length === 0 && breakdownData.subscriptionSales.length === 0 && breakdownData.creditSales.length === 0 && (
                             <p className="text-xs text-muted-foreground text-center py-2">No hay ventas registradas en esta caja</p>
                           )}
                         </>
@@ -1433,7 +1489,7 @@ export function CashRegisterView() {
               </div>
             )}
             {closeBreakdown && !loadingCloseBreakdown && (
-              <div className="rounded-md border p-3 space-y-2 max-h-52 overflow-y-auto">
+              <div className="rounded-md border p-3 space-y-2 max-h-64 overflow-y-auto">
                 <div className="grid grid-cols-2 gap-2">
                   <div className="rounded-md bg-blue-50 dark:bg-blue-950/30 p-1.5 text-center">
                     <p className="text-[9px] text-blue-600 dark:text-blue-400 uppercase font-medium">POS</p>
@@ -1446,6 +1502,36 @@ export function CashRegisterView() {
                     <p className="text-[9px] text-muted-foreground">{closeBreakdown.subscriptionSales.length} renovación(es)</p>
                   </div>
                 </div>
+
+                {/* Real in register + Credit */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="rounded-md bg-green-50 dark:bg-green-950/30 p-1.5 text-center border border-green-200 dark:border-green-800">
+                    <p className="text-[9px] text-green-600 dark:text-green-400 uppercase font-medium">Real en Caja</p>
+                    <p className="text-xs font-bold text-green-700 dark:text-green-300">{fmtBase(closeBreakdown.realInRegister)}</p>
+                  </div>
+                  {closeBreakdown.creditTotal > 0 && (
+                    <div className="rounded-md bg-amber-50 dark:bg-amber-950/30 p-1.5 text-center border border-amber-200 dark:border-amber-800">
+                      <p className="text-[9px] text-amber-600 dark:text-amber-400 uppercase font-medium">Crédito Pendiente</p>
+                      <p className="text-xs font-bold text-amber-700 dark:text-amber-300">{fmtBase(closeBreakdown.creditTotal)}</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Payment method breakdown */}
+                {closeBreakdown.methodTotals && Object.keys(closeBreakdown.methodTotals).length > 0 && (
+                  <div className="space-y-0.5">
+                    <p className="text-[9px] font-semibold text-muted-foreground uppercase">Métodos de Pago</p>
+                    <div className="grid grid-cols-2 gap-0.5">
+                      {Object.entries(closeBreakdown.methodTotals).map(([method, data]) => (
+                        <div key={method} className="flex justify-between items-center text-[10px] bg-muted/40 rounded px-1.5 py-0.5">
+                          <span className="capitalize text-muted-foreground">{method}</span>
+                          <span className="font-medium">{fmtBase(data.amount)} <span className="text-muted-foreground">({data.count})</span></span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {closeBreakdown.posSales.length > 0 && (
                   <div className="space-y-0.5">
                     <p className="text-[9px] font-semibold text-muted-foreground uppercase">Ventas POS</p>
@@ -1471,7 +1557,21 @@ export function CashRegisterView() {
                     ))}
                   </div>
                 )}
-                {closeBreakdown.posSales.length === 0 && closeBreakdown.subscriptionSales.length === 0 && (
+                {closeBreakdown.creditSales.length > 0 && (
+                  <div className="space-y-0.5">
+                    <p className="text-[9px] font-semibold text-amber-600 dark:text-amber-400 uppercase">Crédito Pendiente</p>
+                    {closeBreakdown.creditSales.slice(0, 3).map(s => (
+                      <div key={s.id} className="flex justify-between text-[10px] py-0.5">
+                        <span className="truncate mr-2 text-amber-700">{s.clientName || s.description}</span>
+                        <span className="font-medium text-amber-700 shrink-0">{fmtBase(s.total)}</span>
+                      </div>
+                    ))}
+                    {closeBreakdown.creditSales.length > 3 && (
+                      <p className="text-[9px] text-muted-foreground text-center">...y {closeBreakdown.creditSales.length - 3} más</p>
+                    )}
+                  </div>
+                )}
+                {closeBreakdown.posSales.length === 0 && closeBreakdown.subscriptionSales.length === 0 && closeBreakdown.creditSales.length === 0 && (
                   <p className="text-[10px] text-muted-foreground text-center py-1">Sin ventas</p>
                 )}
               </div>
