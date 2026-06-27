@@ -2,8 +2,7 @@ import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { resolveBranchId } from '@/lib/resolve-branch'
 import { logAction } from '@/lib/audit-log'
-import { requireAuth } from '@/lib/require-auth'
-import { getPermissions } from '@/lib/permissions'
+import { requirePermission } from '@/lib/require-auth'
 
 export async function GET(request: NextRequest) {
   try {
@@ -37,12 +36,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await requireAuth()
+  const auth = await requirePermission('canManageExpenses')
   if ('status' in auth) return auth
-  const perms = getPermissions(auth.role)
-  if (!perms.canManageExpenses) {
-    return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
-  }
 
   try {
     const body = await request.json()
@@ -84,12 +79,8 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const auth = await requireAuth()
+  const auth = await requirePermission('canManageExpenses')
   if ('status' in auth) return auth
-  const perms = getPermissions(auth.role)
-  if (!perms.canManageExpenses) {
-    return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
-  }
 
   try {
     const { searchParams } = new URL(request.url)

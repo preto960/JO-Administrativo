@@ -185,6 +185,36 @@ export function canAccessView(role: string, view: string): boolean {
   return perms.views.includes(view)
 }
 
+/**
+ * Async version — reads custom permissions from DB (safe for Vercel serverless
+ * where the in-memory customPermissions cache is always empty).
+ * Falls back to defaults if DB is unreachable or has no data.
+ */
+export async function fetchPermissions(role: string): Promise<UserPermissions> {
+  try {
+    const { db } = await import('@/lib/db')
+    const settings = await db.settings.findFirst()
+    const dbPerms = settings?.rolePermissions
+    if (dbPerms && dbPerms[role]) {
+      const defaults = defaultRolePermissions[role]
+      if (defaults) {
+        let views = dbPerms[role].views || defaults.views
+        if (dbPerms[role].canManageExpenses && !views.includes('expenses')) {
+          views = [...views, 'expenses']
+        }
+        if (!views.includes('dashboard')) {
+          views = [...views, 'dashboard']
+        }
+        return { ...defaults, ...dbPerms[role], views }
+      }
+      return dbPerms[role] as UserPermissions
+    }
+  } catch {
+    // DB unreachable — fall back to defaults
+  }
+  return defaultRolePermissions[role] || defaultRolePermissions.cajero
+}
+
 export function getRoleLabel(role: string): string {
   const labels: Record<string, string> = {
     admin: 'Administrador',

@@ -1,7 +1,8 @@
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { NextResponse } from 'next/server'
-import { getPermissions } from '@/lib/permissions'
+import { fetchPermissions } from '@/lib/permissions'
+import type { UserPermissions } from '@/lib/permissions'
 
 /**
  * Validates that the current request has an authenticated session.
@@ -45,9 +46,28 @@ export async function requireManageUsers(): Promise<
 > {
   const result = await requireAuth()
   if ('status' in result) return result
-  const perms = getPermissions(result.role)
+  const perms = await fetchPermissions(result.role)
   if (!perms.canManageUsers) {
     return NextResponse.json({ error: 'Acceso denegado' }, { status: 403 })
   }
   return result
+}
+
+/**
+ * Generic async permission check — reads from DB so it works in Vercel serverless.
+ * Returns auth info + permissions, or a 403 NextResponse if the ability is false.
+ */
+export async function requirePermission(
+  ability: keyof UserPermissions
+): Promise<
+  | { session: Awaited<ReturnType<typeof getServerSession>>; role: string; userId: string; perms: UserPermissions }
+  | NextResponse
+> {
+  const result = await requireAuth()
+  if ('status' in result) return result
+  const perms = await fetchPermissions(result.role)
+  if (!perms[ability]) {
+    return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
+  }
+  return { ...result, perms }
 }
