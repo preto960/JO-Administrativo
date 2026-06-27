@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { api } from '@/lib/api'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -203,6 +203,8 @@ export function RolePermissionsEditor() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [filterSection, setFilterSection] = useState<FilterSection>('all')
+  // Track what was loaded from DB so we only save changed roles
+  const originalRef = useRef<Record<string, UserPermissions> | null>(null)
 
   const loadPermissions = useCallback(async () => {
     try {
@@ -217,9 +219,14 @@ export function RolePermissionsEditor() {
           }
         }
         setPermissions(merged)
+        // Store a deep copy as baseline for diffing on save
+        originalRef.current = JSON.parse(JSON.stringify(merged))
+      } else {
+        originalRef.current = null
       }
     } catch {
       setPermissions(DEFAULT_PERMISSIONS)
+      originalRef.current = null
     } finally {
       setLoading(false)
     }
@@ -237,7 +244,18 @@ export function RolePermissionsEditor() {
   const savePermissions = async () => {
     setSaving(true)
     try {
-      await api.put('/api/role-permissions', { permissions })
+      // Only save roles that actually changed from what was loaded
+      const toSave: Record<string, UserPermissions> = {}
+      for (const role of Object.keys(permissions)) {
+        const current = permissions[role]
+        const baseline = originalRef.current?.[role] || DEFAULT_PERMISSIONS[role]
+        if (JSON.stringify(current) !== JSON.stringify(baseline)) {
+          toSave[role] = current
+        }
+      }
+      await api.put('/api/role-permissions', { permissions: toSave })
+      // Update baseline to current state
+      originalRef.current = JSON.parse(JSON.stringify(permissions))
       toast.success('Permisos guardados correctamente')
     } catch {
       toast.error('Error al guardar permisos')
@@ -248,6 +266,7 @@ export function RolePermissionsEditor() {
 
   const resetToDefaults = () => {
     setPermissions(DEFAULT_PERMISSIONS)
+    originalRef.current = null
     toast.info('Permisos restablecidos a valores por defecto')
   }
 

@@ -2,6 +2,7 @@ import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { resolveBranchId } from '@/lib/resolve-branch'
 import { fetchAppTz, fetchToday, fetchNow, getMonthStart, getMonthEnd, getOffsetHours } from '@/lib/tz-helpers'
+import { fetchPermissions } from '@/lib/permissions'
 
 /** Filter out credit sales — sales that have an AccountReceivable are credit and not collected yet */
 function filterNonCredit(sales: Array<{ total: number; receivables: Array<{ id: string }> }>) {
@@ -19,6 +20,19 @@ function localDateToUtc(dateStr: string, offsetHours: number): Date {
 
 export async function GET(request: NextRequest) {
   try {
+    // Server-side view permission check
+    const { getServerSession } = await import('next-auth')
+    const { authOptions } = await import('@/lib/auth')
+    const session = await getServerSession(authOptions)
+    if (!session?.user) {
+      return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
+    }
+    const role = ((session.user as Record<string, unknown>).role as string) || 'cajero'
+    const perms = await fetchPermissions(role)
+    if (!perms.views.includes('dashboard')) {
+      return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
+    }
+
     const branchId = await resolveBranchId(request)
     const { searchParams } = new URL(request.url)
     const period = searchParams.get('period') || 'month'

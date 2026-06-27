@@ -157,10 +157,6 @@ export function setCustomPermissions(perms: Record<string, UserPermissions>) {
       if (dbPerms.canManageExpenses && !views.includes('expenses')) {
         views = [...views, 'expenses']
       }
-      // Auto-add 'dashboard' to views if not present (safe default)
-      if (!views.includes('dashboard')) {
-        views = [...views, 'dashboard']
-      }
       customPermissions[role] = { ...defaults, ...dbPerms, views }
     } else {
       customPermissions[role] = dbPerms
@@ -201,9 +197,6 @@ export async function fetchPermissions(role: string): Promise<UserPermissions> {
         let views = dbPerms[role].views || defaults.views
         if (dbPerms[role].canManageExpenses && !views.includes('expenses')) {
           views = [...views, 'expenses']
-        }
-        if (!views.includes('dashboard')) {
-          views = [...views, 'dashboard']
         }
         return { ...defaults, ...dbPerms[role], views }
       }

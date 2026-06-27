@@ -101,6 +101,7 @@ function fmtStock(n: number): string {
 export function ProductsTable() {
   const { permissions } = useAuth()
   const canManage = permissions.canManageProducts
+  const canSeeCost = permissions.role === 'admin' || permissions.role === 'gerente'
   const { multiEnabled, refCode, sym: currencySym, fmt: fmtCurrency } = useCurrency()
   const selectedBranchId = useAppStore((s) => s.selectedBranchId)
   const branches = useAppStore((s) => s.branches)
@@ -560,7 +561,9 @@ export function ProductsTable() {
                   <TableHead>Producto</TableHead>
                   <TableHead className="hidden sm:table-cell">SKU</TableHead>
                   <TableHead>Categoría</TableHead>
+                  {canSeeCost && (
                   <TableHead className="text-right">Costo <button type="button" onClick={() => setShowCost(!showCost)} className="ml-1 inline-flex"><Eye className={`h-3.5 w-3.5 ${showCost ? 'text-green-500' : 'text-green-500/40 hover:text-green-500'} transition-colors`} /></button></TableHead>
+                  )}
                   <TableHead className="text-right">Precio</TableHead>
                   <TableHead className="text-right hidden md:table-cell">Stock</TableHead>
                   <TableHead>Estado</TableHead>
@@ -587,6 +590,7 @@ export function ProductsTable() {
                           {product.category?.name || '—'}
                         </Badge>
                       </TableCell>
+                      {canSeeCost && (
                       <TableCell className="text-right tabular-nums">
                         <button type="button" onClick={() => setShowCost(!showCost)} className="hover:opacity-80 transition-opacity">
                           {showCost
@@ -595,6 +599,7 @@ export function ProductsTable() {
                           }
                         </button>
                       </TableCell>
+                      )}
                       <TableCell className="text-right font-semibold tabular-nums">
                         {product.currency?.symbol || currencySym}{fmt(effectivePrice)}
                         {hasBranchPrice && (
@@ -825,6 +830,7 @@ export function ProductsTable() {
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
+              {canSeeCost && (
               <div className="space-y-2">
                 <Label htmlFor="pcost">Costo Promedio</Label>
                 <Input
@@ -836,6 +842,7 @@ export function ProductsTable() {
                   onChange={(e) => setFormCost(e.target.value)}
                 />
               </div>
+              )}
               <div className="space-y-2">
                 <Label htmlFor="pprice">Precio de Venta *</Label>
                 <Input
