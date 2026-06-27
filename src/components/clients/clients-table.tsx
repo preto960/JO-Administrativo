@@ -341,7 +341,7 @@ export function ClientsTable() {
   const activeCount = clients.filter((c) => !c.deletedAt && c.membership?.status === 'Activo').length
   const expiredCount = clients.filter((c) => !c.deletedAt && c.membership?.status === 'Vencido').length
   const noMembershipCount = clients.filter((c) => !c.deletedAt && (!c.membership?.status || c.membership?.status === 'Sin membresia')).length
-  const debtCount = clients.filter((c) => !c.deletedAt && c.receivables?.some((r: { pendingBalance: number; status: string }) => r.pendingBalance > 0 && r.status === 'pendiente')).length
+  const debtCount = clients.filter((c) => !c.deletedAt && c.receivables?.some((r: { pendingBalance: number; status: string }) => r.pendingBalance > 0 && (r.status === 'pendiente' || r.status === 'parcial'))).length
 
   const searchLower = search.toLowerCase().trim()
   const filtered = clients.filter((c) => {
@@ -353,7 +353,7 @@ export function ClientsTable() {
       if (membershipFilter === 'activo' && c.membership?.status !== 'Activo') return false
       if (membershipFilter === 'vencido' && c.membership?.status !== 'Vencido') return false
       if (membershipFilter === 'sin' && c.membership?.status && c.membership?.status !== 'Sin membresia') return false
-      if (membershipFilter === 'deudas' && !c.receivables?.some((r: { pendingBalance: number; status: string }) => r.pendingBalance > 0 && r.status === 'pendiente')) return false
+      if (membershipFilter === 'deudas' && !c.receivables?.some((r: { pendingBalance: number; status: string }) => r.pendingBalance > 0 && (r.status === 'pendiente' || r.status === 'parcial'))) return false
     }
 
     // Search filter
