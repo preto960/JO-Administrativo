@@ -5,8 +5,8 @@ import { Prisma } from '@prisma/client'
 // ── Default payment method templates ──────────────────────────────
 
 const DEFAULT_METHODS = [
-  { code: 'divisas', name: 'Divisas', icon: 'Banknote', needsReference: false, isLocalCurrency: false, isCash: false, isCredit: false, sortOrder: 0, countries: 'ALL', isDefault: true },
-  { code: 'efectivo', name: 'Efectivo', icon: 'Banknote', needsReference: false, isLocalCurrency: true, isCash: true, isCredit: false, sortOrder: 1, countries: 'ALL', isDefault: true },
+  { code: 'efectivo', name: 'Efectivo', icon: 'Banknote', needsReference: false, isLocalCurrency: true, isCash: true, isCredit: false, sortOrder: 0, countries: 'ALL', isDefault: true },
+  { code: 'divisas', name: 'Divisas', icon: 'Banknote', needsReference: false, isLocalCurrency: false, isCash: false, isCredit: false, sortOrder: 1, countries: 'ALL', isDefault: true },
   { code: 'pago_movil', name: 'Pago Móvil', icon: 'Smartphone', needsReference: true, isLocalCurrency: true, isCash: false, isCredit: false, sortOrder: 2, countries: 'VE', isDefault: true },
   { code: 'tarjeta', name: 'Tarjeta', icon: 'CreditCard', needsReference: true, isLocalCurrency: true, isCash: false, isCredit: false, sortOrder: 3, countries: 'ALL', isDefault: true },
   { code: 'transferencia', name: 'Transferencia', icon: 'ArrowLeftRight', needsReference: true, isLocalCurrency: true, isCash: false, isCredit: false, sortOrder: 4, countries: 'ALL', isDefault: true },
@@ -15,6 +15,7 @@ const DEFAULT_METHODS = [
 
 // Track if migration was already attempted this process
 let _migrated = false
+let _sortOrderFixed = false
 
 /** Ensure new columns exist (backward compat with existing tables) */
 async function ensureColumns() {
@@ -61,6 +62,21 @@ async function ensureColumns() {
       console.log('[PaymentMethod] Migration: added enabledInSubscription column')
     } catch (e) {
       console.error('[PaymentMethod] Migration failed (enabledInSubscription):', e)
+    }
+  }
+  // Fix sortOrder: efectivo should be 0, divisas should be 1
+  if (!_sortOrderFixed) {
+    _sortOrderFixed = true
+    try {
+      await db.$executeRawUnsafe(
+        `UPDATE "PaymentMethod" SET "sortOrder" = 0 WHERE "code" = 'efectivo' AND "sortOrder" != 0`
+      )
+      await db.$executeRawUnsafe(
+        `UPDATE "PaymentMethod" SET "sortOrder" = 1 WHERE "code" = 'divisas' AND "sortOrder" != 1`
+      )
+      console.log('[PaymentMethod] Migration: efectivo → sortOrder 0, divisas → sortOrder 1')
+    } catch (e) {
+      console.error('[PaymentMethod] Migration failed (sortOrder fix):', e)
     }
   }
 }

@@ -297,7 +297,8 @@ export function SuppliersView() {
 
   const openPaymentDialog = (supplier: Supplier) => {
     setPaymentSupplier(supplier)
-    const firstNonCredit = paymentMethods.find(m => !m.isCredit)
+    const efectivo = paymentMethods.find(m => m.code === 'efectivo' && !m.isCredit)
+    const firstNonCredit = efectivo || paymentMethods.find(m => !m.isCredit)
     setPaymentMethod(firstNonCredit?.code || paymentMethods[0]?.code || '')
     setPaymentReference('')
     setPaymentAmount(supplier.balance.toFixed(2))

@@ -692,8 +692,9 @@ export function ClientsTable() {
   const openPayment = (client: Client) => {
     setPaymentClient(client)
     setPaymentSuccess(false)
-    // Set default to first available non-credit method
-    const firstNonCredit = paymentMethods.find(m => !m.isCredit)
+    // Set default to efectivo first, then first available non-credit method
+    const efectivo = paymentMethods.find(m => m.code === 'efectivo' && !m.isCredit)
+    const firstNonCredit = efectivo || paymentMethods.find(m => !m.isCredit)
     setPaymentMethod(firstNonCredit?.code || paymentMethods[0]?.code || '')
     setPaymentReference('')
     // Set amount in reference currency by default
@@ -921,7 +922,10 @@ export function ClientsTable() {
     ]).then(([methods, registers, currencies]) => {
       const list = Array.isArray(methods) && methods.length > 0 ? methods : FALLBACK_METHODS.filter(m => m.enabled)
       setRenewMethods(list)
-      if (list.length > 0) setRenewPaymentMethod(list[0].code)
+      if (list.length > 0) {
+        const efectivo = list.find((m: { code: string }) => m.code === 'efectivo')
+        setRenewPaymentMethod(efectivo?.code || list[0].code)
+      }
       const openReg = registers?.find((r: { status: string }) => r.status === 'abierta')
       if (openReg) setOpenCashRegId(openReg.id)
       if (Array.isArray(currencies)) setRenewCurrencies(currencies)

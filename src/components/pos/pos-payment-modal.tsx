@@ -173,12 +173,12 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
         if (enabled.length > 0) setMethod(enabled[0].code)
       } else {
         setDbMethods(FALLBACK_METHODS)
-        setMethod(FALLBACK_METHODS[0]?.code || 'divisas')
+        setMethod(FALLBACK_METHODS[0]?.code || 'efectivo')
       }
     }).catch(() => {
       // Fallback to hardcoded
       setDbMethods(FALLBACK_METHODS)
-      setMethod(FALLBACK_METHODS[0]?.code || 'divisas')
+      setMethod(FALLBACK_METHODS[0]?.code || 'efectivo')
     })
   }, [country])
 

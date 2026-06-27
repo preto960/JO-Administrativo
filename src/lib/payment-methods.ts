@@ -56,8 +56,8 @@ export function invalidatePaymentMethodsCache() {
 
 // Fallback defaults for when the DB table doesn't exist yet
 export const FALLBACK_METHODS: PaymentMethodRecord[] = [
-  { code: 'divisas', name: 'Divisas', icon: 'Banknote', enabled: true, needsReference: false, isLocalCurrency: false, isCash: false, isCredit: false, sortOrder: 0, countries: 'ALL' },
-  { code: 'efectivo', name: 'Efectivo', icon: 'Banknote', enabled: true, needsReference: false, isLocalCurrency: true, isCash: true, isCredit: false, sortOrder: 1, countries: 'ALL' },
+  { code: 'efectivo', name: 'Efectivo', icon: 'Banknote', enabled: true, needsReference: false, isLocalCurrency: true, isCash: true, isCredit: false, sortOrder: 0, countries: 'ALL' },
+  { code: 'divisas', name: 'Divisas', icon: 'Banknote', enabled: true, needsReference: false, isLocalCurrency: false, isCash: false, isCredit: false, sortOrder: 1, countries: 'ALL' },
   { code: 'pago_movil', name: 'Pago Móvil', icon: 'Smartphone', enabled: true, needsReference: true, isLocalCurrency: true, isCash: false, isCredit: false, sortOrder: 2, countries: 'VE' },
   { code: 'tarjeta', name: 'Tarjeta', icon: 'CreditCard', enabled: true, needsReference: true, isLocalCurrency: true, isCash: false, isCredit: false, sortOrder: 3, countries: 'ALL' },
   { code: 'transferencia', name: 'Transferencia', icon: 'ArrowLeftRight', enabled: true, needsReference: true, isLocalCurrency: true, isCash: false, isCredit: false, sortOrder: 4, countries: 'ALL' },
