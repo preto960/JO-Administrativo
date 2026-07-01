@@ -4,15 +4,27 @@ import { resolveBranchId } from '@/lib/resolve-branch'
 import { logAction } from '@/lib/audit-log'
 import { formatCurrency } from '@/lib/currency'
 import { getPaymentMethodsFromDB, FALLBACK_METHODS } from '@/lib/payment-methods'
+import { requireAuth } from '@/lib/require-auth'
+import { getPermissions } from '@/lib/permissions'
 
 export async function GET(request: NextRequest) {
   try {
+    const auth = await requireAuth()
+    if ('status' in auth) return auth
+    const perms = getPermissions(auth.role)
+
     const { searchParams } = new URL(request.url)
     const queryBranchId = searchParams.get('branchId')
     const branchId = queryBranchId || await resolveBranchId(request)
 
+    // Cajeros solo ven sus propias cajas
+    const isRestricted = !perms.canManageCash && auth.role === 'cajero'
+
     const registers = await db.cashRegister.findMany({
-      where: { branchId },
+      where: {
+        branchId,
+        ...(isRestricted ? { userId: auth.userId } : {}),
+      },
       orderBy: { openingDate: 'desc' },
       include: {
         user: { select: { id: true, name: true } },
