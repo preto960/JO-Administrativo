@@ -373,27 +373,23 @@ export function FinancialDashboard() {
           icon={Package}
           color="violet"
         />
-        {/* Split card: Clientes + Asistencias */}
-        <Card className="bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-800">
-          <CardContent className="p-4">
-            <div className="grid grid-cols-2 gap-2">
-              <div className="flex items-center gap-2">
-                <Users className="h-4 w-4 shrink-0" />
-                <div>
-                  <p className="text-[10px] font-medium opacity-70">Clientes</p>
-                  <p className="text-lg font-bold">{totalClients}</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 border-l border-amber-200 dark:border-amber-800 pl-2">
-                <UserCheck className="h-4 w-4 shrink-0" />
-                <div>
-                  <p className="text-[10px] font-medium opacity-70">Asistencias{data?.chartLabel ? ` (${data.chartLabel})` : ''}</p>
-                  <p className="text-lg font-bold">{totalAttendance}</p>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <KpiCard
+          title="Clientes"
+          value={totalClients.toString()}
+          icon={Users}
+          color="amber"
+        />
+      </div>
+
+      {/* KPI Cards - Row 3: Asistencias del período */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <KpiCard
+          title={`Asistencias (${data.chartLabel})`}
+          value={totalAttendance.toString()}
+          icon={UserCheck}
+          trend="up"
+          color="primary"
+        />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
