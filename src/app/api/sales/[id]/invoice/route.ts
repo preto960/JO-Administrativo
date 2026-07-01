@@ -1,6 +1,7 @@
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { db } from '@/lib/db'
+import { fetchAppTz } from '@/lib/tz-helpers'
 import { NextRequest, NextResponse } from 'next/server'
 
 export async function GET(
@@ -34,6 +35,12 @@ export async function GET(
     if (!sale) {
       return NextResponse.json({ error: 'Venta no encontrada' }, { status: 404 })
     }
+
+    const appTz = await fetchAppTz()
+    const tzOpt = { timeZone: appTz.timezone }
+    const loc = appTz.locale
+    const fmtDateFull = (d: Date) => d.toLocaleDateString(loc, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', ...tzOpt })
+    const fmtDateShort = (d: Date) => d.toLocaleDateString(loc, { year: 'numeric', month: '2-digit', day: '2-digit', ...tzOpt })
 
     const businessName = settings?.businessName || 'Mi Empresa'
     const rif = settings?.rif || ''
@@ -118,10 +125,7 @@ export async function GET(
     doc.setTextColor(...darkText)
     doc.setFont('helvetica', 'normal')
     const saleDate = sale.date
-      ? new Date(sale.date).toLocaleDateString('es-VE', {
-          year: 'numeric', month: '2-digit', day: '2-digit',
-          hour: '2-digit', minute: '2-digit',
-        })
+      ? fmtDateFull(new Date(sale.date))
       : ''
     doc.text(saleDate, 50, y + 26)
 
@@ -283,9 +287,7 @@ export async function GET(
       if (y + 40 > ph - 80) { doc.addPage(); y = 40 }
 
       const dueDateStr = receivable.dueDate
-        ? new Date(receivable.dueDate).toLocaleDateString('es-VE', {
-            year: 'numeric', month: '2-digit', day: '2-digit',
-          })
+        ? fmtDateShort(new Date(receivable.dueDate))
         : 'No definida'
       const pendingStr = fmt(receivable.pendingBalance)
 
@@ -319,7 +321,7 @@ export async function GET(
       doc.setTextColor(...mutedText)
       doc.setFont('helvetica', 'normal')
       doc.text(
-        `${businessName} \u2014 Generado el ${new Date().toLocaleDateString('es-VE')}`,
+        `${businessName} \u2014 Generado el ${fmtDateShort(new Date())}`,
         pw / 2, ph - 22, { align: 'center' },
       )
       doc.text(

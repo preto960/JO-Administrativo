@@ -2,6 +2,11 @@ import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import type { Prisma } from '@prisma/client'
 import { getPaymentMethodsFromDB, FALLBACK_METHODS } from './payment-methods'
+import { fetchAppTz } from './tz-helpers'
+
+// ─── Module-level TZ state (set by exported functions before calling helpers) ──
+let _tz: string | undefined
+let _locale: string | undefined
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -79,23 +84,21 @@ function fmt(amount: number, decimals = 2): string {
 }
 
 function fmtDate(d: Date): string {
-  return d.toLocaleString('es-VE', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  })
+  const opts: Intl.DateTimeFormatOptions = {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  }
+  if (_tz) opts.timeZone = _tz
+  return d.toLocaleString(_locale || 'es-VE', opts)
 }
 
 function fmtDateShort(d: Date): string {
-  return d.toLocaleString('es-VE', {
-    day: '2-digit',
-    month: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
+  const opts: Intl.DateTimeFormatOptions = {
+    day: '2-digit', month: '2-digit',
+    hour: '2-digit', minute: '2-digit',
+  }
+  if (_tz) opts.timeZone = _tz
+  return d.toLocaleString(_locale || 'es-VE', opts)
 }
 
 function cs(refCurrency: string): string {
@@ -515,6 +518,10 @@ function drawFooter(doc: jsPDF, totalPages: number, info: { businessName: string
 // ─── PDF Generator ────────────────────────────────────────────────────────────
 
 export async function generateCashClosePDF(report: CashCloseReport): Promise<Buffer> {
+  const appTz = await fetchAppTz()
+  _tz = appTz.timezone
+  _locale = appTz.locale
+
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'pt',
@@ -561,6 +568,10 @@ export async function generateMultiCashClosePDF(reports: CashCloseReport[]): Pro
   if (reports.length === 1) {
     return generateCashClosePDF(reports[0])
   }
+
+  const appTz = await fetchAppTz()
+  _tz = appTz.timezone
+  _locale = appTz.locale
 
   const doc = new jsPDF({
     orientation: 'portrait',

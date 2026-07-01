@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { generateStatementPDF } from '@/lib/statement-pdf'
+import { fetchAppTz } from '@/lib/tz-helpers'
 import { NextRequest, NextResponse } from 'next/server'
 
 export async function GET(
@@ -36,8 +37,9 @@ export async function GET(
       return NextResponse.json({ error: 'Cliente no encontrado' }, { status: 404 })
     }
 
+    const appTz = await fetchAppTz()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const pdfBuffer = generateStatementPDF(client as any, settings as any)
+    const pdfBuffer = generateStatementPDF(client as any, settings as any, appTz.timezone, appTz.locale)
 
     return new NextResponse(new Uint8Array(pdfBuffer), {
       headers: {

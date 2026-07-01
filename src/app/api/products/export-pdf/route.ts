@@ -3,6 +3,7 @@ import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { db } from '@/lib/db'
 import { resolveBranchId } from '@/lib/resolve-branch'
+import { fetchAppTz } from '@/lib/tz-helpers'
 
 // ─── Colors ───────────────────────────────────────────────────────────────────
 
@@ -27,14 +28,16 @@ function fmt(amount: number, decimals = 2): string {
   })
 }
 
-function fmtDate(d: Date): string {
-  return d.toLocaleString('es-VE', {
+function fmtDate(d: Date, tz?: string, locale?: string): string {
+  const opts: Intl.DateTimeFormatOptions = {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
-  })
+  }
+  if (tz) opts.timeZone = tz
+  return d.toLocaleString(locale || 'es-VE', opts)
 }
 
 function fmtStock(stock: number): string {
@@ -63,6 +66,8 @@ function generateProductsPDF(
     address: string
     phone: string
   },
+  tz?: string,
+  locale?: string,
 ): Buffer {
   const doc = new jsPDF({
     orientation: 'portrait',
@@ -108,7 +113,7 @@ function generateProductsPDF(
   doc.setFontSize(9)
   doc.setTextColor(...C.gray)
   doc.setFont('helvetica', 'normal')
-  doc.text(`Fecha de generacion: ${fmtDate(new Date())}`, 45, 96)
+  doc.text(`Fecha de generacion: ${fmtDate(new Date(), tz, locale)}`, 45, 96)
 
   // ─── Summary ────────────────────────────────────────────────────────────
   const totalProducts = products.length
@@ -285,7 +290,8 @@ export async function GET(request: NextRequest) {
     })
 
     // Generate PDF
-    const pdfBuffer = generateProductsPDF(rows, companyInfo)
+    const appTz = await fetchAppTz()
+    const pdfBuffer = generateProductsPDF(rows, companyInfo, appTz.timezone, appTz.locale)
 
     return new NextResponse(new Uint8Array(pdfBuffer), {
       headers: {

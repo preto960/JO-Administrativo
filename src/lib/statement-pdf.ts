@@ -59,6 +59,8 @@ export interface ClientWithReceivables extends Client {
 export function generateStatementPDF(
   client: ClientWithReceivables,
   settings: Settings,
+  tz?: string,
+  locale?: string,
 ): Buffer {
   const businessName = settings.businessName || 'Mi Empresa'
   const rif = settings.rif || ''
@@ -67,8 +69,12 @@ export function generateStatementPDF(
   const exchangeRate = settings.exchangeRate || 0
   const referenceCurrency = settings.referenceCurrency || 'USD'
 
+  const loc = locale || 'es-VE'
+  const tzOpt = tz ? { timeZone: tz } : {}
   const fmt = (n: number) =>
-    n.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    n.toLocaleString(loc, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  const fmtDate = (d: Date, opts?: Intl.DateTimeFormatOptions) =>
+    d.toLocaleDateString(loc, { year: 'numeric', month: '2-digit', day: '2-digit', ...tzOpt, ...opts })
 
   const totalDebt = client.receivables.reduce((sum, r) => sum + r.pendingBalance, 0)
   const symbol = referenceCurrency === 'EUR' ? '\u20ac' : '$'
@@ -115,7 +121,7 @@ export function generateStatementPDF(
   doc.setTextColor(160, 190, 230)
   doc.setFont('helvetica', 'normal')
   doc.text(
-    new Date().toLocaleDateString('es-VE', { year: 'numeric', month: '2-digit', day: '2-digit' }),
+    fmtDate(new Date()),
     pw - 40, 58, { align: 'right' },
   )
 
@@ -156,10 +162,10 @@ export function generateStatementPDF(
     client.receivables.forEach((r, i) => {
       const sale = r.sale
       const saleDate = sale.date
-        ? new Date(sale.date).toLocaleDateString('es-VE', { year: 'numeric', month: '2-digit', day: '2-digit' })
+        ? fmtDate(new Date(sale.date))
         : ''
       const dueDateStr = r.dueDate
-        ? new Date(r.dueDate).toLocaleDateString('es-VE', { year: 'numeric', month: '2-digit', day: '2-digit' })
+        ? fmtDate(new Date(r.dueDate))
         : ''
       const saleNum = sale.id.substring(0, 8).toUpperCase()
 

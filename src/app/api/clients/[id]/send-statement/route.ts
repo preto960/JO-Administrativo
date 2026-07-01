@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { generateStatementPDF } from '@/lib/statement-pdf'
+import { fetchAppTz } from '@/lib/tz-helpers'
 import { NextRequest, NextResponse } from 'next/server'
 
 export async function POST(
@@ -43,6 +44,9 @@ export async function POST(
     const rif = settings?.rif || ''
     const address = settings?.address || ''
     const phone = settings?.phone || ''
+    const appTz = await fetchAppTz()
+    const tzOpt = { timeZone: appTz.timezone }
+    const emailFmt = (d: Date) => d.toLocaleDateString(appTz.locale, { year: 'numeric', month: '2-digit', day: '2-digit', ...tzOpt })
 
     const totalDebt = client.receivables.reduce((sum, r) => sum + r.pendingBalance, 0)
     const symbol = (settings?.referenceCurrency || 'USD') === 'EUR' ? '\u20ac' : '$'
@@ -52,7 +56,7 @@ export async function POST(
     // Generate PDF directly (no HTTP fetch)
     console.log('[Email] Generando PDF del estado de cuenta...')
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const pdfBuffer = generateStatementPDF(client as any, settings as any)
+    const pdfBuffer = generateStatementPDF(client as any, settings as any, appTz.timezone, appTz.locale)
     console.log('[Email] PDF generado correctamente, enviando email...')
 
     // Send email
@@ -66,11 +70,11 @@ export async function POST(
       ? client.receivables.map((r, i) => {
           const sale = r.sale
           const saleDate = sale.date
-            ? new Date(sale.date).toLocaleDateString('es-VE')
+            ? emailFmt(new Date(sale.date))
             : ''
           const dueDateStr = r.dueDate
-            ? new Date(r.dueDate).toLocaleDateString('es-VE')
-            : '\u2014'
+            ? emailFmt(new Date(r.dueDate))
+            : '\u2011'
           return `
             <tr style="border-bottom: 1px solid #eee;">
               <td style="padding: 8px; text-align: center;">${i + 1}</td>
@@ -88,7 +92,7 @@ export async function POST(
     const sendResult = await resend.emails.send({
       from: fromEmail,
       to: [client.email],
-      subject: `Estado de Cuenta - ${client.name} - ${new Date().toLocaleDateString('es-VE')}`,
+      subject: `Estado de Cuenta - ${client.name} - ${emailFmt(new Date())}`,
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
           <div style="background: #1a3a6b; padding: 20px; border-radius: 8px 8px 0 0;">
@@ -104,7 +108,7 @@ export async function POST(
               ${client.phone ? `<tr><td style="padding: 6px 0; font-weight: bold;">Telefono:</td><td style="padding: 6px 0;">${client.phone}</td></tr>` : ''}
               <tr>
                 <td style="padding: 6px 0; font-weight: bold;">Fecha:</td>
-                <td style="padding: 6px 0;">${new Date().toLocaleDateString('es-VE')}</td>
+                <td style="padding: 6px 0;">${emailFmt(new Date())}</td>
               </tr>
               <tr>
                 <td style="padding: 6px 0; font-weight: bold;">Facturas pendientes:</td>

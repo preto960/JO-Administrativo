@@ -147,7 +147,7 @@ export async function GET() {
       c.phone || '',
       c.email || '',
       c.memberships[0]?.tarifa || '',
-      c.memberships[0]?.endDate ? new Date(c.memberships[0].endDate).toISOString().split('T')[0] : '',
+      c.memberships[0]?.endDate ? new Date(c.memberships[0].endDate).toLocaleDateString('en-CA', { timeZone: appTz.timezone }) : '',
       c.memberships[0]?.daysRemaining ?? 0,
     ])
 
