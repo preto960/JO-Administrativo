@@ -111,7 +111,6 @@ export async function GET(
 
     const posTotal = posSales.reduce((sum, s) => sum + s.total, 0)
     const subTotal = subscriptionSales.reduce((sum, s) => sum + s.total, 0)
-    const realInRegister = posTotal + subTotal
 
     // Manual cash movements (exclude subscription/sale-linked ones)
     // Subscription movements have [saleId] prefix or contain "Suscripción"/"Renovación"
@@ -121,6 +120,13 @@ export async function GET(
       !m.concept.includes('Renovación')
     )
 
+    const totalEntries = manualMovements.filter(m => m.type === 'entrada').reduce((s, m) => s + m.amount, 0)
+    const totalExits = manualMovements.filter(m => m.type === 'salida').reduce((s, m) => s + m.amount, 0)
+    const netMovements = totalEntries - totalExits
+
+    // Real en Caja = ventas no-crédito + movimientos manuales netos
+    const realInRegister = posTotal + subTotal + netMovements
+
     const movementEntries = manualMovements.map(m => ({
       id: m.id,
       date: m.createdAt.toISOString(),
@@ -128,10 +134,6 @@ export async function GET(
       amount: m.amount,
       concept: m.concept,
     }))
-
-    const totalEntries = manualMovements.filter(m => m.type === 'entrada').reduce((s, m) => s + m.amount, 0)
-    const totalExits = manualMovements.filter(m => m.type === 'salida').reduce((s, m) => s + m.amount, 0)
-    const netMovements = totalEntries - totalExits
 
     return NextResponse.json({
       posSales: posSales.map(s => ({

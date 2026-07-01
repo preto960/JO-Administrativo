@@ -514,8 +514,17 @@ export function CashRegisterView() {
       setShowMovement(false)
       setMoveAmount('')
       setMoveConcept('')
+      const movedRegId = movementRegId
       setMovementRegId(null)
       fetchData(filterBranchId)
+      // Refresh breakdown if it was open for this register
+      if (expandedBreakdown === movedRegId) {
+        setLoadingBreakdown(true)
+        api.get<any>(`/api/cash-register/${movedRegId}/sales-breakdown`)
+          .then(data => setBreakdownData(data))
+          .catch(() => {})
+          .finally(() => setLoadingBreakdown(false))
+      }
     } catch {
       toast.error('Error al registrar movimiento')
     } finally {
