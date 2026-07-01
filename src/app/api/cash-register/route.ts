@@ -17,13 +17,13 @@ export async function GET(request: NextRequest) {
     const queryBranchId = searchParams.get('branchId')
     const branchId = queryBranchId || await resolveBranchId(request)
 
-    // Cajeros solo ven sus propias cajas
-    const isRestricted = !perms.canManageCash && auth.role === 'cajero'
+    // Cajeros solo ven sus propias cajas; admin y gerente ven todas
+    const isCajero = auth.role === 'cajero'
 
     const registers = await db.cashRegister.findMany({
       where: {
         branchId,
-        ...(isRestricted ? { userId: auth.userId } : {}),
+        ...(isCajero ? { userId: auth.userId } : {}),
       },
       orderBy: { openingDate: 'desc' },
       include: {
