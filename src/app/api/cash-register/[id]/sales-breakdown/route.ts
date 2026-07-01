@@ -108,21 +108,11 @@ export async function GET(
     })
 
     // Payment method breakdown (non-credit only)
-    // Hybrid sales (multiple payments) are grouped as "Híbrido (metodo1, metodo2)"
+    // Each payment is summed into its own method (hybrid parts go to their individual methods)
     const methodTotals: Record<string, { amount: number; count: number }> = {}
     for (const s of nonCreditSales) {
-      const nonCreditPayments = s.payments.filter(p => !creditCodes.has(p.method))
-      if (nonCreditPayments.length === 0) continue
-
-      if (nonCreditPayments.length > 1) {
-        // Hybrid sale — group under a single "Híbrido (...)" key
-        const label = buildHybridLabel(nonCreditPayments, pmNameMap)
-        if (!methodTotals[label]) methodTotals[label] = { amount: 0, count: 0 }
-        methodTotals[label].amount += s.total
-        methodTotals[label].count++
-      } else {
-        // Single payment — group by method name (not code)
-        const p = nonCreditPayments[0]
+      for (const p of s.payments) {
+        if (creditCodes.has(p.method)) continue
         const name = pmNameMap.get(p.method) || p.method
         if (!methodTotals[name]) methodTotals[name] = { amount: 0, count: 0 }
         methodTotals[name].amount += p.amount
