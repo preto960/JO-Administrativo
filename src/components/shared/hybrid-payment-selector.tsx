@@ -62,9 +62,11 @@ export function HybridPaymentSelector({
 }: HybridPaymentSelectorProps) {
   const [isHybrid, setIsHybrid] = useState(false)
   const [singleMethod, setSingleMethod] = useState('')
-  const [singleAmount, setSingleAmount] = useState(total.toFixed(2))
+  const [singleAmountText, setSingleAmountText] = useState(String(total))
   const [singleReference, setSingleReference] = useState('')
   const [entries, setEntries] = useState<HybridPaymentEntry[]>([])
+  // Raw text for each hybrid entry input (so user types freely without .00 forcing)
+  const [entryTexts, setEntryTexts] = useState<string[]>([])
 
   // Set default single method on mount
   useEffect(() => {
@@ -83,16 +85,16 @@ export function HybridPaymentSelector({
     setSingleReference('')
     const m = methods.find(pm => pm.code === code)
     if (m?.isLocalCurrency && multiEnabled) {
-      setSingleAmount((total * exchangeRate).toFixed(2))
+      setSingleAmountText(String(total * exchangeRate))
     } else {
-      setSingleAmount(total.toFixed(2))
+      setSingleAmountText(String(total))
     }
     onModeChange?.(false)
     onChange([{ method: code, amount: total, reference: '' }])
   }
 
   const handleSingleAmountChange = (val: string) => {
-    setSingleAmount(val)
+    setSingleAmountText(val)
     const parsed = parseFloat(val) || 0
     const amount = isLocalSingle && exchangeRate > 0
       ? Math.round((parsed / exchangeRate) * 100) / 100
@@ -102,7 +104,7 @@ export function HybridPaymentSelector({
 
   const handleSingleRefChange = (val: string) => {
     setSingleReference(val)
-    const parsed = parseFloat(singleAmount) || 0
+    const parsed = parseFloat(singleAmountText) || 0
     const amount = isLocalSingle && exchangeRate > 0
       ? Math.round((parsed / exchangeRate) * 100) / 100
       : parsed
@@ -129,6 +131,8 @@ export function HybridPaymentSelector({
   }
 
   const handleHybridAmount = (idx: number, val: string) => {
+    // Update raw text for the input
+    setEntryTexts(prev => { const n = [...prev]; n[idx] = val; return n })
     const parsed = parseFloat(val) || 0
     const m = methods.find(pm => pm.code === entries[idx].method)
     const amount = m?.isLocalCurrency && multiEnabled && exchangeRate > 0
@@ -147,8 +151,14 @@ export function HybridPaymentSelector({
     emitHybrid(next)
   }
 
-  const addEntry = () => setEntries(prev => [...prev, { method: '', amount: 0, reference: '' }])
-  const removeEntry = (idx: number) => setEntries(prev => prev.filter((_, i) => i !== idx))
+  const addEntry = () => {
+    setEntries(prev => [...prev, { method: '', amount: 0, reference: '' }])
+    setEntryTexts(prev => [...prev, ''])
+  }
+  const removeEntry = (idx: number) => {
+    setEntries(prev => prev.filter((_, i) => i !== idx))
+    setEntryTexts(prev => prev.filter((_, i) => i !== idx))
+  }
 
   const toggleHybrid = () => {
     const next = !isHybrid
@@ -156,10 +166,11 @@ export function HybridPaymentSelector({
     onModeChange?.(next)
     if (next) {
       setEntries([{ method: nonCreditMethods[0]?.code || '', amount: 0, reference: '' }])
+      setEntryTexts([''])
       emitHybrid([{ method: nonCreditMethods[0]?.code || '', amount: 0, reference: '' }])
     } else {
       setSingleMethod(methods[0]?.code || '')
-      setSingleAmount(total.toFixed(2))
+      setSingleAmountText(String(total))
       setSingleReference('')
       onChange([{ method: methods[0]?.code || '', amount: total, reference: '' }])
     }
@@ -197,10 +208,10 @@ export function HybridPaymentSelector({
           </RadioGroup>
           <div className="space-y-2">
             <Label htmlFor="hps-single-amt">Monto {isLocalSingle ? `(${localCurrencySymbol})` : `(${currencySymbol})`}</Label>
-            <Input id="hps-single-amt" type="text" inputMode="decimal" value={singleAmount} onChange={e => handleSingleAmountChange(e.target.value)} onWheel={e => e.currentTarget.blur()} />
+            <Input id="hps-single-amt" type="text" inputMode="decimal" value={singleAmountText} onChange={e => handleSingleAmountChange(e.target.value)} onWheel={e => e.currentTarget.blur()} />
             {multiEnabled && isLocalSingle && (
               <p className="text-xs text-muted-foreground">
-                Equivale a {currencySymbol}{(parseFloat(singleAmount) || 0 / exchangeRate).toFixed(2)} (Tasa: {exchangeRate.toFixed(2)} {localCurrencySymbol}/{currencySymbol})
+                Equivale a {currencySymbol}{((parseFloat(singleAmountText) || 0) / exchangeRate).toFixed(2)} (Tasa: {exchangeRate.toFixed(2)} {localCurrencySymbol}/{currencySymbol})
               </p>
             )}
           </div>
@@ -245,8 +256,8 @@ export function HybridPaymentSelector({
                 </RadioGroup>
                 <div className="space-y-1">
                   <Label className="text-[10px]">Monto {isLocal ? `(${localCurrencySymbol})` : `(${currencySymbol})`}</Label>
-                  <Input type="text" inputMode="decimal" placeholder="0.00"
-                    value={isLocal ? (entry.amount * exchangeRate).toFixed(2) : entry.amount.toFixed(2)}
+                  <Input type="text" inputMode="decimal" placeholder="0"
+                    value={entryTexts[idx] ?? ''}
                     onChange={e => handleHybridAmount(idx, e.target.value)} className="text-sm" onWheel={e => e.currentTarget.blur()} />
                   {multiEnabled && isLocal && (
                     <p className="text-[10px] text-muted-foreground">Equivale a {currencySymbol}{entry.amount.toFixed(2)}</p>
