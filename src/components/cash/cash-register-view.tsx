@@ -1055,35 +1055,7 @@ export function CashRegisterView() {
                             </div>
                           )}
 
-                          {/* Cash movements (entradas/salidas) */}
-                          {breakdownData.movements && breakdownData.movements.length > 0 && (
-                            <div className="space-y-1">
-                              <div className="flex items-center justify-between">
-                                <p className="text-[10px] font-semibold text-muted-foreground uppercase">Movimientos de Caja</p>
-                                <div className="flex items-center gap-2 text-[10px]">
-                                  <span className="text-emerald-600 dark:text-emerald-400">+{fmtBase(breakdownData.totalEntries)}</span>
-                                  <span className="text-red-500 dark:text-red-400">-{fmtBase(breakdownData.totalExits)}</span>
-                                  <span className="font-medium">{breakdownData.netMovements >= 0 ? '+' : ''}{fmtBase(breakdownData.netMovements)}</span>
-                                </div>
-                              </div>
-                              {breakdownData.movements.map(m => (
-                                <div key={m.id} className={`flex items-center justify-between text-xs py-1 border-b last:border-b-0 ${m.type === 'entrada' ? 'border-emerald-200 dark:border-emerald-800' : 'border-red-200 dark:border-red-800'}`}>
-                                  <div className="min-w-0 flex-1 flex items-center gap-1.5">
-                                    {m.type === 'entrada'
-                                      ? <ArrowUpCircle className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                                      : <ArrowDownCircle className="h-3.5 w-3.5 text-red-500 dark:text-red-400 shrink-0" />
-                                    }
-                                    <span className="truncate block text-muted-foreground">{m.concept || (m.type === 'entrada' ? 'Entrada' : 'Salida')}</span>
-                                  </div>
-                                  <span className={`font-semibold shrink-0 ml-2 ${m.type === 'entrada' ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
-                                    {m.type === 'entrada' ? '+' : '-'}{fmtBase(m.amount)}
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-
-                          {breakdownData.posSales.length === 0 && breakdownData.subscriptionSales.length === 0 && breakdownData.creditSales.length === 0 && (!breakdownData.movements || breakdownData.movements.length === 0) && (
+                          {breakdownData.posSales.length === 0 && breakdownData.subscriptionSales.length === 0 && breakdownData.creditSales.length === 0 && (
                             <p className="text-xs text-muted-foreground text-center py-2">No hay ventas registradas en esta caja</p>
                           )}
                         </>
@@ -1318,32 +1290,7 @@ export function CashRegisterView() {
                                   ))}
                                 </div>
                               )}
-                              {hb.movements && hb.movements.length > 0 && (
-                                <div className="space-y-0.5">
-                                  <div className="flex items-center justify-between">
-                                    <p className="text-[9px] font-semibold text-muted-foreground uppercase">Movimientos</p>
-                                    <div className="flex items-center gap-1.5 text-[9px]">
-                                      <span className="text-emerald-600">+{fmtBase(hb.totalEntries)}</span>
-                                      <span className="text-red-500">-{fmtBase(hb.totalExits)}</span>
-                                    </div>
-                                  </div>
-                                  {hb.movements.map((m: any) => (
-                                    <div key={m.id} className="flex justify-between text-[10px] py-0.5">
-                                      <span className={`truncate mr-2 flex items-center gap-1 ${m.type === 'entrada' ? 'text-emerald-700' : 'text-red-600'}`}>
-                                        {m.type === 'entrada'
-                                          ? <ArrowUpCircle className="h-3 w-3 shrink-0" />
-                                          : <ArrowDownCircle className="h-3 w-3 shrink-0" />
-                                        }
-                                        {m.concept || (m.type === 'entrada' ? 'Entrada' : 'Salida')}
-                                      </span>
-                                      <span className={`font-medium shrink-0 ${m.type === 'entrada' ? 'text-emerald-700' : 'text-red-600'}`}>
-                                        {m.type === 'entrada' ? '+' : '-'}{fmtBase(m.amount)}
-                                      </span>
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                              {hb.posSales.length === 0 && hb.subscriptionSales.length === 0 && (!hb.movements || hb.movements.length === 0) && (
+                              {hb.posSales.length === 0 && hb.subscriptionSales.length === 0 && (
                                 <p className="text-[10px] text-muted-foreground text-center py-1">Sin ventas registradas</p>
                               )}
                             </div>
@@ -1632,32 +1579,7 @@ export function CashRegisterView() {
                     )}
                   </div>
                 )}
-                {closeBreakdown.movements && closeBreakdown.movements.length > 0 && (
-                  <div className="space-y-0.5">
-                    <div className="flex items-center justify-between">
-                      <p className="text-[9px] font-semibold text-muted-foreground uppercase">Movimientos</p>
-                      <div className="flex items-center gap-1.5 text-[9px]">
-                        <span className="text-emerald-600">+{fmtBase(closeBreakdown.totalEntries)}</span>
-                        <span className="text-red-500">-{fmtBase(closeBreakdown.totalExits)}</span>
-                      </div>
-                    </div>
-                    {closeBreakdown.movements.map((m) => (
-                      <div key={m.id} className="flex justify-between text-[10px] py-0.5">
-                        <span className={`truncate mr-2 flex items-center gap-1 ${m.type === 'entrada' ? 'text-emerald-700' : 'text-red-600'}`}>
-                          {m.type === 'entrada'
-                            ? <ArrowUpCircle className="h-3 w-3 shrink-0" />
-                            : <ArrowDownCircle className="h-3 w-3 shrink-0" />
-                          }
-                          {m.concept || (m.type === 'entrada' ? 'Entrada' : 'Salida')}
-                        </span>
-                        <span className={`font-medium shrink-0 ${m.type === 'entrada' ? 'text-emerald-700' : 'text-red-600'}`}>
-                          {m.type === 'entrada' ? '+' : '-'}{fmtBase(m.amount)}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {closeBreakdown.posSales.length === 0 && closeBreakdown.subscriptionSales.length === 0 && closeBreakdown.creditSales.length === 0 && (!closeBreakdown.movements || closeBreakdown.movements.length === 0) && (
+                {closeBreakdown.posSales.length === 0 && closeBreakdown.subscriptionSales.length === 0 && closeBreakdown.creditSales.length === 0 && (
                   <p className="text-[10px] text-muted-foreground text-center py-1">Sin ventas</p>
                 )}
               </div>

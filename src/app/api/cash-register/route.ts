@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { resolveBranchId } from '@/lib/resolve-branch'
 import { logAction } from '@/lib/audit-log'
 import { formatCurrency } from '@/lib/currency'
+import { getPaymentMethodsFromDB, FALLBACK_METHODS } from '@/lib/payment-methods'
 
 export async function GET(request: NextRequest) {
   try {
@@ -19,6 +20,57 @@ export async function GET(request: NextRequest) {
         _count: { select: { sales: true, movements: true } },
       },
     })
+
+    // Recalculate currentAmt for open registers from actual data
+    const pmList = await getPaymentMethodsFromDB().catch(() => FALLBACK_METHODS)
+    const creditCodes = new Set(pmList.filter(m => m.isCredit).map(m => m.code))
+
+    const openRegs = registers.filter(r => r.status === 'abierta')
+    if (openRegs.length > 0) {
+      const openRegIds = openRegs.map(r => r.id)
+
+      // Get all non-credit payments for open registers
+      const allPayments = await db.salePayment.findMany({
+        where: {
+          sale: { cashRegId: { in: openRegIds } },
+          method: { notIn: [...creditCodes] },
+        },
+        include: { sale: { select: { cashRegId: true } } },
+      })
+
+      // Get all manual movements for open registers (exclude subscription-linked)
+      const allMovements = await db.cashMovement.findMany({
+        where: { cashRegId: { in: openRegIds } },
+      })
+
+      for (const reg of openRegs) {
+        // Sum non-credit payments for this register
+        const paymentsTotal = allPayments
+          .filter(p => p.sale.cashRegId === reg.id)
+          .reduce((sum, p) => sum + p.amount, 0)
+
+        // Sum manual movements (exclude subscription/sale-linked: [saleId] prefix or Suscripción/Renovación)
+        const manualMovements = allMovements.filter(m =>
+          m.cashRegId === reg.id &&
+          !m.concept.match(/^\[[\w-]+\]\s*/) &&
+          !m.concept.includes('Suscripción') &&
+          !m.concept.includes('Renovación')
+        )
+        const netMovements = manualMovements.reduce((sum, m) =>
+          sum + (m.type === 'entrada' ? m.amount : -m.amount), 0)
+
+        const expectedAmt = Math.round((reg.initialAmt + paymentsTotal + netMovements) * 100) / 100
+
+        // Update DB if stale
+        if (Math.abs(reg.currentAmt - expectedAmt) > 0.01) {
+          await db.cashRegister.update({
+            where: { id: reg.id },
+            data: { currentAmt: expectedAmt },
+          })
+          reg.currentAmt = expectedAmt
+        }
+      }
+    }
 
     return NextResponse.json(registers)
   } catch (error) {
