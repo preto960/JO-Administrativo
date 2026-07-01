@@ -241,6 +241,11 @@ const numericFilter = (value: string) => {
   return cleaned
 }
 
+/** Helper to filter numeric input without any max limit (for close, movements, etc.) */
+const numericFilterNoLimit = (value: string) => {
+  return value.replace(/[^0-9.,]/g, '')
+}
+
 export function CashRegisterView() {
   const { user, permissions } = useAuth()
   const { branches, selectedBranchId, setSelectedBranchId } = useAppStore()
@@ -1509,7 +1514,7 @@ export function CashRegisterView() {
                 inputMode="numeric"
                 className="cash-input [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]"
                 value={moveAmount}
-                onChange={(e) => setMoveAmount(numericFilter(e.target.value))}
+                onChange={(e) => setMoveAmount(numericFilterNoLimit(e.target.value))}
                 placeholder="0.00"
               />
             </div>
@@ -1684,7 +1689,7 @@ export function CashRegisterView() {
                 inputMode="numeric"
                 className="cash-input [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]"
                 value={closeActual}
-                onChange={(e) => setCloseActual(numericFilter(e.target.value))}
+                onChange={(e) => setCloseActual(numericFilterNoLimit(e.target.value))}
                 placeholder={closeRegId ? fmt(registers.find(r => r.id === closeRegId)?.currentAmt || 0) : '0,00'}
               />
             </div>
@@ -1759,7 +1764,7 @@ export function CashRegisterView() {
                 className="cash-input [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]"
                 min="0"
                 value={withdrawalAmount}
-                onChange={(e) => setWithdrawalAmount(numericFilter(e.target.value))}
+                onChange={(e) => setWithdrawalAmount(numericFilterNoLimit(e.target.value))}
                 placeholder="0.00"
               />
             </div>
