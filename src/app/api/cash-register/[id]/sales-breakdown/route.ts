@@ -113,6 +113,26 @@ export async function GET(
     const subTotal = subscriptionSales.reduce((sum, s) => sum + s.total, 0)
     const realInRegister = posTotal + subTotal
 
+    // Manual cash movements (exclude subscription/sale-linked ones)
+    // Subscription movements have [saleId] prefix or contain "Suscripción"/"Renovación"
+    const manualMovements = movements.filter(m =>
+      !m.concept.match(/^\[[\w-]+\]\s*/) &&
+      !m.concept.includes('Suscripción') &&
+      !m.concept.includes('Renovación')
+    )
+
+    const movementEntries = manualMovements.map(m => ({
+      id: m.id,
+      date: m.createdAt.toISOString(),
+      type: m.type as 'entrada' | 'salida',
+      amount: m.amount,
+      concept: m.concept,
+    }))
+
+    const totalEntries = manualMovements.filter(m => m.type === 'entrada').reduce((s, m) => s + m.amount, 0)
+    const totalExits = manualMovements.filter(m => m.type === 'salida').reduce((s, m) => s + m.amount, 0)
+    const netMovements = totalEntries - totalExits
+
     return NextResponse.json({
       posSales: posSales.map(s => ({
         id: s.id, date: s.date, total: s.total,
@@ -128,6 +148,10 @@ export async function GET(
       creditTotal,
       methodTotals,
       realInRegister,
+      movements: movementEntries,
+      totalEntries,
+      totalExits,
+      netMovements,
     })
   } catch (error) {
     console.error('[GET cash-register sales-breakdown]', error)

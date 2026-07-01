@@ -195,8 +195,8 @@ export async function POST(
         })
         saleId = sale.id
 
-        // Handle cash register: only add to balance if isCash
-        if (cashRegId && pmInfo?.isCash) {
+        // Handle cash register: add to balance for all non-credit payments
+        if (cashRegId && pmInfo && !pmInfo.isCredit) {
           const register = await db.cashRegister.findUnique({ where: { id: cashRegId } })
           if (register && register.status === 'abierta') {
             await db.cashRegister.update({

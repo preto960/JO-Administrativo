@@ -290,6 +290,10 @@ export function CashRegisterView() {
     creditTotal: number
     methodTotals: Record<string, { amount: number; count: number }>
     realInRegister: number
+    movements: Array<{ id: string; date: string; type: 'entrada' | 'salida'; amount: number; concept: string }>
+    totalEntries: number
+    totalExits: number
+    netMovements: number
   } | null>(null)
   const [loadingBreakdown, setLoadingBreakdown] = useState(false)
   // Breakdown for close dialog
@@ -818,7 +822,7 @@ export function CashRegisterView() {
                         <p className="text-sm font-semibold tabular-nums">{fmtBase(reg.initialAmt)}</p>
                       </div>
                       <div className="text-center">
-                        <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Actual</p>
+                        <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Recaudado</p>
                         <p className="text-lg font-bold text-primary tabular-nums">{fmtBase(reg.currentAmt)}</p>
                       </div>
                       <div className="text-center">
@@ -1051,7 +1055,35 @@ export function CashRegisterView() {
                             </div>
                           )}
 
-                          {breakdownData.posSales.length === 0 && breakdownData.subscriptionSales.length === 0 && breakdownData.creditSales.length === 0 && (
+                          {/* Cash movements (entradas/salidas) */}
+                          {breakdownData.movements && breakdownData.movements.length > 0 && (
+                            <div className="space-y-1">
+                              <div className="flex items-center justify-between">
+                                <p className="text-[10px] font-semibold text-muted-foreground uppercase">Movimientos de Caja</p>
+                                <div className="flex items-center gap-2 text-[10px]">
+                                  <span className="text-emerald-600 dark:text-emerald-400">+{fmtBase(breakdownData.totalEntries)}</span>
+                                  <span className="text-red-500 dark:text-red-400">-{fmtBase(breakdownData.totalExits)}</span>
+                                  <span className="font-medium">{breakdownData.netMovements >= 0 ? '+' : ''}{fmtBase(breakdownData.netMovements)}</span>
+                                </div>
+                              </div>
+                              {breakdownData.movements.map(m => (
+                                <div key={m.id} className={`flex items-center justify-between text-xs py-1 border-b last:border-b-0 ${m.type === 'entrada' ? 'border-emerald-200 dark:border-emerald-800' : 'border-red-200 dark:border-red-800'}`}>
+                                  <div className="min-w-0 flex-1 flex items-center gap-1.5">
+                                    {m.type === 'entrada'
+                                      ? <ArrowUpCircle className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                                      : <ArrowDownCircle className="h-3.5 w-3.5 text-red-500 dark:text-red-400 shrink-0" />
+                                    }
+                                    <span className="truncate block text-muted-foreground">{m.concept || (m.type === 'entrada' ? 'Entrada' : 'Salida')}</span>
+                                  </div>
+                                  <span className={`font-semibold shrink-0 ml-2 ${m.type === 'entrada' ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+                                    {m.type === 'entrada' ? '+' : '-'}{fmtBase(m.amount)}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {breakdownData.posSales.length === 0 && breakdownData.subscriptionSales.length === 0 && breakdownData.creditSales.length === 0 && (!breakdownData.movements || breakdownData.movements.length === 0) && (
                             <p className="text-xs text-muted-foreground text-center py-2">No hay ventas registradas en esta caja</p>
                           )}
                         </>
@@ -1244,38 +1276,41 @@ export function CashRegisterView() {
                               <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                             </div>
                           )}
-                          {historyBreakdowns[reg.id] && !loadingHistoryBreakdown && (
+                          {(() => {
+                              const hb = historyBreakdowns[reg.id]
+                              if (!hb || loadingHistoryBreakdown) return null
+                              return (
                             <div className="rounded-md border p-2 space-y-1.5 max-h-48 overflow-y-auto">
                               <div className="grid grid-cols-2 gap-1.5">
                                 <div className="rounded-md bg-blue-50 dark:bg-blue-950/30 p-1.5 text-center">
                                   <p className="text-[9px] text-blue-600 dark:text-blue-400 uppercase font-medium">POS</p>
-                                  <p className="text-xs font-bold text-blue-700 dark:text-blue-300">{fmtBase(historyBreakdowns[reg.id].posTotal)}</p>
-                                  <p className="text-[9px] text-muted-foreground">{historyBreakdowns[reg.id].posSales.length} venta{historyBreakdowns[reg.id].posSales.length !== 1 ? 's' : ''}</p>
+                                  <p className="text-xs font-bold text-blue-700 dark:text-blue-300">{fmtBase(hb.posTotal)}</p>
+                                  <p className="text-[9px] text-muted-foreground">{hb.posSales.length} venta{hb.posSales.length !== 1 ? 's' : ''}</p>
                                 </div>
                                 <div className="rounded-md bg-emerald-50 dark:bg-emerald-950/30 p-1.5 text-center">
                                   <p className="text-[9px] text-emerald-600 dark:text-emerald-400 uppercase font-medium">Suscripciones</p>
-                                  <p className="text-xs font-bold text-emerald-700 dark:text-emerald-300">{fmtBase(historyBreakdowns[reg.id].subTotal)}</p>
-                                  <p className="text-[9px] text-muted-foreground">{historyBreakdowns[reg.id].subscriptionSales.length} renovación(es)</p>
+                                  <p className="text-xs font-bold text-emerald-700 dark:text-emerald-300">{fmtBase(hb.subTotal)}</p>
+                                  <p className="text-[9px] text-muted-foreground">{hb.subscriptionSales.length} renovación(es)</p>
                                 </div>
                               </div>
-                              {historyBreakdowns[reg.id].posSales.length > 0 && (
+                              {hb.posSales.length > 0 && (
                                 <div className="space-y-0.5">
                                   <p className="text-[9px] font-semibold text-muted-foreground uppercase">Ventas POS</p>
-                                  {historyBreakdowns[reg.id].posSales.slice(0, 5).map((s: any) => (
+                                  {hb.posSales.slice(0, 5).map((s: any) => (
                                     <div key={s.id} className="flex justify-between text-[10px] py-0.5">
                                       <span className="truncate mr-2">{s.description}</span>
                                       <span className="font-medium shrink-0">{fmtBase(s.total)}</span>
                                     </div>
                                   ))}
-                                  {historyBreakdowns[reg.id].posSales.length > 5 && (
-                                    <p className="text-[9px] text-muted-foreground text-center">...y {historyBreakdowns[reg.id].posSales.length - 5} más</p>
+                                  {hb.posSales.length > 5 && (
+                                    <p className="text-[9px] text-muted-foreground text-center">...y {hb.posSales.length - 5} más</p>
                                   )}
                                 </div>
                               )}
-                              {historyBreakdowns[reg.id].subscriptionSales.length > 0 && (
+                              {hb.subscriptionSales.length > 0 && (
                                 <div className="space-y-0.5">
                                   <p className="text-[9px] font-semibold text-muted-foreground uppercase">Suscripciones</p>
-                                  {historyBreakdowns[reg.id].subscriptionSales.map((s: any) => (
+                                  {hb.subscriptionSales.map((s: any) => (
                                     <div key={s.id} className="flex justify-between text-[10px] py-0.5">
                                       <span className="truncate mr-2">{s.clientName || 'Renovación'}{s.planName ? ` — ${s.planName}` : ''}</span>
                                       <span className="font-medium text-emerald-700 shrink-0">{fmtBase(s.total)}</span>
@@ -1283,11 +1318,37 @@ export function CashRegisterView() {
                                   ))}
                                 </div>
                               )}
-                              {historyBreakdowns[reg.id].posSales.length === 0 && historyBreakdowns[reg.id].subscriptionSales.length === 0 && (
+                              {hb.movements && hb.movements.length > 0 && (
+                                <div className="space-y-0.5">
+                                  <div className="flex items-center justify-between">
+                                    <p className="text-[9px] font-semibold text-muted-foreground uppercase">Movimientos</p>
+                                    <div className="flex items-center gap-1.5 text-[9px]">
+                                      <span className="text-emerald-600">+{fmtBase(hb.totalEntries)}</span>
+                                      <span className="text-red-500">-{fmtBase(hb.totalExits)}</span>
+                                    </div>
+                                  </div>
+                                  {hb.movements.map((m: any) => (
+                                    <div key={m.id} className="flex justify-between text-[10px] py-0.5">
+                                      <span className={`truncate mr-2 flex items-center gap-1 ${m.type === 'entrada' ? 'text-emerald-700' : 'text-red-600'}`}>
+                                        {m.type === 'entrada'
+                                          ? <ArrowUpCircle className="h-3 w-3 shrink-0" />
+                                          : <ArrowDownCircle className="h-3 w-3 shrink-0" />
+                                        }
+                                        {m.concept || (m.type === 'entrada' ? 'Entrada' : 'Salida')}
+                                      </span>
+                                      <span className={`font-medium shrink-0 ${m.type === 'entrada' ? 'text-emerald-700' : 'text-red-600'}`}>
+                                        {m.type === 'entrada' ? '+' : '-'}{fmtBase(m.amount)}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                              {hb.posSales.length === 0 && hb.subscriptionSales.length === 0 && (!hb.movements || hb.movements.length === 0) && (
                                 <p className="text-[10px] text-muted-foreground text-center py-1">Sin ventas registradas</p>
                               )}
                             </div>
-                          )}
+                              )
+                            })()}
                         </div>
                       )}
                     </div>
@@ -1571,7 +1632,32 @@ export function CashRegisterView() {
                     )}
                   </div>
                 )}
-                {closeBreakdown.posSales.length === 0 && closeBreakdown.subscriptionSales.length === 0 && closeBreakdown.creditSales.length === 0 && (
+                {closeBreakdown.movements && closeBreakdown.movements.length > 0 && (
+                  <div className="space-y-0.5">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[9px] font-semibold text-muted-foreground uppercase">Movimientos</p>
+                      <div className="flex items-center gap-1.5 text-[9px]">
+                        <span className="text-emerald-600">+{fmtBase(closeBreakdown.totalEntries)}</span>
+                        <span className="text-red-500">-{fmtBase(closeBreakdown.totalExits)}</span>
+                      </div>
+                    </div>
+                    {closeBreakdown.movements.map((m) => (
+                      <div key={m.id} className="flex justify-between text-[10px] py-0.5">
+                        <span className={`truncate mr-2 flex items-center gap-1 ${m.type === 'entrada' ? 'text-emerald-700' : 'text-red-600'}`}>
+                          {m.type === 'entrada'
+                            ? <ArrowUpCircle className="h-3 w-3 shrink-0" />
+                            : <ArrowDownCircle className="h-3 w-3 shrink-0" />
+                          }
+                          {m.concept || (m.type === 'entrada' ? 'Entrada' : 'Salida')}
+                        </span>
+                        <span className={`font-medium shrink-0 ${m.type === 'entrada' ? 'text-emerald-700' : 'text-red-600'}`}>
+                          {m.type === 'entrada' ? '+' : '-'}{fmtBase(m.amount)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {closeBreakdown.posSales.length === 0 && closeBreakdown.subscriptionSales.length === 0 && closeBreakdown.creditSales.length === 0 && (!closeBreakdown.movements || closeBreakdown.movements.length === 0) && (
                   <p className="text-[10px] text-muted-foreground text-center py-1">Sin ventas</p>
                 )}
               </div>
