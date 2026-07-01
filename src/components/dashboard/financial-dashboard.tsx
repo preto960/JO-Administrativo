@@ -7,7 +7,7 @@ import { useAppStore } from '@/stores/use-app-store'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { TrendingUp, TrendingDown, DollarSign, ShoppingCart, Target, PiggyBank, Package, Users, Receipt, Filter, CalendarDays, CheckCircle2, XCircle, Settings2, Loader2 } from 'lucide-react'
+import { TrendingUp, TrendingDown, DollarSign, ShoppingCart, Target, PiggyBank, Package, Users, Receipt, Filter, CalendarDays, CheckCircle2, XCircle, Settings2, Loader2, UserCheck } from 'lucide-react'
 import {
   AreaChart,
   Area,
@@ -43,6 +43,7 @@ interface DashboardData {
   perdidasPeriodo: number
   totalProductosActivos: number
   totalClientesActivos: number
+  totalAsistenciasPeriodo: number
   topProducts: { name: string; revenue: number; qty: number }[]
   recentSales: Array<{
     id: string
@@ -200,6 +201,7 @@ export function FinancialDashboard() {
 
   const totalProducts = data?.totalProductosActivos || 0
   const totalClients = data?.totalClientesActivos || 0
+  const totalAttendance = data?.totalAsistenciasPeriodo || 0
 
   // Fetch sales performance data
   useEffect(() => {
@@ -371,12 +373,27 @@ export function FinancialDashboard() {
           icon={Package}
           color="violet"
         />
-        <KpiCard
-          title="Clientes"
-          value={totalClients.toString()}
-          icon={Users}
-          color="amber"
-        />
+        {/* Split card: Clientes + Asistencias */}
+        <Card className="bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-800">
+          <CardContent className="p-4">
+            <div className="grid grid-cols-2 gap-2">
+              <div className="flex items-center gap-2">
+                <Users className="h-4 w-4 shrink-0" />
+                <div>
+                  <p className="text-[10px] font-medium opacity-70">Clientes</p>
+                  <p className="text-lg font-bold">{totalClients}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 border-l border-amber-200 dark:border-amber-800 pl-2">
+                <UserCheck className="h-4 w-4 shrink-0" />
+                <div>
+                  <p className="text-[10px] font-medium opacity-70">Asistencias{data?.chartLabel ? ` (${data.chartLabel})` : ''}</p>
+                  <p className="text-lg font-bold">{totalAttendance}</p>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">

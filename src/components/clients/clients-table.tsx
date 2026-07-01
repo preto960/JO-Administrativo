@@ -279,6 +279,16 @@ export function ClientsTable() {
   const [currentPage, setCurrentPage] = useState(1)
   const PAGE_SIZE = 20
 
+  // Attendance today count
+  const [attendanceToday, setAttendanceToday] = useState<number | null>(null)
+
+  useEffect(() => {
+    if (!isGym) return
+    api.get<{ count: number }>('/api/attendance/today-count')
+      .then(r => setAttendanceToday(r.count))
+      .catch(() => setAttendanceToday(null))
+  }, [isGym])
+
   const fetchClients = async () => {
     try {
       // Check expirations in background (gym only)
@@ -1052,6 +1062,11 @@ export function ClientsTable() {
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input placeholder="Buscar por nombre, apellido, cédula o teléfono..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" />
+            {isGym && attendanceToday !== null && (
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-semibold bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400 px-1.5 py-0.5 rounded">
+                Asistencias hoy: {attendanceToday}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-2 text-sm">
             <Switch

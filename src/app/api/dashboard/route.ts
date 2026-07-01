@@ -226,6 +226,11 @@ export async function GET(request: NextRequest) {
       },
     })
 
+    // ─── Attendance count for the selected period ───
+    const totalAsistenciasPeriodo = await db.attendance.count({
+      where: { date: { gte: startDate, lte: endDate } },
+    })
+
     // ─── Alerts: low stock ───
     const lowStockItems = await db.inventory.findMany({
       where: { branchId },
@@ -350,7 +355,7 @@ export async function GET(request: NextRequest) {
       costoVentasMes, cuentasPorCobrarMes, perdidasMes,
       costoVentasPeriodo, cuentasPorCobrarPeriodo, perdidasPeriodo,
       topProducts, recentSales,
-      totalProductosActivos, totalClientesActivos,
+      totalProductosActivos, totalClientesActivos, totalAsistenciasPeriodo,
       lowStockAlerts, overdueAlerts, overduePayableAlerts,
       chartData, chartLabel, period, openRegister,
     })
