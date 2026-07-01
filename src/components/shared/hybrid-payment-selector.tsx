@@ -197,7 +197,7 @@ export function HybridPaymentSelector({
           </RadioGroup>
           <div className="space-y-2">
             <Label htmlFor="hps-single-amt">Monto {isLocalSingle ? `(${localCurrencySymbol})` : `(${currencySymbol})`}</Label>
-            <Input id="hps-single-amt" type="number" step="0.01" value={singleAmount} onChange={e => handleSingleAmountChange(e.target.value)} />
+            <Input id="hps-single-amt" type="text" inputMode="decimal" value={singleAmount} onChange={e => handleSingleAmountChange(e.target.value)} onWheel={e => e.currentTarget.blur()} />
             {multiEnabled && isLocalSingle && (
               <p className="text-xs text-muted-foreground">
                 Equivale a {currencySymbol}{(parseFloat(singleAmount) || 0 / exchangeRate).toFixed(2)} (Tasa: {exchangeRate.toFixed(2)} {localCurrencySymbol}/{currencySymbol})
@@ -245,9 +245,9 @@ export function HybridPaymentSelector({
                 </RadioGroup>
                 <div className="space-y-1">
                   <Label className="text-[10px]">Monto {isLocal ? `(${localCurrencySymbol})` : `(${currencySymbol})`}</Label>
-                  <Input type="number" step="0.01" placeholder="0.00"
+                  <Input type="text" inputMode="decimal" placeholder="0.00"
                     value={isLocal ? (entry.amount * exchangeRate).toFixed(2) : entry.amount.toFixed(2)}
-                    onChange={e => handleHybridAmount(idx, e.target.value)} className="text-sm" />
+                    onChange={e => handleHybridAmount(idx, e.target.value)} className="text-sm" onWheel={e => e.currentTarget.blur()} />
                   {multiEnabled && isLocal && (
                     <p className="text-[10px] text-muted-foreground">Equivale a {currencySymbol}{entry.amount.toFixed(2)}</p>
                   )}

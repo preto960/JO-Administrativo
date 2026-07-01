@@ -2,6 +2,14 @@ import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { getPaymentMethodsFromDB, FALLBACK_METHODS } from '@/lib/payment-methods'
 
+/** Build "Híbrido (efectivo, transferencia)" label from payment method codes */
+function buildHybridLabel(payments: { method: string }[], pmNameMap: Map<string, string>): string {
+  const codes = [...new Set(payments.map(p => p.method))]
+  if (codes.length <= 1) return pmNameMap.get(codes[0]) || codes[0] || ''
+  const names = codes.map(c => pmNameMap.get(c) || c)
+  return `Híbrido (${names.join(', ')})`
+}
+
 // GET /api/cash-register/[id]/sales-breakdown
 // Returns sales for a specific cash register, categorized as POS or Subscription
 // Includes payment method breakdown and credit sales separated
@@ -15,6 +23,10 @@ export async function GET(
     // Get credit method codes to identify credit sales
     const pmList = await getPaymentMethodsFromDB().catch(() => FALLBACK_METHODS)
     const creditCodes = new Set(pmList.filter(m => m.isCredit).map(m => m.code))
+
+    // Build code -> name map for hybrid labels
+    const pmNameMap = new Map<string, string>()
+    for (const pm of pmList) pmNameMap.set(pm.code, pm.name)
 
     // Get sales for this cash register
     const sales = await db.sale.findMany({
@@ -81,23 +93,40 @@ export async function GET(
         })
         if (oldMatch) planName = parsePlanFromConcept(oldMatch.concept)
       }
-      const ref = s.payments[0]?.reference
+      // For hybrid, show all references
+      const refs = s.payments.map(p => p.reference).filter(Boolean)
+      const refStr = refs.length > 0 ? refs.join(', ') : ''
+      const nonCreditPayments = s.payments.filter(p => !creditCodes.has(p.method))
       return {
         id: s.id, date: s.date, total: s.total,
-        method: s.payments[0]?.method || '',
+        method: nonCreditPayments.length > 1
+          ? buildHybridLabel(nonCreditPayments, pmNameMap)
+          : (nonCreditPayments[0] ? (pmNameMap.get(nonCreditPayments[0].method) || nonCreditPayments[0].method) : ''),
         clientName: saleClientName || null, planName,
-        description: ref ? `Ref: ${ref}` : '',
+        description: refStr ? `Ref: ${refStr}` : '',
       }
     })
 
     // Payment method breakdown (non-credit only)
+    // Hybrid sales (multiple payments) are grouped as "Híbrido (metodo1, metodo2)"
     const methodTotals: Record<string, { amount: number; count: number }> = {}
     for (const s of nonCreditSales) {
-      for (const p of s.payments) {
-        if (creditCodes.has(p.method)) continue
-        if (!methodTotals[p.method]) methodTotals[p.method] = { amount: 0, count: 0 }
-        methodTotals[p.method].amount += p.amount
-        methodTotals[p.method].count++
+      const nonCreditPayments = s.payments.filter(p => !creditCodes.has(p.method))
+      if (nonCreditPayments.length === 0) continue
+
+      if (nonCreditPayments.length > 1) {
+        // Hybrid sale — group under a single "Híbrido (...)" key
+        const label = buildHybridLabel(nonCreditPayments, pmNameMap)
+        if (!methodTotals[label]) methodTotals[label] = { amount: 0, count: 0 }
+        methodTotals[label].amount += s.total
+        methodTotals[label].count++
+      } else {
+        // Single payment — group by method name (not code)
+        const p = nonCreditPayments[0]
+        const name = pmNameMap.get(p.method) || p.method
+        if (!methodTotals[name]) methodTotals[name] = { amount: 0, count: 0 }
+        methodTotals[name].amount += p.amount
+        methodTotals[name].count++
       }
     }
 
@@ -106,7 +135,7 @@ export async function GET(
     const creditItems = creditSalesAll.map(s => ({
       id: s.id, date: s.date, total: s.total,
       clientName: s.client ? `${s.client.name}${s.client.lastName ? ' ' + s.client.lastName : ''}` : null,
-      description: s.lines.map(l => l.product?.name || 'Producto').join(', ')
+      description: s.lines.map(l => l.product?.name || 'Producto').join(', '),
     }))
 
     const posTotal = posSales.reduce((sum, s) => sum + s.total, 0)
@@ -136,12 +165,17 @@ export async function GET(
     }))
 
     return NextResponse.json({
-      posSales: posSales.map(s => ({
-        id: s.id, date: s.date, total: s.total,
-        method: s.payments[0]?.method || '',
-        clientName: s.client ? `${s.client.name}${s.client.lastName ? ' ' + s.client.lastName : ''}` : null,
-        description: s.lines.map(l => l.product?.name || 'Producto').join(', '),
-      })),
+      posSales: posSales.map(s => {
+        const nonCreditPayments = s.payments.filter(p => !creditCodes.has(p.method))
+        return {
+          id: s.id, date: s.date, total: s.total,
+          method: nonCreditPayments.length > 1
+            ? buildHybridLabel(nonCreditPayments, pmNameMap)
+            : (nonCreditPayments[0] ? (pmNameMap.get(nonCreditPayments[0].method) || nonCreditPayments[0].method) : ''),
+          clientName: s.client ? `${s.client.name}${s.client.lastName ? ' ' + s.client.lastName : ''}` : null,
+          description: s.lines.map(l => l.product?.name || 'Producto').join(', '),
+        }
+      }),
       subscriptionSales: subscriptionSalesWithPlan,
       posTotal,
       subTotal,
