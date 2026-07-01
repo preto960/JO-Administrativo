@@ -810,8 +810,6 @@ export function CashRegisterView() {
           </div>
           <div className="grid gap-3 grid-cols-1 md:grid-cols-2 xl:grid-cols-3">
             {openRegisters.map((reg) => {
-              const earnings = reg.currentAmt - reg.initialAmt
-              const isPositive = earnings >= 0
               return (
                 <Card key={reg.id} className="relative overflow-hidden border-l-4 border-l-emerald-500">
                   <CardContent className="p-4 space-y-3">
@@ -831,8 +829,8 @@ export function CashRegisterView() {
                       </Badge>
                     </div>
 
-                    {/* Amounts - Fix 3: Use fmt() + Fix 4: tabular-nums */}
-                    <div className="grid grid-cols-3 gap-3">
+                    {/* Amounts */}
+                    <div className="grid grid-cols-2 gap-3">
                       <div className="text-center">
                         <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Inicial</p>
                         <p className="text-sm font-semibold tabular-nums">{fmtBase(reg.initialAmt)}</p>
@@ -840,14 +838,6 @@ export function CashRegisterView() {
                       <div className="text-center">
                         <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Recaudado</p>
                         <p className="text-lg font-bold text-primary tabular-nums">{fmtBase(reg.currentAmt)}</p>
-                      </div>
-                      <div className="text-center">
-                        <p className="text-[11px] text-muted-foreground uppercase tracking-wide">
-                          <TrendingUp className="h-3 w-3 inline" />
-                        </p>
-                        <p className={`text-sm font-semibold tabular-nums ${isPositive ? 'text-emerald-600' : 'text-red-600'}`}>
-                          {isPositive ? '+' : ''}{fmt(earnings)}
-                        </p>
                       </div>
                     </div>
 
