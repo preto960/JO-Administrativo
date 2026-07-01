@@ -23,6 +23,7 @@ export async function GET(
     // Get credit method codes to identify credit sales
     const pmList = await getPaymentMethodsFromDB().catch(() => FALLBACK_METHODS)
     const creditCodes = new Set(pmList.filter(m => m.isCredit).map(m => m.code))
+    const cashCodes = new Set(pmList.filter(m => m.isCash).map(m => m.code))
 
     // Build code -> name map for hybrid labels
     const pmNameMap = new Map<string, string>()
@@ -143,8 +144,16 @@ export async function GET(
     const totalExits = manualMovements.filter(m => m.type === 'salida').reduce((s, m) => s + m.amount, 0)
     const netMovements = totalEntries - totalExits
 
-    // Real en Caja = ventas no-crédito + movimientos manuales netos
-    const realInRegister = posTotal + subTotal + netMovements
+    // Get register initial amount
+    const cashReg = await db.cashRegister.findUnique({ where: { id }, select: { initialAmt: true } })
+    const initialAmt = cashReg?.initialAmt ?? 0
+
+    // Sum only cash (isCash) payments from non-credit sales
+    const cashPaymentsTotal = nonCreditSales.reduce((sum, s) =>
+      sum + s.payments.filter(p => cashCodes.has(p.method)).reduce((ps, p) => ps + p.amount, 0), 0)
+
+    // Real en Caja = monto inicial + pagos en efectivo físico + movimientos manuales netos
+    const realInRegister = initialAmt + cashPaymentsTotal + netMovements
 
     const movementEntries = manualMovements.map(m => ({
       id: m.id,
