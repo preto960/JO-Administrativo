@@ -33,13 +33,14 @@ export async function POST(
 
   try {
     const body = await request.json()
-    const { planId, paymentMethod, paymentReference, cashRegId, branchId, currencyId } = body as {
+    const { planId, paymentMethod, paymentReference, cashRegId, branchId, currencyId, payments: hybridPayments } = body as {
       planId: string
       paymentMethod?: string
       paymentReference?: string
       cashRegId?: string
       branchId?: string
       currencyId?: string
+      payments?: Array<{ method: string; amount: number; reference?: string }>
     }
 
     if (!planId) {
@@ -59,14 +60,27 @@ export async function POST(
       return NextResponse.json({ error: 'Este plan está inactivo' }, { status: 400 })
     }
 
-    // Validate payment method if provided
+    // Validate payment method(s)
+    const isHybrid = Array.isArray(hybridPayments) && hybridPayments.length > 1
     let pmInfo: { code: string; isCash: boolean; isCredit: boolean; isLocalCurrency: boolean } | null = null
-    if (paymentMethod) {
+    if (isHybrid) {
+      // Hybrid: validate all methods exist
+      const pmList = await getPaymentMethodsFromDB().catch(() => FALLBACK_METHODS)
+      for (const p of hybridPayments) {
+        const found = pmList.find((m: any) => m.code === p.method)
+        if (!found) return NextResponse.json({ error: `Método de pago no válido: ${p.method}` }, { status: 400 })
+        if (found.isCredit) return NextResponse.json({ error: 'Los pagos híbridos no permiten crédito' }, { status: 400 })
+      }
+      // Validate amounts sum to plan.cost
+      const sum = hybridPayments.reduce((s, p) => s + (p.amount || 0), 0)
+      if (Math.abs(sum - plan.cost) > 0.01) {
+        return NextResponse.json({ error: `Los pagos (${sum}) no coinciden con el costo del plan (${plan.cost})` }, { status: 400 })
+      }
+      pmInfo = { code: 'hibrido', isCash: false, isCredit: false, isLocalCurrency: false }
+    } else if (paymentMethod) {
       const pmList = await getPaymentMethodsFromDB().catch(() => FALLBACK_METHODS)
       pmInfo = pmList.find((m: any) => m.code === paymentMethod) || null
-      if (!pmInfo) {
-        return NextResponse.json({ error: 'Método de pago no válido' }, { status: 400 })
-      }
+      if (!pmInfo) return NextResponse.json({ error: 'Método de pago no válido' }, { status: 400 })
     }
 
     const today = await fetchToday()
@@ -162,17 +176,41 @@ export async function POST(
     let movementError: string | null = null
     let receivableId: string | null = null
 
-    if (paymentMethod && resolvedCurrencyId) {
+    if ((paymentMethod || isHybrid) && resolvedCurrencyId) {
       const clientName = `${client.name}${client.lastName ? ' ' + client.lastName : ''}`
-      const refPart = paymentReference?.trim() ? `: ${paymentReference.trim()}` : ''
-      // Include plan change info in concept if plan changed
-      const previousPlan = existingMembership?.tarifa && existingMembership.tarifa !== plan.name
-        ? `${existingMembership.tarifa} -> ${plan.name}`
-        : plan.name
-      const concept = `Suscripción plan "${previousPlan}" - ${clientName}${refPart}`
 
       try {
-        // Create Sale + SalePayment
+        // Build payment label for concept
+        const hybridLabel = isHybrid
+          ? `Híbrido (${hybridPayments.map(p => p.method).join(', ')})`
+          : paymentMethod || ''
+
+        // Build the "method" string for each SalePayment
+        const salePayments = isHybrid
+          ? hybridPayments.map(p => ({
+              method: p.method,
+              amount: p.amount,
+              currencyId: resolvedCurrencyId,
+              reference: p.reference?.trim() || null,
+            }))
+          : [{
+              method: paymentMethod!,
+              amount: plan.cost,
+              currencyId: resolvedCurrencyId,
+              reference: paymentReference?.trim() || null,
+            }]
+
+        const refPart = isHybrid
+          ? hybridPayments.map(p => p.reference?.trim()).filter(Boolean).join(', ')
+          : paymentReference?.trim() || ''
+        const refDisplay = refPart ? `: ${refPart}` : ''
+
+        const previousPlan = existingMembership?.tarifa && existingMembership.tarifa !== plan.name
+          ? `${existingMembership.tarifa} -> ${plan.name}`
+          : plan.name
+        const concept = `Suscripción plan "${previousPlan}" - ${clientName}${refDisplay}`
+
+        // Create Sale + SalePayment(s)
         const sale = await db.sale.create({
           data: {
             clientId: id,
@@ -184,12 +222,7 @@ export async function POST(
             currencyId: resolvedCurrencyId,
             syncStatus: 'synced',
             payments: {
-              create: {
-                method: paymentMethod,
-                amount: plan.cost,
-                currencyId: resolvedCurrencyId,
-                reference: paymentReference?.trim() || null,
-              },
+              create: salePayments,
             },
           },
         })
@@ -208,12 +241,11 @@ export async function POST(
           }
         }
 
-        // Create CashMovement for ALL payment methods (for visibility in cash register)
+        // Create CashMovement for visibility in cash register
         if (cashRegId) {
           const register = await db.cashRegister.findUnique({ where: { id: cashRegId } })
           if (register && register.status === 'abierta') {
             try {
-              // Embed saleId in concept for reliable dedup in sales-breakdown
               const conceptWithId = `[${saleId}] ${concept}`
               const movement = await db.cashMovement.create({
                 data: {
@@ -232,8 +264,8 @@ export async function POST(
           }
         }
 
-        // Handle credit: create AccountReceivable
-        if (pmInfo?.isCredit) {
+        // Handle credit: create AccountReceivable (single mode only)
+        if (!isHybrid && pmInfo?.isCredit) {
           const receivable = await db.accountReceivable.create({
             data: {
               clientId: id,
@@ -264,7 +296,7 @@ export async function POST(
         totalDays: effectiveDays,
         ticketCount: planType === 'tickets' ? ticketCount : 0,
         cost: plan.cost,
-        paymentMethod: paymentMethod || null,
+        paymentMethod: isHybrid ? `Híbrido (${hybridPayments.map(p => p.method).join(', ')})` : (paymentMethod || null),
         saleId,
         movementId,
         receivableId,

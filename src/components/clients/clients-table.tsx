@@ -50,6 +50,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import { HybridPaymentSelector, type HybridPaymentEntry } from '@/components/shared/hybrid-payment-selector'
 import { Separator } from '@/components/ui/separator'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Plus, Search, Users, DollarSign, Loader2, Receipt, Truck, X, Trash2, Printer, FileText, Mail, Pencil, Phone, MapPin, ShoppingCart, Eye, EyeOff, AlertTriangle, Upload, ChevronLeft, ChevronRight, Filter, UserCheck, UserX, UsersRound, RefreshCw, CalendarCheck, CalendarDays, CheckCircle2, CreditCard, Banknote, ArrowLeftRight, Clock, Smartphone, CircleDollarSign, Ban, MoreHorizontal, AlertCircle, Ticket, type LucideIcon } from 'lucide-react'
@@ -394,6 +395,8 @@ export function ClientsTable() {
   const [renewPaymentMethod, setRenewPaymentMethod] = useState('')
   const [renewPaymentReference, setRenewPaymentReference] = useState('')
   const [renewMethods, setRenewMethods] = useState<PaymentMethodOption[]>([])
+  const [renewHybridPayments, setRenewHybridPayments] = useState<HybridPaymentEntry[]>([])
+  const [renewIsHybrid, setRenewIsHybrid] = useState(false)
   const [renewCurrencies, setRenewCurrencies] = useState<{ id: string; code: string; symbol: string; isBase: boolean }[]>([])
   const [renewSuccess, setRenewSuccess] = useState(false)
 
@@ -941,26 +944,49 @@ export function ClientsTable() {
       toast.error('Selecciona un plan')
       return
     }
-    if (!renewPaymentMethod) {
-      toast.error('Selecciona un método de pago')
-      return
-    }
-    const selectedMethod = renewMethods.find(m => m.code === renewPaymentMethod)
-    if (selectedMethod?.needsReference && !renewPaymentReference.trim()) {
-      toast.error(`La referencia es obligatoria para ${selectedMethod.name}`)
-      return
+    if (renewIsHybrid) {
+      const selectedPlan = plans.find(p => p.id === renewPlanId)
+      if (!selectedPlan) { toast.error('Plan no encontrado'); return }
+      const sum = renewHybridPayments.reduce((s, p) => s + p.amount, 0)
+      if (Math.abs(sum - selectedPlan.cost) > 0.01) {
+        toast.error('Los pagos híbridos no cubren el total del plan')
+        return
+      }
+      for (const p of renewHybridPayments) {
+        const m = renewMethods.find(rm => rm.code === p.method)
+        if (m?.needsReference && !p.reference) { toast.error(`Referencia obligatoria para ${m.name}`); return }
+      }
+    } else {
+      if (!renewPaymentMethod) {
+        toast.error('Selecciona un método de pago')
+        return
+      }
+      const selectedMethod = renewMethods.find(m => m.code === renewPaymentMethod)
+      if (selectedMethod?.needsReference && !renewPaymentReference.trim()) {
+        toast.error(`La referencia es obligatoria para ${selectedMethod.name}`)
+        return
+      }
     }
     setRenewing(true)
     try {
       const baseCurr = renewCurrencies.find(c => c.isBase)
-      const res = await api.post<{ message: string }>(`/api/clients/${renewClient.id}/renew`, {
+      const payload: Record<string, any> = {
         planId: renewPlanId,
-        paymentMethod: renewPaymentMethod,
-        paymentReference: renewPaymentReference.trim() || undefined,
         cashRegId: openCashRegId || undefined,
         branchId: selectedBranchId || undefined,
         currencyId: baseCurr?.id || baseCurrencyId || '',
-      })
+      }
+      if (renewIsHybrid) {
+        payload.payments = renewHybridPayments.map(p => ({
+          method: p.method,
+          amount: p.amount,
+          reference: p.reference || undefined,
+        }))
+      } else {
+        payload.paymentMethod = renewPaymentMethod
+        payload.paymentReference = renewPaymentReference.trim() || undefined
+      }
+      const res = await api.post<{ message: string }>(`/api/clients/${renewClient.id}/renew`, payload)
       setRenewSuccess(true)
       toast.success(res.message || 'Suscripción renovada')
       setTimeout(() => {
@@ -2191,41 +2217,20 @@ export function ClientsTable() {
 
               <Separator />
 
-              {/* Payment method selector — POS-style RadioGroup with icons */}
+              {/* Payment method selector — POS-style with Hybrid support */}
               <div className="space-y-2">
                 <Label className="flex items-center gap-1.5">
                   <CreditCard className="h-3.5 w-3.5" />
                   Método de Pago *
                 </Label>
                 {renewMethods.length > 0 ? (
-                  <RadioGroup
-                    value={renewPaymentMethod}
-                    onValueChange={(v) => { setRenewPaymentMethod(v); setRenewPaymentReference('') }}
-                    className="grid grid-cols-2 gap-3"
-                  >
-                    {renewMethods.map((pm) => {
-                      const Icon = getRenewIcon(pm.icon)
-                      return (
-                        <label
-                          key={pm.code}
-                          className={`flex cursor-pointer flex-col items-center gap-2 rounded-lg border-2 p-3 transition-colors ${
-                            renewPaymentMethod === pm.code
-                              ? 'border-primary bg-primary/5 dark:bg-primary/10'
-                              : 'border-muted hover:border-muted-foreground/30'
-                          }`}
-                        >
-                          <RadioGroupItem value={pm.code} className="sr-only" />
-                          <Icon className={`h-5 w-5 ${renewPaymentMethod === pm.code ? 'text-primary' : 'text-muted-foreground'}`} />
-                          <span className={`text-xs font-medium ${renewPaymentMethod === pm.code ? 'text-primary dark:text-primary' : ''}`}>
-                            {pm.name}
-                          </span>
-                          {pm.isCredit && (
-                            <span className="text-[9px] text-amber-600 dark:text-amber-400 font-medium">Genera deuda</span>
-                          )}
-                        </label>
-                      )
-                    })}
-                  </RadioGroup>
+                  <HybridPaymentSelector
+                    methods={renewMethods as any}
+                    total={(() => { const p = plans.find(p => p.id === renewPlanId); return p?.cost || 0 })()}
+                    currencySymbol={fmt(0).replace(/[\d.,\s]/g, '').split('').find(c => /[^\w]/) || '$'}
+                    onChange={setRenewHybridPayments}
+                    onModeChange={setRenewIsHybrid}
+                  />
                 ) : (
                   <p className="text-xs text-center text-muted-foreground py-2">
                     No hay métodos de pago activos para suscripciones
@@ -2233,29 +2238,16 @@ export function ClientsTable() {
                 )}
               </div>
 
-              {/* Reference input */}
-              {renewMethods.find(m => m.code === renewPaymentMethod)?.needsReference && (
-                <div className="space-y-2 animate-in fade-in slide-in-from-top-2 duration-200">
-                  <Label htmlFor="renew-reference">Referencia *</Label>
-                  <Input
-                    id="renew-reference"
-                    value={renewPaymentReference}
-                    onChange={(e) => setRenewPaymentReference(e.target.value)}
-                    placeholder="Número de referencia..."
-                  />
-                </div>
-              )}
-
-              {/* No cash register warning */}
-              {!openCashRegId && renewMethods.find(m => m.code === renewPaymentMethod)?.isCash && (
+              {/* No cash register warning (single mode only) */}
+              {!renewIsHybrid && !openCashRegId && renewMethods.find(m => m.code === renewPaymentMethod)?.isCash && (
                 <div className="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-2.5 text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2">
                   <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
                   <span>No hay caja abierta. El pago en efectivo no se registrará en caja.</span>
                 </div>
               )}
 
-              {/* Credit info */}
-              {renewMethods.find(m => m.code === renewPaymentMethod)?.isCredit && (
+              {/* Credit info (single mode only) */}
+              {!renewIsHybrid && renewMethods.find(m => m.code === renewPaymentMethod)?.isCredit && (
                 <div className="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-2.5 text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2">
                   <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
                   <span>El pago a crédito generará una cuenta por cobrar para el cliente. No se sumará al saldo de caja.</span>
@@ -2266,7 +2258,7 @@ export function ClientsTable() {
                 className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
                 size="lg"
                 onClick={handleRenew}
-                disabled={renewing || !renewPlanId || !renewPaymentMethod}
+                disabled={renewing || !renewPlanId || (!renewIsHybrid && !renewPaymentMethod) || (renewIsHybrid && renewHybridPayments.length === 0)}
               >
                 {renewing ? (
                   <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Renovando...</>
