@@ -31,6 +31,7 @@ model User {
   auditLogs        AuditLog[]
   branch           Branch?               @relation(fields: [branchId], references: [id])
   salesTargets     SalesTarget[]
+  freezeApprovals  MembershipFreeze[]
 }
 
 model Client {
@@ -77,10 +78,27 @@ model ClientMembership {
 
   client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
   plan   Plan?  @relation(fields: [planId], references: [id])
+  freezes MembershipFreeze[]
 
   @@index([clientId])
   @@index([status])
   @@index([planId])
+}
+
+model MembershipFreeze {
+  id           String   @id @default(cuid())
+  membershipId String
+  days         Int      // Cantidad de días a congelar
+  reason       String   // Motivo (ej: "Incapacidad médica")
+  documentRef  String?  // Referencia del comprobante
+  approvedBy   String   // ID del usuario que aprueba
+  createdAt    DateTime @default(now())
+
+  membership ClientMembership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  approver   User           @relation(fields: [approvedBy], references: [id])
+
+  @@index([membershipId])
+  @@index([approvedBy])
 }
 
 model Supplier {

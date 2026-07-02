@@ -53,7 +53,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { HybridPaymentSelector, type HybridPaymentEntry } from '@/components/shared/hybrid-payment-selector'
 import { Separator } from '@/components/ui/separator'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Plus, Search, Users, DollarSign, Loader2, Receipt, Truck, X, Trash2, Printer, FileText, Mail, Pencil, Phone, MapPin, ShoppingCart, Eye, EyeOff, AlertTriangle, Upload, ChevronLeft, ChevronRight, Filter, UserCheck, UserX, UsersRound, RefreshCw, CalendarCheck, CalendarDays, CheckCircle2, CreditCard, Banknote, ArrowLeftRight, Clock, Smartphone, CircleDollarSign, Ban, MoreHorizontal, AlertCircle, Ticket, type LucideIcon } from 'lucide-react'
+import { Plus, Search, Users, DollarSign, Loader2, Receipt, Truck, X, Trash2, Printer, FileText, Mail, Pencil, Phone, MapPin, ShoppingCart, Eye, EyeOff, AlertTriangle, Upload, ChevronLeft, ChevronRight, Filter, UserCheck, UserX, UsersRound, RefreshCw, CalendarCheck, CalendarDays, CheckCircle2, CreditCard, Banknote, ArrowLeftRight, Clock, Smartphone, CircleDollarSign, Ban, MoreHorizontal, AlertCircle, Ticket, Snowflake, type LucideIcon } from 'lucide-react'
 import { ClientBulkImport } from './client-bulk-import'
 import { FALLBACK_METHODS } from '@/lib/payment-methods'
 import { toast } from 'sonner'
@@ -466,6 +466,18 @@ export function ClientsTable() {
   const [pdfDate, setPdfDate] = useState('')
   const [showPdfDatePicker, setShowPdfDatePicker] = useState(false)
 
+  // Freeze days
+  const [freezeClient, setFreezeClient] = useState<Client | null>(null)
+  const [freezeDays, setFreezeDays] = useState('')
+  const [freezeReason, setFreezeReason] = useState('')
+  const [freezeDocRef, setFreezeDocRef] = useState('')
+  const [freezeSaving, setFreezeSaving] = useState(false)
+  const [freezeHistory, setFreezeHistory] = useState<Array<{
+    id: string; days: number; reason: string; documentRef: string | null; createdAt: string;
+    approver: { id: string; name: string };
+    membership: { id: string; tarifa: string | null };
+  }>>([])
+
   const downloadExpiredPdf = (date?: string) => {
     const qs = date ? `?date=${date}` : ''
     window.open(`/api/clients/expired-today/pdf${qs}`, '_blank')
@@ -484,6 +496,39 @@ export function ClientsTable() {
     setFormNote('')
     setFormPlanId('')
     setDialogOpen(true)
+  }
+
+  const openFreeze = async (client: Client) => {
+    setFreezeClient(client)
+    setFreezeDays('')
+    setFreezeReason('')
+    setFreezeDocRef('')
+    try {
+      const history = await api.get<any[]>(`/api/clients/${client.id}/freeze-days`)
+      setFreezeHistory(history || [])
+    } catch { setFreezeHistory([]) }
+  }
+
+  const handleFreeze = async () => {
+    if (!freezeClient) return
+    const days = parseInt(freezeDays)
+    if (!days || days <= 0) { toast.error('Ingrese una cantidad válida de días'); return }
+    if (!freezeReason.trim()) { toast.error('El motivo es obligatorio'); return }
+    setFreezeSaving(true)
+    try {
+      const res = await api.post<{ message: string }>(`/api/clients/${freezeClient.id}/freeze-days`, {
+        days,
+        reason: freezeReason.trim(),
+        documentRef: freezeDocRef.trim() || undefined,
+      })
+      toast.success(res.message)
+      setFreezeClient(null)
+      fetchClients()
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || err?.message || 'Error al congelar días')
+    } finally {
+      setFreezeSaving(false)
+    }
   }
 
   const openEdit = (client: Client) => {
@@ -1279,6 +1324,11 @@ export function ClientsTable() {
                           <RefreshCw className="h-3.5 w-3.5" />
                         </Button>
                       )}
+                      {canManage && isGym && client.membership?.status === 'Activo' && client.membership.planType !== 'tickets' && (
+                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-cyan-500 hover:text-cyan-700 hover:bg-cyan-50 dark:hover:bg-cyan-950/40" title="Congelar Días" onClick={() => openFreeze(client)}>
+                          <Snowflake className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
                       {canMarkAtt && isGym && client.membership?.status === 'Activo' && (
                         <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-emerald-500 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40" title="Marcar Asistencia" onClick={() => openAttendance(client)}>
                           <CalendarCheck className="h-3.5 w-3.5" />
@@ -1297,6 +1347,11 @@ export function ClientsTable() {
                           {canManage && isGym && (
                             <DropdownMenuItem onClick={() => openRenew(client)}>
                               <RefreshCw className="mr-2 h-3.5 w-3.5" /> Renovar Suscripción
+                            </DropdownMenuItem>
+                          )}
+                          {canManage && isGym && client.membership?.status === 'Activo' && client.membership.planType !== 'tickets' && (
+                            <DropdownMenuItem onClick={() => openFreeze(client)}>
+                              <Snowflake className="mr-2 h-3.5 w-3.5" /> Congelar Días
                             </DropdownMenuItem>
                           )}
                           <DropdownMenuItem onClick={() => handleDownloadStatement(client)}>
@@ -2677,6 +2732,90 @@ export function ClientsTable() {
                 <Printer className="mr-2 h-4 w-4" /> Descargar PDF
               </Button>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Freeze Days Dialog */}
+      <Dialog open={!!freezeClient} onOpenChange={(open) => { if (!open) setFreezeClient(null) }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Snowflake className="h-5 w-5 text-cyan-500" />
+              Congelar Días de Membresía
+            </DialogTitle>
+            <DialogDescription>
+              {freezeClient?.name}{freezeClient?.lastName ? ` ${freezeClient.lastName}` : ''}
+              {freezeClient?.membership && (
+                <span className="block mt-1 text-xs">
+                  Plan: {freezeClient.membership.tarifa || '—'} · {freezeClient.membership.daysRemaining} días restantes
+                </span>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {/* History */}
+            {freezeHistory.length > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-xs font-semibold text-muted-foreground uppercase">Historial de congelaciones</p>
+                <div className="max-h-32 overflow-y-auto space-y-1">
+                  {freezeHistory.map(f => (
+                    <div key={f.id} className="flex items-center justify-between text-xs bg-muted/50 rounded px-2.5 py-1.5">
+                      <div>
+                        <span className="font-medium text-cyan-700 dark:text-cyan-400">+{f.days} día{f.days !== 1 ? 's' : ''}</span>
+                        <span className="text-muted-foreground ml-2">{f.reason}</span>
+                      </div>
+                      <span className="text-muted-foreground text-[10px]">{new Date(f.createdAt).toLocaleDateString('es-VE')}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label>Días a congelar *</Label>
+              <Input
+                type="text"
+                inputMode="numeric"
+                value={freezeDays}
+                onChange={(e) => setFreezeDays(e.target.value.replace(/[^0-9]/g, ''))}
+                placeholder="Ej: 3"
+                onWheel={e => e.currentTarget.blur()}
+              />
+              <p className="text-[10px] text-muted-foreground">Estos días se agregarán al vencimiento de la membresía.</p>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Motivo *</Label>
+              <Textarea
+                value={freezeReason}
+                onChange={(e) => setFreezeReason(e.target.value)}
+                placeholder="Ej: Incapacidad médica, Calamidad doméstica..."
+                rows={2}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Referencia del comprobante</Label>
+              <Input
+                type="text"
+                value={freezeDocRef}
+                onChange={(e) => setFreezeDocRef(e.target.value)}
+                placeholder="Número o identificación (opcional)"
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => setFreezeClient(null)}>Cancelar</Button>
+            <Button
+              onClick={handleFreeze}
+              disabled={freezeSaving || !freezeDays || !freezeReason.trim()}
+              className="bg-cyan-600 hover:bg-cyan-700 text-white"
+            >
+              {freezeSaving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Congelando...</> : <><Snowflake className="mr-2 h-4 w-4" /> Congelar Días</>}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
