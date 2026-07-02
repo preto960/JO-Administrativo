@@ -463,8 +463,14 @@ export function ClientsTable() {
     }
   }
 
-  const downloadExpiredPdf = () => {
-    window.open('/api/clients/expired-today/pdf', '_blank')
+  const [pdfDate, setPdfDate] = useState('')
+  const [showPdfDatePicker, setShowPdfDatePicker] = useState(false)
+
+  const downloadExpiredPdf = (date?: string) => {
+    const qs = date ? `?date=${date}` : ''
+    window.open(`/api/clients/expired-today/pdf${qs}`, '_blank')
+    setShowPdfDatePicker(false)
+    setPdfDate('')
   }
 
   const openCreate = () => {
@@ -2629,9 +2635,14 @@ export function ClientsTable() {
                 <span className="text-sm text-muted-foreground">
                   Total: {expiredClients.length} cliente{expiredClients.length !== 1 ? 's' : ''}
                 </span>
-                <Button onClick={downloadExpiredPdf} className="bg-primary hover:bg-primary/90 text-white">
-                  <Printer className="mr-2 h-4 w-4" /> Descargar Informe PDF
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" onClick={() => downloadExpiredPdf()} size="sm">
+                    <Printer className="mr-2 h-4 w-4" /> Hoy
+                  </Button>
+                  <Button onClick={() => setShowPdfDatePicker(true)} size="sm" className="bg-primary hover:bg-primary/90 text-white">
+                    <CalendarDays className="mr-2 h-4 w-4" /> Otra fecha
+                  </Button>
+                </div>
               </div>
             </>
           ) : expiredClients && expiredClients.length === 0 ? (
@@ -2640,6 +2651,33 @@ export function ClientsTable() {
               <p className="text-sm">Ningun cliente con vencimiento hoy</p>
             </div>
           ) : null}
+        </DialogContent>
+      </Dialog>
+
+      {/* Date picker for expired report */}
+      <Dialog open={showPdfDatePicker} onOpenChange={setShowPdfDatePicker}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Descargar Informe de Vencidos</DialogTitle>
+            <DialogDescription>Selecciona la fecha para consultar los vencimientos de ese día.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Fecha</Label>
+              <Input
+                type="date"
+                value={pdfDate}
+                onChange={(e) => setPdfDate(e.target.value)}
+                max={new Date().toISOString().split('T')[0]}
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => { setShowPdfDatePicker(false); setPdfDate('') }}>Cancelar</Button>
+              <Button onClick={() => downloadExpiredPdf(pdfDate)} disabled={!pdfDate} className="bg-primary hover:bg-primary/90 text-white">
+                <Printer className="mr-2 h-4 w-4" /> Descargar PDF
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

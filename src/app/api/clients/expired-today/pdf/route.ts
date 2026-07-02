@@ -1,5 +1,5 @@
 import { db } from '@/lib/db'
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/require-auth'
 import { fetchAppTz, fetchToday } from '@/lib/tz-helpers'
 import jsPDF from 'jspdf'
@@ -44,11 +44,14 @@ function formatCedula(c: string): string {
   return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const auth = await requireAuth()
   if ('status' in auth) return auth
 
   try {
+    const { searchParams } = new URL(request.url)
+    const dateParam = searchParams.get('date') // format: YYYY-MM-DD
+
     const settings = await db.settings.findFirst()
     const businessName = settings?.businessName || 'Mi Empresa'
     const logoUrl = settings?.logoUrl || ''
@@ -58,11 +61,22 @@ export async function GET() {
     const rif = settings?.rif || ''
     const primaryColor = resolveColor(settings?.primaryColor || 'blue')
     const appTz = await fetchAppTz()
-    const today = await fetchToday(appTz.timezone)
-    const tomorrow = new Date(today)
-    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1)
 
-    const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: appTz.timezone })
+    // Use provided date or default to today
+    let targetDate: Date
+    let targetDateStr: string
+    if (dateParam) {
+      // Parse the date string as local date in the app timezone
+      const [y, m, d] = dateParam.split('-').map(Number)
+      targetDate = new Date(y, m - 1, d)
+      targetDateStr = dateParam
+    } else {
+      targetDate = await fetchToday(appTz.timezone)
+      targetDateStr = new Date().toLocaleDateString('en-CA', { timeZone: appTz.timezone })
+    }
+
+    const nextDay = new Date(targetDate)
+    nextDay.setDate(nextDay.getDate() + 1)
 
     const now = new Date()
     const h = parseInt(now.toLocaleString('en-US', { timeZone: appTz.timezone, hour: 'numeric', hour12: false }))
@@ -76,7 +90,7 @@ export async function GET() {
         deletedAt: null,
         memberships: {
           some: {
-            endDate: { gte: today, lt: tomorrow },
+            endDate: { gte: targetDate, lt: nextDay },
             status: { in: ['Vencido', 'Activo'] },
           },
         },
@@ -88,7 +102,7 @@ export async function GET() {
         email: true,
         phone: true,
         memberships: {
-          where: { endDate: { gte: today, lt: tomorrow } },
+          where: { endDate: { gte: targetDate, lt: nextDay } },
           orderBy: { createdAt: 'desc' },
           take: 1,
           select: { tarifa: true, endDate: true, daysRemaining: true },
@@ -123,10 +137,18 @@ export async function GET() {
     doc.setFont('helvetica', 'bold')
     doc.text('INFORME CLIENTES PAGOS VENCIDOS', textX, 40)
 
-    doc.setFontSize(10)
-    doc.setFont('helvetica', 'normal')
-    doc.text(`Fecha de Expedici\u00f3n: ${todayStr}`, textX, 58)
-    doc.text(`Hora: ${timeStr}`, textX, 73)
+    // If querying a specific date (not today), show it in the title
+    if (dateParam) {
+      doc.setFontSize(10)
+      doc.setFont('helvetica', 'normal')
+      doc.text(`Vencimientos del: ${targetDateStr}`, textX, 55)
+      doc.text(`Hora de descarga: ${timeStr}`, textX, 70)
+    } else {
+      doc.setFontSize(10)
+      doc.setFont('helvetica', 'normal')
+      doc.text(`Fecha de Expedici\u00f3n: ${targetDateStr}`, textX, 58)
+      doc.text(`Hora: ${timeStr}`, textX, 73)
+    }
 
     y = 100
     doc.setFillColor(245, 247, 250)
@@ -199,7 +221,7 @@ export async function GET() {
     return new NextResponse(pdfBuffer, {
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `inline; filename="Informe_Vencidos_${todayStr}.pdf"`,
+        'Content-Disposition': `inline; filename="Informe_Vencidos_${targetDateStr}.pdf"`,
       },
     })
   } catch (error) {
