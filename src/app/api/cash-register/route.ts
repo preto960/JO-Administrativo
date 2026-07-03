@@ -36,6 +36,7 @@ export async function GET(request: NextRequest) {
     // Recalculate currentAmt for open registers from actual data
     const pmList = await getPaymentMethodsFromDB().catch(() => FALLBACK_METHODS)
     const creditCodes = new Set(pmList.filter(m => m.isCredit).map(m => m.code))
+    const cashCodes = new Set(pmList.filter(m => m.isCash).map(m => m.code))
 
     const openRegs = registers.filter(r => r.status === 'abierta')
     if (openRegs.length > 0) {
@@ -56,9 +57,9 @@ export async function GET(request: NextRequest) {
       })
 
       for (const reg of openRegs) {
-        // Sum non-credit payments for this register
+        // Sum only cash (isCash) payments for this register — transfers, divisas, etc. are NOT physical cash
         const paymentsTotal = allPayments
-          .filter(p => p.sale.cashRegId === reg.id)
+          .filter(p => p.sale.cashRegId === reg.id && cashCodes.has(p.method))
           .reduce((sum, p) => sum + p.amount, 0)
 
         // Sum manual movements (exclude subscription/sale-linked: [saleId] prefix or Suscripción/Renovación)
