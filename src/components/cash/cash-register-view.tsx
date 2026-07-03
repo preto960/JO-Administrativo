@@ -842,7 +842,7 @@ export function CashRegisterView() {
                       </div>
                       <div className="text-center">
                         <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Recaudado</p>
-                        <p className="text-lg font-bold text-primary tabular-nums">{fmtBase(Math.max(0, reg.currentAmt - reg.initialAmt))}</p>
+                        <p className="text-lg font-bold text-primary tabular-nums">{fmtBase(Math.max(0, (reg as any).totalCollected ?? (reg.currentAmt - reg.initialAmt)))}</p>
                       </div>
                     </div>
 

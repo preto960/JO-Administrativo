@@ -57,10 +57,14 @@ export async function GET(request: NextRequest) {
       })
 
       for (const reg of openRegs) {
-        // Sum only cash (isCash) payments for this register — transfers, divisas, etc. are NOT physical cash
-        const paymentsTotal = allPayments
-          .filter(p => p.sale.cashRegId === reg.id && cashCodes.has(p.method))
-          .reduce((sum, p) => sum + p.amount, 0)
+        // All non-credit payments for this register
+        const regPayments = allPayments.filter(p => p.sale.cashRegId === reg.id)
+
+        // Recaudado = ALL non-credit payments (efectivo + transferencia + divisas + ...)
+        const totalCollected = Math.round(regPayments.reduce((sum, p) => sum + p.amount, 0) * 100) / 100
+
+        // Physical cash only (isCash) — what should actually be in the drawer
+        const cashTotal = Math.round(regPayments.filter(p => cashCodes.has(p.method)).reduce((sum, p) => sum + p.amount, 0) * 100) / 100
 
         // Sum manual movements (exclude subscription/sale-linked: [saleId] prefix or Suscripción/Renovación)
         const manualMovements = allMovements.filter(m =>
@@ -72,7 +76,7 @@ export async function GET(request: NextRequest) {
         const netMovements = manualMovements.reduce((sum, m) =>
           sum + (m.type === 'entrada' ? m.amount : -m.amount), 0)
 
-        const expectedAmt = Math.round((reg.initialAmt + paymentsTotal + netMovements) * 100) / 100
+        const expectedAmt = Math.round((reg.initialAmt + cashTotal + netMovements) * 100) / 100
 
         // Update DB if stale
         if (Math.abs(reg.currentAmt - expectedAmt) > 0.01) {
@@ -82,6 +86,9 @@ export async function GET(request: NextRequest) {
           })
           reg.currentAmt = expectedAmt
         }
+
+        // Attach totalCollected for frontend "Recaudado" display
+        ;(reg as any).totalCollected = totalCollected
       }
     }
 
