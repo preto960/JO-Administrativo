@@ -1008,6 +1008,10 @@ export function ClientsTable() {
       toast.error('Selecciona un plan')
       return
     }
+    // The actual selected method comes from HybridPaymentSelector via renewHybridPayments
+    const effectiveMethod = renewHybridPayments[0]?.method || renewPaymentMethod
+    const effectiveRef = renewHybridPayments[0]?.reference || renewPaymentReference
+
     if (renewIsHybrid) {
       const selectedPlan = plans.find(p => p.id === renewPlanId)
       if (!selectedPlan) { toast.error('Plan no encontrado'); return }
@@ -1021,12 +1025,12 @@ export function ClientsTable() {
         if (m?.needsReference && !p.reference) { toast.error(`Referencia obligatoria para ${m.name}`); return }
       }
     } else {
-      if (!renewPaymentMethod) {
+      if (!effectiveMethod) {
         toast.error('Selecciona un método de pago')
         return
       }
-      const selectedMethod = renewMethods.find(m => m.code === renewPaymentMethod)
-      if (selectedMethod?.needsReference && !renewPaymentReference.trim()) {
+      const selectedMethod = renewMethods.find(m => m.code === effectiveMethod)
+      if (selectedMethod?.needsReference && !effectiveRef.trim()) {
         toast.error(`La referencia es obligatoria para ${selectedMethod.name}`)
         return
       }
@@ -1047,8 +1051,8 @@ export function ClientsTable() {
           reference: p.reference || undefined,
         }))
       } else {
-        payload.paymentMethod = renewPaymentMethod
-        payload.paymentReference = renewPaymentReference.trim() || undefined
+        payload.paymentMethod = effectiveMethod
+        payload.paymentReference = effectiveRef.trim() || undefined
       }
       const res = await api.post<{ message: string }>(`/api/clients/${renewClient.id}/renew`, payload)
       setRenewSuccess(true)
@@ -2319,7 +2323,7 @@ export function ClientsTable() {
               </div>
 
               {/* No cash register warning (single mode only) */}
-              {!renewIsHybrid && !openCashRegId && renewMethods.find(m => m.code === renewPaymentMethod)?.isCash && (
+              {!renewIsHybrid && !openCashRegId && renewMethods.find(m => m.code === (renewHybridPayments[0]?.method || renewPaymentMethod))?.isCash && (
                 <div className="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-2.5 text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2">
                   <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
                   <span>No hay caja abierta. El pago en efectivo no se registrará en caja.</span>
@@ -2327,7 +2331,7 @@ export function ClientsTable() {
               )}
 
               {/* Credit info (single mode only) */}
-              {!renewIsHybrid && renewMethods.find(m => m.code === renewPaymentMethod)?.isCredit && (
+              {!renewIsHybrid && renewMethods.find(m => m.code === (renewHybridPayments[0]?.method || renewPaymentMethod))?.isCredit && (
                 <div className="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-2.5 text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2">
                   <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
                   <span>El pago a crédito generará una cuenta por cobrar para el cliente. No se sumará al saldo de caja.</span>
@@ -2338,7 +2342,7 @@ export function ClientsTable() {
                 className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
                 size="lg"
                 onClick={handleRenew}
-                disabled={renewing || !renewPlanId || (!renewIsHybrid && !renewPaymentMethod) || (renewIsHybrid && renewHybridPayments.length === 0)}
+                disabled={renewing || !renewPlanId || (!renewIsHybrid && !renewHybridPayments[0]?.method && !renewPaymentMethod) || (renewIsHybrid && renewHybridPayments.length === 0)}
               >
                 {renewing ? (
                   <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Renovando...</>
