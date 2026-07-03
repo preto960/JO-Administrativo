@@ -72,9 +72,23 @@ export function HybridPaymentSelector({
   useEffect(() => {
     const first = methods[0]?.code || ''
     setSingleMethod(first)
+    const m = methods.find(pm => pm.code === first)
+    const amtText = m?.isLocalCurrency && multiEnabled ? String(total * exchangeRate) : String(total)
+    setSingleAmountText(amtText)
     onChange([{ method: first, amount: total, reference: '' }])
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Sync amount when total changes (e.g. plan selected in renew dialog)
+  useEffect(() => {
+    if (!isHybrid) {
+      const m = methods.find(pm => pm.code === singleMethod)
+      const amtText = m?.isLocalCurrency && multiEnabled ? String(total * exchangeRate) : String(total)
+      setSingleAmountText(amtText)
+      onChange([{ method: singleMethod || methods[0]?.code || '', amount: total, reference: singleReference }])
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [total])
 
   const selectedSingle = methods.find(m => m.code === singleMethod)
   const isLocalSingle = multiEnabled ? (selectedSingle?.isLocalCurrency ?? false) : false
