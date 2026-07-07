@@ -143,6 +143,9 @@ export async function POST(request: NextRequest) {
       total = Math.round((total + ivaAmount) * 100) / 100
     }
 
+    // Audit log data (declared outside transaction so it's accessible after commit)
+    const inventoryLogs: { productId: string; productName: string; qty: number; before: number; after: number }[] = []
+
     // Create sale with lines and payments in a transaction
     const sale = await db.$transaction(async (tx) => {
       const newSale = await tx.sale.create({
@@ -172,7 +175,6 @@ export async function POST(request: NextRequest) {
       })
 
       // Deduct inventory stock for each product (inventory existence already validated above)
-      const inventoryLogs: { productId: string; productName: string; qty: number; before: number; after: number }[] = []
       for (const line of lines) {
         const inventory = await tx.inventory.findUnique({
           where: { productId_branchId: { productId: line.productId, branchId } },
@@ -288,6 +290,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(sale, { status: 201 })
   } catch (error) {
+    console.error('[POST /api/sales] Error al crear venta:', error)
     return NextResponse.json({ error: 'Error al crear venta' }, { status: 500 })
   }
 }
