@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { resolveBranchId } from '@/lib/resolve-branch'
+import { logAction } from '@/lib/audit-log'
 
 export async function POST(
   request: NextRequest,
@@ -29,6 +30,7 @@ export async function POST(
     const result = await db.$transaction(async (tx) => {
       let totalAmount = 0
       const saleLinesData = []
+      const inventoryLogs: { productId: string; productName: string; qty: number; before: number; after: number }[] = []
 
       for (const line of lines) {
         const product = await tx.product.findUnique({
@@ -44,17 +46,27 @@ export async function POST(
         const unitPrice = line.unitPrice || product.price
         const lineTotal = Math.round(unitPrice * line.quantity * 100) / 100
 
-        if (inventory && line.quantity > inventory.stock) {
+        if (!inventory) {
+          throw new Error(`Inventario no configurado para "${product.name}" en esta sucursal. Configure el inventario antes de despachar.`)
+        }
+
+        if (line.quantity > inventory.stock) {
           throw new Error(`Stock insuficiente para "${product.name}". Disponible: ${inventory.stock}, Solicitado: ${line.quantity}`)
         }
 
-        // Deduct stock
-        if (inventory) {
-          await tx.inventory.update({
-            where: { id: inventory.id },
-            data: { stock: { decrement: line.quantity } },
-          })
-        }
+        // Deduct stock (inventory existence validated above)
+        const beforeStock = inventory.stock
+        await tx.inventory.update({
+          where: { id: inventory.id },
+          data: { stock: { decrement: line.quantity } },
+        })
+        inventoryLogs.push({
+          productId: line.productId,
+          productName: product.name,
+          qty: line.quantity,
+          before: beforeStock,
+          after: Math.round((beforeStock - line.quantity) * 100) / 100,
+        })
 
         totalAmount += lineTotal
         saleLinesData.push({
@@ -77,6 +89,7 @@ export async function POST(
           branchId,
           total: totalAmount,
           status: 'completada',
+          currencyId: '',
           lines: {
             create: saleLinesData,
           },
@@ -101,10 +114,27 @@ export async function POST(
         },
       })
 
-      return sale
+      return { sale, inventoryLogs }
     })
 
-    return NextResponse.json(result, { status: 201 })
+    // Audit log for inventory deduction (fire-and-forget)
+    if (result.inventoryLogs.length > 0) {
+      logAction({
+        action: 'create',
+        entity: 'inventory_deduction',
+        entityId: result.sale.id,
+        details: {
+          summary: `Despacho crédito ${result.sale.id.slice(0, 8)}: inventario descontado`,
+          saleId: result.sale.id,
+          clientId,
+          branchId,
+          deductions: result.inventoryLogs,
+        },
+        request,
+      }).catch(() => {})
+    }
+
+    return NextResponse.json(result.sale, { status: 201 })
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'Error al registrar despacho'
     return NextResponse.json({ error: msg }, { status: 500 })

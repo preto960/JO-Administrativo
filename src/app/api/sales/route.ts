@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { resolveBranchId, branchFromBody } from '@/lib/resolve-branch'
 import { formatCurrency } from '@/lib/currency'
 import { getPaymentMethodsFromDB, FALLBACK_METHODS } from '@/lib/payment-methods'
+import { logAction } from '@/lib/audit-log'
 
 export async function GET(request: NextRequest) {
   try {
@@ -83,13 +84,22 @@ export async function POST(request: NextRequest) {
     const inventoryMap = new Map(inventories.map((inv) => [inv.productId, inv]))
 
     const insufficientStock: string[] = []
+    const missingInventory: string[] = []
     for (const line of lines) {
       const inv = inventoryMap.get(line.productId)
-      const availableStock = inv?.stock || 0
-      if (line.quantity > availableStock) {
+      if (!inv) {
         const product = await db.product.findUnique({ where: { id: line.productId }, select: { name: true } })
-        insufficientStock.push(`"${product?.name || line.productId}": solicitado ${line.quantity}, disponible ${availableStock}`)
+        missingInventory.push(`"${product?.name || line.productId}"`)
+      } else if (line.quantity > inv.stock) {
+        const product = await db.product.findUnique({ where: { id: line.productId }, select: { name: true } })
+        insufficientStock.push(`"${product?.name || line.productId}": solicitado ${line.quantity}, disponible ${inv.stock}`)
       }
+    }
+
+    if (missingInventory.length > 0) {
+      return NextResponse.json({
+        error: `Inventario no configurado para: ${missingInventory.join(', ')}. Configure el inventario del producto en esta sucursal antes de vender.`,
+      }, { status: 400 })
     }
 
     if (insufficientStock.length > 0) {
@@ -161,15 +171,26 @@ export async function POST(request: NextRequest) {
         },
       })
 
-      // Deduct inventory stock for each product
+      // Deduct inventory stock for each product (inventory existence already validated above)
+      const inventoryLogs: { productId: string; productName: string; qty: number; before: number; after: number }[] = []
       for (const line of lines) {
         const inventory = await tx.inventory.findUnique({
           where: { productId_branchId: { productId: line.productId, branchId } },
         })
         if (inventory) {
+          const before = inventory.stock
           await tx.inventory.update({
             where: { id: inventory.id },
             data: { stock: { decrement: line.quantity } },
+          })
+          const prodName = saleLinesData.find(l => l.productId === line.productId)
+          const product = products.find(p => p.id === line.productId)
+          inventoryLogs.push({
+            productId: line.productId,
+            productName: product?.name || line.productId,
+            qty: line.quantity,
+            before,
+            after: Math.round((before - line.quantity) * 100) / 100,
           })
         }
       }
@@ -248,6 +269,22 @@ export async function POST(request: NextRequest) {
 
       return newSale
     })
+
+    // Audit log for inventory deduction (fire-and-forget)
+    if (inventoryLogs.length > 0) {
+      logAction({
+        action: 'create',
+        entity: 'inventory_deduction',
+        entityId: sale.id,
+        details: {
+          summary: `Venta ${sale.id.slice(0, 8)}: inventario descontado`,
+          saleId: sale.id,
+          branchId,
+          deductions: inventoryLogs,
+        },
+        request,
+      }).catch(() => {})
+    }
 
     return NextResponse.json(sale, { status: 201 })
   } catch (error) {
