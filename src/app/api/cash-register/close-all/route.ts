@@ -140,6 +140,7 @@ export async function POST(request: NextRequest) {
         }
 
         const pdfBuffer = await generateMultiCashClosePDF(reports)
+        const creditCodesAll = new Set(pmList.filter(m => m.isCredit).map(m => m.code))
         await sendCashCloseAllEmailWithPDF({
           registersCount: openRegisters.length,
           cuts: openRegisters.map(r => {
@@ -150,6 +151,16 @@ export async function POST(request: NextRequest) {
             const totalEntries = r.movements.filter(m => m.type === 'entrada' && !isNonCashCreditMovement(m.concept)).reduce((sum, m) => sum + m.amount, 0)
             const totalRetiros = r.movements.filter(m => m.type === 'retiro_excedente').reduce((sum, m) => sum + m.amount, 0)
             const expected = Math.round((r.initialAmt + totalSales + totalEntries - totalExpenses - totalRetiros) * 100) / 100
+            const cashCreditPayments = r.movements
+              .filter(m => m.type === 'entrada' && m.concept.startsWith('Cobro credito:') && !isNonCashCreditMovement(m.concept))
+              .reduce((sum, m) => sum + m.amount, 0)
+            const totalFromSales = r.sales
+              .filter(s => !s.payments.some(p => creditCodesAll.has(p.method)))
+              .reduce((sum, s) => sum + s.total, 0)
+            const totalFromCredit = r.movements
+              .filter(m => m.type === 'entrada' && m.concept.startsWith('Cobro credito:'))
+              .reduce((sum, m) => sum + m.amount, 0)
+            const totalCollected = Math.round((totalFromSales + totalFromCredit) * 100) / 100
             return {
               cashierName: r.user.name,
               registerName: r.name,
@@ -163,6 +174,8 @@ export async function POST(request: NextRequest) {
               totalSales,
               totalExpenses,
               totalRetiros,
+              cashCreditPayments,
+              totalCollected,
               salesCount: r.sales.length,
               ivaEnabled,
               ivaRate,

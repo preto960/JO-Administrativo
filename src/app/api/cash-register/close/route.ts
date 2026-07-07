@@ -128,6 +128,21 @@ export async function POST(request: NextRequest) {
         const pdfBuffer = await generateCashClosePDF(report)
         console.log('[Email] PDF generated, size:', pdfBuffer.length, 'bytes')
 
+        // Calculate cash credit payments for email
+        const cashCreditPayments = register.movements
+          .filter(m => m.type === 'entrada' && m.concept.startsWith('Cobro credito:') && !isNonCashCreditMovement(m.concept))
+          .reduce((sum, m) => sum + m.amount, 0)
+
+        // Total collected = non-credit sales + all credit payments
+        const creditCodes = new Set(pmList.filter(m => m.isCredit).map(m => m.code))
+        const totalFromSales = register.sales
+          .filter(s => !s.payments.some(p => creditCodes.has(p.method)))
+          .reduce((sum, s) => sum + s.total, 0)
+        const totalFromCredit = register.movements
+          .filter(m => m.type === 'entrada' && m.concept.startsWith('Cobro credito:'))
+          .reduce((sum, m) => sum + m.amount, 0)
+        const totalCollected = Math.round((totalFromSales + totalFromCredit) * 100) / 100
+
         await sendCashCloseEmailWithPDF({
           cashierName: register.user.name,
           registerName: register.name,
@@ -141,6 +156,8 @@ export async function POST(request: NextRequest) {
           totalSales,
           totalExpenses,
           totalRetiros,
+          cashCreditPayments,
+          totalCollected,
           salesCount: register.sales.length,
           ivaEnabled: settings?.ivaEnabled || false,
           ivaRate: settings?.ivaRate || 0,
