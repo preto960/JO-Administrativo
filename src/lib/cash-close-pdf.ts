@@ -372,28 +372,6 @@ function drawCashReconciliation(doc: jsPDF, report: CashCloseReport, startY: num
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   y = (doc as any).lastAutoTable.finalY + 8
 
-  // Exchange rate + Bs conversion
-  if (report.exchangeRate > 0) {
-    const totalBs = report.actual * report.exchangeRate
-    const pw = doc.internal.pageSize.getWidth()
-
-    doc.setFillColor(...C.yellowBg)
-    doc.roundedRect(36, y, pw - 72, 20, 3, 3, 'F')
-    doc.setDrawColor(...C.amber)
-    doc.setLineWidth(0.3)
-    doc.roundedRect(36, y, pw - 72, 20, 3, 3, 'S')
-
-    doc.setFontSize(8)
-    doc.setTextColor(...C.amber)
-    doc.setFont('helvetica', 'bold')
-    doc.text('TASA DE CAMBIO', pw / 2, y + 8, { align: 'center' })
-    doc.setFont('helvetica', 'normal')
-    doc.setTextColor(...C.dark)
-    doc.text(`1 ${report.referenceCurrency} = ${fmt(report.exchangeRate)} Bs  |  Total en caja: ${fmt(totalBs, 2)} Bs`, pw / 2, y + 16, { align: 'center' })
-
-    y += 28
-  }
-
   return y
 }
 
@@ -1018,16 +996,6 @@ export async function generateMultiCashClosePDF(reports: CashCloseReport[]): Pro
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     y = (doc as any).lastAutoTable.finalY + 6
-
-    // Bs conversion
-    if (r.exchangeRate > 0) {
-      const totalBs = r.actual * r.exchangeRate
-      doc.setFontSize(7)
-      doc.setTextColor(...C.gray)
-      doc.setFont('helvetica', 'normal')
-      doc.text(`Tasa: 1 ${r.referenceCurrency} = ${fmt(r.exchangeRate)} Bs  |  Total: ${fmt(totalBs, 2)} Bs`, pw / 2, y, { align: 'center' })
-      y += 12
-    }
 
     // Recaudado total
     y = drawRecaudadoTotal(doc, r, y)
