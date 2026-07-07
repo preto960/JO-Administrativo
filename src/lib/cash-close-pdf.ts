@@ -804,7 +804,7 @@ export interface RegisterWithDetails {
       unitCost: number
       lineTotal: number
       lineProfit: number
-      product: { id: string; name: string }
+      product: { id: string; name: string } | null
     }[]
   }[]
   movements: {
@@ -841,24 +841,30 @@ export async function buildReportFromRegister(
 
   const sales: SaleDetail[] = register.sales
     .filter(s => !s.payments.some(p => creditCodes.has(p.method)))
-    .map(s => ({
-      id: s.id,
-      date: s.date,
-      clientName: s.client?.name || null,
-      total: s.total,
-      lines: s.lines.map(l => ({
-        productName: l.product.name,
-        quantity: l.quantity,
-        unitPrice: l.unitPrice,
-        lineTotal: l.lineTotal,
-      })),
-      payments: s.payments.map(p => ({
-        method: p.method,
-        amount: p.amount,
-        currencyCode: p.currency.code,
-        reference: p.reference,
-      })),
-    }))
+    .map(s => {
+      // For subscription/renewal sales (no lines), generate a descriptive line
+      const mappedLines = s.lines.length > 0
+        ? s.lines.map(l => ({
+            productName: l.product?.name || 'Producto eliminado',
+            quantity: l.quantity,
+            unitPrice: l.unitPrice,
+            lineTotal: l.lineTotal,
+          }))
+        : [{ productName: 'Suscripcion / Renovacion de plan', quantity: 1, unitPrice: s.total, lineTotal: s.total }]
+      return {
+        id: s.id,
+        date: s.date,
+        clientName: s.client?.name || null,
+        total: s.total,
+        lines: mappedLines,
+        payments: s.payments.map(p => ({
+          method: p.method,
+          amount: p.amount,
+          currencyCode: p.currency.code,
+          reference: p.reference,
+        })),
+      }
+    })
 
   const expenses = register.movements
     .filter(m => m.type === 'salida')

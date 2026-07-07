@@ -121,9 +121,21 @@ export async function GET(
       }
     }
 
-    // Credit sales summary
-    const creditTotal = creditSalesAll.reduce((sum, s) => sum + s.total, 0)
-    const creditItems = creditSalesAll.map(s => ({
+    // Credit sales summary — only show credits that are still pending (not fully paid)
+    const creditSaleIds = creditSalesAll.map(s => s.id)
+    const receivablesForCredit = creditSaleIds.length > 0
+      ? await db.accountReceivable.findMany({
+          where: { saleId: { in: creditSaleIds } },
+          select: { saleId: true, status: true },
+        })
+      : []
+    const pendingCreditSaleIds = new Set(
+      receivablesForCredit.filter(r => r.status !== 'pagada').map(r => r.saleId)
+    )
+    const pendingCreditSales = creditSalesAll.filter(s => pendingCreditSaleIds.has(s.id))
+
+    const creditTotal = pendingCreditSales.reduce((sum, s) => sum + s.total, 0)
+    const creditItems = pendingCreditSales.map(s => ({
       id: s.id, date: s.date, total: s.total,
       clientName: s.client ? `${s.client.name}${s.client.lastName ? ' ' + s.client.lastName : ''}` : null,
       description: s.lines.map(l => l.product?.name || 'Producto').join(', '),

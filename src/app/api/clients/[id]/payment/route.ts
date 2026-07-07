@@ -90,13 +90,16 @@ export async function POST(
       if (cashRegId && cashCodes.has(method)) {
         const effectiveCurrencyId = currencyId || (await tx.currency.findFirst({ where: { isBase: true } }))?.id
         if (effectiveCurrencyId) {
+          const client = await tx.client.findUnique({ where: { id: clientId }, select: { name: true, lastName: true } })
+          const clientName = client ? [client.name, client.lastName].filter(Boolean).join(' ') : clientId
+          const pmName = pmList.find(m => m.code === (method || 'efectivo'))?.name || method || 'Efectivo'
           await tx.cashMovement.create({
             data: {
               cashRegId,
               userId,
               type: 'entrada',
               amount,
-              concept: `Cobro a cliente (ID: ${clientId})`,
+              concept: `Cobro credito: ${clientName} (${pmName})`,
               currencyId: effectiveCurrencyId,
             },
           })
