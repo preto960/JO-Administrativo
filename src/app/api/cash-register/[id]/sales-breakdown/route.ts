@@ -152,8 +152,29 @@ export async function GET(
       !m.concept.includes('Renovación')
     )
 
-    const totalEntries = manualMovements.filter(m => m.type === 'entrada').reduce((s, m) => s + m.amount, 0)
-    const totalExits = manualMovements.filter(m => m.type === 'salida').reduce((s, m) => s + m.amount, 0)
+    // Non-cash credit payments show in the list but don't affect physical cash
+    const isNonCashCreditPayment = (m: typeof movements[0]) => {
+      if (!m.concept.startsWith('Cobro credito:')) return false
+      const match = m.concept.match(/\((.+)\)\s*$/)
+      if (!match) return false
+      const methodName = match[1].trim()
+      const pm = pmList.find(p => p.name === methodName)
+      return pm ? !pm.isCash : true
+    }
+
+    // For display: show ALL manual movements
+    const movementEntries = manualMovements.map(m => ({
+      id: m.id,
+      date: m.createdAt.toISOString(),
+      type: m.type as 'entrada' | 'salida',
+      amount: m.amount,
+      concept: m.concept,
+    }))
+
+    // For NET calculation: exclude non-cash credit payments (no physical cash)
+    const cashAffectingMovements = manualMovements.filter(m => !isNonCashCreditPayment(m))
+    const totalEntries = cashAffectingMovements.filter(m => m.type === 'entrada').reduce((s, m) => s + m.amount, 0)
+    const totalExits = cashAffectingMovements.filter(m => m.type === 'salida').reduce((s, m) => s + m.amount, 0)
     const netMovements = totalEntries - totalExits
 
     // Get register initial amount
@@ -164,16 +185,8 @@ export async function GET(
     const cashPaymentsTotal = nonCreditSales.reduce((sum, s) =>
       sum + s.payments.filter(p => cashCodes.has(p.method)).reduce((ps, p) => ps + p.amount, 0), 0)
 
-    // Real en Caja = monto inicial + pagos en efectivo físico + movimientos manuales netos
+    // Real en Caja = monto inicial + pagos en efectivo físico + movimientos manuales netos (solo efectivo)
     const realInRegister = initialAmt + cashPaymentsTotal + netMovements
-
-    const movementEntries = manualMovements.map(m => ({
-      id: m.id,
-      date: m.createdAt.toISOString(),
-      type: m.type as 'entrada' | 'salida',
-      amount: m.amount,
-      concept: m.concept,
-    }))
 
     return NextResponse.json({
       posSales: posSales.map(s => {

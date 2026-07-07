@@ -84,10 +84,12 @@ export async function POST(
         remaining = Math.round((remaining - applied) * 100) / 100
       }
 
-      // Create cash movement if cash register is open and method is cash
+      // Create cash movement for ALL credit payments (visibility in register)
+      // Only update currentAmt for cash methods (physical money)
       const pmList = await getPaymentMethodsFromDB().catch(() => FALLBACK_METHODS)
       const cashCodes = new Set(pmList.filter(m => m.isCash).map(m => m.code))
-      if (cashRegId && cashCodes.has(method)) {
+      const isCashPayment = cashCodes.has(method)
+      if (cashRegId) {
         const effectiveCurrencyId = currencyId || (await tx.currency.findFirst({ where: { isBase: true } }))?.id
         if (effectiveCurrencyId) {
           const client = await tx.client.findUnique({ where: { id: clientId }, select: { name: true, lastName: true } })
@@ -104,13 +106,15 @@ export async function POST(
             },
           })
 
-          // Update cash register current amount
-          const reg = await tx.cashRegister.findUnique({ where: { id: cashRegId } })
-          if (reg) {
-            await tx.cashRegister.update({
-              where: { id: cashRegId },
-              data: { currentAmt: Math.round((reg.currentAmt + amount) * 100) / 100 },
-            })
+          // Only add to currentAmt if it's physical cash
+          if (isCashPayment) {
+            const reg = await tx.cashRegister.findUnique({ where: { id: cashRegId } })
+            if (reg) {
+              await tx.cashRegister.update({
+                where: { id: cashRegId },
+                data: { currentAmt: Math.round((reg.currentAmt + amount) * 100) / 100 },
+              })
+            }
           }
         }
       }

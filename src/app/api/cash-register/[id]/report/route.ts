@@ -39,7 +39,15 @@ export async function GET(
     const totalSales = register.sales.reduce((sum, sale) =>
       sum + sale.payments.filter(p => cashCodes.has(p.method)).reduce((s, p) => s + p.amount, 0), 0)
     const totalExpenses = register.movements.filter(m => m.type === 'salida').reduce((sum, m) => sum + m.amount, 0)
-    const totalEntries = register.movements.filter(m => m.type === 'entrada').reduce((sum, m) => sum + m.amount, 0)
+    const isNonCashCreditMovement = (concept: string) => {
+      if (!concept.startsWith('Cobro credito:')) return false
+      const match = concept.match(/\((.+)\)\s*$/)
+      if (!match) return false
+      const methodName = match[1].trim()
+      const pm = pmList.find(p => p.name === methodName)
+      return pm ? !pm.isCash : true
+    }
+    const totalEntries = register.movements.filter(m => m.type === 'entrada' && !isNonCashCreditMovement(m.concept)).reduce((sum, m) => sum + m.amount, 0)
     const totalRetiros = register.movements.filter(m => m.type === 'retiro_excedente').reduce((sum, m) => sum + m.amount, 0)
     const expected = Math.round((register.initialAmt + totalSales + totalEntries - totalExpenses - totalRetiros) * 100) / 100
 

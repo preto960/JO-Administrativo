@@ -73,7 +73,17 @@ export async function GET(request: NextRequest) {
           !m.concept.includes('Suscripción') &&
           !m.concept.includes('Renovación')
         )
-        const netMovements = manualMovements.reduce((sum, m) =>
+
+        // Exclude non-cash credit payments from net calculation (no physical cash)
+        const cashAffectingMovements = manualMovements.filter(m => {
+          if (!m.concept.startsWith('Cobro credito:')) return true
+          const match = m.concept.match(/\((.+)\)\s*$/)
+          if (!match) return true
+          const methodName = match[1].trim()
+          const pm = pmList.find(p => p.name === methodName)
+          return pm ? pm.isCash : false
+        })
+        const netMovements = cashAffectingMovements.reduce((sum, m) =>
           sum + (m.type === 'entrada' ? m.amount : -m.amount), 0)
 
         const expectedAmt = Math.round((reg.initialAmt + cashTotal + netMovements) * 100) / 100

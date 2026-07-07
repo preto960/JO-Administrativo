@@ -34,6 +34,15 @@ export async function POST(request: NextRequest) {
     const pmList = await getPaymentMethodsFromDB().catch(() => FALLBACK_METHODS)
     const cashCodes = new Set(pmList.filter(m => m.isCash).map(m => m.code))
 
+    const isNonCashCreditMovement = (concept: string) => {
+      if (!concept.startsWith('Cobro credito:')) return false
+      const match = concept.match(/\((.+)\)\s*$/)
+      if (!match) return false
+      const methodName = match[1].trim()
+      const pm = pmList.find(p => p.name === methodName)
+      return pm ? !pm.isCash : true
+    }
+
     const results = await db.$transaction(async (tx) => {
       const cuts: any[] = []
       for (const register of openRegisters) {
@@ -48,7 +57,7 @@ export async function POST(request: NextRequest) {
           .reduce((sum, m) => sum + m.amount, 0)
 
         const totalEntries = register.movements
-          .filter(m => m.type === 'entrada')
+          .filter(m => m.type === 'entrada' && !isNonCashCreditMovement(m.concept))
           .reduce((sum, m) => sum + m.amount, 0)
 
         const totalRetiros = register.movements
@@ -105,7 +114,7 @@ export async function POST(request: NextRequest) {
             return sum + sale.payments.filter(p => cashCodes.has(p.method)).reduce((s, p) => s + p.amount, 0)
           }, 0)
           const totalExpenses = r.movements.filter(m => m.type === 'salida').reduce((sum, m) => sum + m.amount, 0)
-          const totalEntries = r.movements.filter(m => m.type === 'entrada').reduce((sum, m) => sum + m.amount, 0)
+          const totalEntries = r.movements.filter(m => m.type === 'entrada' && !isNonCashCreditMovement(m.concept)).reduce((sum, m) => sum + m.amount, 0)
           const totalRetiros = r.movements.filter(m => m.type === 'retiro_excedente').reduce((sum, m) => sum + m.amount, 0)
           const expected = Math.round((r.initialAmt + totalSales + totalEntries - totalExpenses - totalRetiros) * 100) / 100
 
@@ -138,7 +147,7 @@ export async function POST(request: NextRequest) {
               return sum + sale.payments.filter(p => cashCodes.has(p.method)).reduce((s, p) => s + p.amount, 0)
             }, 0)
             const totalExpenses = r.movements.filter(m => m.type === 'salida').reduce((sum, m) => sum + m.amount, 0)
-            const totalEntries = r.movements.filter(m => m.type === 'entrada').reduce((sum, m) => sum + m.amount, 0)
+            const totalEntries = r.movements.filter(m => m.type === 'entrada' && !isNonCashCreditMovement(m.concept)).reduce((sum, m) => sum + m.amount, 0)
             const totalRetiros = r.movements.filter(m => m.type === 'retiro_excedente').reduce((sum, m) => sum + m.amount, 0)
             const expected = Math.round((r.initialAmt + totalSales + totalEntries - totalExpenses - totalRetiros) * 100) / 100
             return {
