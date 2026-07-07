@@ -240,9 +240,9 @@ function drawInfoCard(doc: jsPDF, report: CashCloseReport, startY: number): numb
 }
 
 /**
- * Cash drawer reconciliation: shows exactly what should be physically in the box.
+ * Resumen de Efectivo en Caja: clear step-by-step calculation of physical cash.
  */
-function drawCashReconciliation(doc: jsPDF, report: CashCloseReport, startY: number): number {
+function drawCashSummary(doc: jsPDF, report: CashCloseReport, startY: number): number {
   const symbol = cs(report.referenceCurrency)
   let y = startY
 
@@ -252,54 +252,61 @@ function drawCashReconciliation(doc: jsPDF, report: CashCloseReport, startY: num
   doc.setFontSize(12)
   doc.setTextColor(...C.primary)
   doc.setFont('helvetica', 'bold')
-  doc.text('Conciliacion de Caja Fisica', 46, y + 11)
+  doc.text('Resumen de Efectivo en Caja', 46, y + 11)
   y += 18
 
-  // Build reconciliation rows
+  // Calculate other entries total
+  const otherEntriesTotal = report.otherEntries.reduce((s, e) => s + e.amount, 0)
+
+  // Calculate IVA if applicable
+  let ivaAmount = 0
+  if (report.ivaEnabled && report.ivaRate > 0) {
+    ivaAmount = Math.round((report.totalSales + report.cashCreditPayments) * (report.ivaRate / 100) * 100) / 100
+  }
+
+  // Calculate total cash in drawer
+  const totalInCash = Math.round((report.initialAmt + otherEntriesTotal + report.totalSales + report.cashCreditPayments + ivaAmount - report.totalExpenses - report.totalRetiros) * 100) / 100
+
+  // Build rows: clear step-by-step
   const rows: any[][] = [
     [
-      { content: 'Monto Inicial', styles: { textColor: C.dark, cellPadding: { top: 6, bottom: 6, left: 8 } } },
+      { content: 'Monto de Apertura', styles: { textColor: C.dark, cellPadding: { top: 6, bottom: 6, left: 8 } } },
       { content: `${symbol}${fmt(report.initialAmt)}`, styles: { halign: 'right', fontStyle: 'bold', textColor: C.dark, cellPadding: { top: 6, bottom: 6, right: 8 } } },
     ],
   ]
 
+  // Other entries FIRST (before credit payments as user requested)
+  if (otherEntriesTotal > 0) {
+    rows.push([
+      { content: '+ Otras Entradas', styles: { textColor: C.green, cellPadding: { top: 4, bottom: 4, left: 8 } } },
+      { content: `+${symbol}${fmt(otherEntriesTotal)}`, styles: { halign: 'right', fontStyle: 'bold', textColor: C.green, cellPadding: { top: 4, bottom: 4, right: 8 } } },
+    ])
+  }
+
   if (report.totalSales > 0) {
     rows.push([
-      { content: '+ Ventas directas en efectivo', styles: { textColor: C.green, cellPadding: { top: 4, bottom: 4, left: 8 } } },
+      { content: '+ Ventas en Efectivo', styles: { textColor: C.green, cellPadding: { top: 4, bottom: 4, left: 8 } } },
       { content: `+${symbol}${fmt(report.totalSales)}`, styles: { halign: 'right', fontStyle: 'bold', textColor: C.green, cellPadding: { top: 4, bottom: 4, right: 8 } } },
     ])
   }
 
   if (report.cashCreditPayments > 0) {
     rows.push([
-      { content: '+ Cobros de credito en efectivo', styles: { textColor: [30, 120, 60], cellPadding: { top: 4, bottom: 4, left: 8 } } },
+      { content: '+ Cobros de Credito en Efectivo', styles: { textColor: [30, 120, 60], cellPadding: { top: 4, bottom: 4, left: 8 } } },
       { content: `+${symbol}${fmt(report.cashCreditPayments)}`, styles: { halign: 'right', fontStyle: 'bold', textColor: [30, 120, 60], cellPadding: { top: 4, bottom: 4, right: 8 } } },
     ])
   }
 
-  if (report.otherEntries.length > 0) {
-    const otherTotal = report.otherEntries.reduce((s, e) => s + e.amount, 0)
+  if (ivaAmount > 0) {
     rows.push([
-      { content: '+ Otras entradas', styles: { textColor: C.green, cellPadding: { top: 4, bottom: 4, left: 8 } } },
-      { content: `+${symbol}${fmt(otherTotal)}`, styles: { halign: 'right', fontStyle: 'bold', textColor: C.green, cellPadding: { top: 4, bottom: 4, right: 8 } } },
+      { content: `+ I.V.A. Recaudado (${report.ivaRate}%)`, styles: { textColor: C.primaryLight, cellPadding: { top: 4, bottom: 4, left: 8 } } },
+      { content: `+${symbol}${fmt(ivaAmount)}`, styles: { halign: 'right', fontStyle: 'bold', textColor: C.primaryLight, cellPadding: { top: 4, bottom: 4, right: 8 } } },
     ])
-  }
-
-  // IVA
-  if (report.ivaEnabled && report.ivaRate > 0) {
-    const cashTotal = report.totalSales + report.cashCreditPayments
-    const ivaAmount = cashTotal * (report.ivaRate / 100)
-    if (ivaAmount > 0) {
-      rows.push([
-        { content: `+ I.V.A. Recaudado (${report.ivaRate}%)`, styles: { textColor: C.primaryLight, cellPadding: { top: 4, bottom: 4, left: 8 } } },
-        { content: `+${symbol}${fmt(ivaAmount)}`, styles: { halign: 'right', fontStyle: 'bold', textColor: C.primaryLight, cellPadding: { top: 4, bottom: 4, right: 8 } } },
-      ])
-    }
   }
 
   if (report.totalExpenses > 0) {
     rows.push([
-      { content: '- Total Gastos', styles: { textColor: C.red, cellPadding: { top: 4, bottom: 4, left: 8 } } },
+      { content: '- Gastos', styles: { textColor: C.red, cellPadding: { top: 4, bottom: 4, left: 8 } } },
       { content: `-${symbol}${fmt(report.totalExpenses)}`, styles: { halign: 'right', fontStyle: 'bold', textColor: C.red, cellPadding: { top: 4, bottom: 4, right: 8 } } },
     ])
   }
@@ -311,30 +318,16 @@ function drawCashReconciliation(doc: jsPDF, report: CashCloseReport, startY: num
     ])
   }
 
-  // Separator
+  // Separator line
   rows.push([
     { content: '', styles: { cellPadding: { top: 1, bottom: 1 } } },
     { content: '', styles: { cellPadding: { top: 1, bottom: 1 } } },
   ])
 
-  // Expected
+  // Total en Caja — the final result
   rows.push([
-    { content: 'Esperado en Caja', styles: { fontStyle: 'bold', textColor: C.dark, cellPadding: { top: 6, bottom: 6, left: 8 } } },
-    { content: `${symbol}${fmt(report.expected)}`, styles: { halign: 'right', fontStyle: 'bold', textColor: C.dark, cellPadding: { top: 6, bottom: 6, right: 8 } } },
-  ])
-
-  // Actual
-  rows.push([
-    { content: 'Contado en Caja', styles: { fontStyle: 'bold', textColor: C.primary, cellPadding: { top: 6, bottom: 6, left: 8 } } },
-    { content: `${symbol}${fmt(report.actual)}`, styles: { halign: 'right', fontStyle: 'bold', textColor: C.primary, fontSize: 11, cellPadding: { top: 6, bottom: 6, right: 8 } } },
-  ])
-
-  // Difference
-  const diffColor = report.difference >= 0 ? C.green : C.red
-  const diffPrefix = report.difference >= 0 ? '+' : ''
-  rows.push([
-    { content: 'Diferencia', styles: { fontStyle: 'bold', textColor: diffColor, cellPadding: { top: 6, bottom: 6, left: 8 } } },
-    { content: `${diffPrefix}${symbol}${fmt(report.difference)}`, styles: { halign: 'right', fontStyle: 'bold', textColor: diffColor, fontSize: 11, cellPadding: { top: 6, bottom: 6, right: 8 } } },
+    { content: 'TOTAL EN CAJA', styles: { fontStyle: 'bold', textColor: C.white, cellPadding: { top: 8, bottom: 8, left: 8 } } },
+    { content: `${symbol}${fmt(totalInCash)}`, styles: { halign: 'right', fontStyle: 'bold', textColor: C.white, fontSize: 12, cellPadding: { top: 8, bottom: 8, right: 8 } } },
   ])
 
   autoTable(doc, {
@@ -357,13 +350,10 @@ function drawCashReconciliation(doc: jsPDF, report: CashCloseReport, startY: num
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           ;(data.cell.styles as any).borders = { top: { width: 0.5, color: C.grayMedium }, bottom: { width: 0.5, color: C.grayMedium }, left: { width: 0 }, right: { width: 0 } }
         }
-        // Actual row highlight
-        if (rowIdx === rows.length - 2) {
-          data.cell.styles.fillColor = C.blueBg
-        }
-        // Difference row
+        // Total row — green highlight
         if (rowIdx === rows.length - 1) {
-          data.cell.styles.fillColor = report.difference >= 0 ? C.greenSoft : C.redSoft
+          data.cell.styles.fillColor = C.green
+          data.cell.styles.textColor = C.white
         }
       }
     },
@@ -374,6 +364,7 @@ function drawCashReconciliation(doc: jsPDF, report: CashCloseReport, startY: num
 
   return y
 }
+
 
 /**
  * Recaudado total: combines direct sales + credit payments by method.
@@ -744,8 +735,8 @@ export async function generateCashClosePDF(report: CashCloseReport): Promise<Buf
   // Info card
   y = drawInfoCard(doc, report, y)
 
-  // Cash drawer reconciliation
-  y = drawCashReconciliation(doc, report, y)
+  // Cash summary (efectivo en caja)
+  y = drawCashSummary(doc, report, y)
 
   // Recaudado total by method
   y = drawRecaudadoTotal(doc, report, y)
@@ -831,24 +822,27 @@ export async function generateMultiCashClosePDF(reports: CashCloseReport[]): Pro
   // Summary table
   let y = 72
 
-  const hasCredit = reports.some(r => r.creditPaymentsByMethod.length > 0)
-  const headers = hasCredit
-    ? [['Cajero/a', 'Caja', 'Recaudado', 'En Caja']]
-    : [['Cajero/a', 'Caja', 'Ventas', 'En Caja']]
+  const headers = [['Cajero/a', 'Caja', 'Recaudado', 'En Caja']]
 
   let grandTotalRecaudado = 0
-  let grandTotalActual = 0
+  let grandTotalEnCaja = 0
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const bodyRows: any[] = reports.map(r => {
     const recaudado = r.totalCollected
+    const otherTotal = r.otherEntries.reduce((s: number, e: { amount: number }) => s + e.amount, 0)
+    let ivaAmt = 0
+    if (r.ivaEnabled && r.ivaRate > 0) {
+      ivaAmt = Math.round((r.totalSales + r.cashCreditPayments) * (r.ivaRate / 100) * 100) / 100
+    }
+    const enCaja = Math.round((r.initialAmt + otherTotal + r.totalSales + r.cashCreditPayments + ivaAmt - r.totalExpenses - r.totalRetiros) * 100) / 100
     grandTotalRecaudado += recaudado
-    grandTotalActual += r.actual
+    grandTotalEnCaja += enCaja
     return [
       r.cashierName,
       r.registerName || '\u2014',
       `${symbol}${fmt(recaudado)}`,
-      `${symbol}${fmt(r.actual)}`,
+      `${symbol}${fmt(enCaja)}`,
     ]
   })
 
@@ -856,7 +850,7 @@ export async function generateMultiCashClosePDF(reports: CashCloseReport[]): Pro
     { content: 'TOTAL GENERAL', styles: { fontStyle: 'bold' } },
     { content: '', styles: {} },
     { content: `${symbol}${fmt(grandTotalRecaudado)}`, styles: { fontStyle: 'bold', textColor: C.green } },
-    { content: `${symbol}${fmt(grandTotalActual)}`, styles: { fontStyle: 'bold', textColor: C.primary } },
+    { content: `${symbol}${fmt(grandTotalEnCaja)}`, styles: { fontStyle: 'bold', textColor: C.green } },
   ])
 
   autoTable(doc, {
@@ -925,25 +919,44 @@ export async function generateMultiCashClosePDF(reports: CashCloseReport[]): Pro
     doc.setFontSize(10)
     doc.setTextColor(...C.primary)
     doc.setFont('helvetica', 'bold')
-    doc.text('Conciliacion de Caja', 46, y + 10)
+    doc.text('Resumen de Efectivo', 46, y + 10)
     y += 16
+
+    const otherEntriesTotal = r.otherEntries.reduce((s: number, e: { amount: number }) => s + e.amount, 0)
+    let ivaAmt = 0
+    if (r.ivaEnabled && r.ivaRate > 0) {
+      ivaAmt = Math.round((r.totalSales + r.cashCreditPayments) * (r.ivaRate / 100) * 100) / 100
+    }
+    const totalInCash = Math.round((r.initialAmt + otherEntriesTotal + r.totalSales + r.cashCreditPayments + ivaAmt - r.totalExpenses - r.totalRetiros) * 100) / 100
 
     const summaryBody: any[][] = [
       [
-        { content: 'Monto Inicial', styles: { textColor: C.dark, cellPadding: { top: 5, bottom: 5, left: 6 } } },
+        { content: 'Monto de Apertura', styles: { textColor: C.dark, cellPadding: { top: 5, bottom: 5, left: 6 } } },
         { content: `${sym}${fmt(r.initialAmt)}`, styles: { halign: 'right', fontStyle: 'bold', textColor: C.dark, cellPadding: { top: 5, bottom: 5, right: 6 } } },
       ],
     ]
+    if (otherEntriesTotal > 0) {
+      summaryBody.push([
+        { content: '+ Otras Entradas', styles: { textColor: C.green, cellPadding: { top: 3, bottom: 3, left: 6 } } },
+        { content: `+${sym}${fmt(otherEntriesTotal)}`, styles: { halign: 'right', fontStyle: 'bold', textColor: C.green, cellPadding: { top: 3, bottom: 3, right: 6 } } },
+      ])
+    }
     if (r.totalSales > 0) {
       summaryBody.push([
-        { content: '+ Ventas en efectivo', styles: { textColor: C.green, cellPadding: { top: 3, bottom: 3, left: 6 } } },
+        { content: '+ Ventas en Efectivo', styles: { textColor: C.green, cellPadding: { top: 3, bottom: 3, left: 6 } } },
         { content: `+${sym}${fmt(r.totalSales)}`, styles: { halign: 'right', fontStyle: 'bold', textColor: C.green, cellPadding: { top: 3, bottom: 3, right: 6 } } },
       ])
     }
     if (r.cashCreditPayments > 0) {
       summaryBody.push([
-        { content: '+ Cobros credito (efectivo)', styles: { textColor: [30, 120, 60], cellPadding: { top: 3, bottom: 3, left: 6 } } },
+        { content: '+ Cobros de Credito en Efectivo', styles: { textColor: [30, 120, 60], cellPadding: { top: 3, bottom: 3, left: 6 } } },
         { content: `+${sym}${fmt(r.cashCreditPayments)}`, styles: { halign: 'right', fontStyle: 'bold', textColor: [30, 120, 60], cellPadding: { top: 3, bottom: 3, right: 6 } } },
+      ])
+    }
+    if (ivaAmt > 0) {
+      summaryBody.push([
+        { content: `+ I.V.A. (${r.ivaRate}%)`, styles: { textColor: C.primaryLight, cellPadding: { top: 3, bottom: 3, left: 6 } } },
+        { content: `+${sym}${fmt(ivaAmt)}`, styles: { halign: 'right', fontStyle: 'bold', textColor: C.primaryLight, cellPadding: { top: 3, bottom: 3, right: 6 } } },
       ])
     }
     if (r.totalExpenses > 0) {
@@ -964,8 +977,8 @@ export async function generateMultiCashClosePDF(reports: CashCloseReport[]): Pro
       { content: '', styles: { cellPadding: { top: 1, bottom: 1 } } },
     ])
     summaryBody.push([
-      { content: 'Total en Caja', styles: { fontStyle: 'bold', textColor: C.primary, cellPadding: { top: 6, bottom: 6, left: 6 } } },
-      { content: `${sym}${fmt(r.actual)}`, styles: { halign: 'right', fontStyle: 'bold', textColor: C.primary, fontSize: 10, cellPadding: { top: 6, bottom: 6, right: 6 } } },
+      { content: 'TOTAL EN CAJA', styles: { fontStyle: 'bold', textColor: C.white, cellPadding: { top: 6, bottom: 6, left: 6 } } },
+      { content: `${sym}${fmt(totalInCash)}`, styles: { halign: 'right', fontStyle: 'bold', textColor: C.white, fontSize: 10, cellPadding: { top: 6, bottom: 6, right: 6 } } },
     ])
 
     autoTable(doc, {
@@ -988,7 +1001,8 @@ export async function generateMultiCashClosePDF(reports: CashCloseReport[]): Pro
             ;(data.cell.styles as any).borders = { top: { width: 0.5, color: C.grayMedium }, bottom: { width: 0.5, color: C.grayMedium }, left: { width: 0 }, right: { width: 0 } }
           }
           if (rowIdx === summaryBody.length - 1) {
-            data.cell.styles.fillColor = C.blueBg
+            data.cell.styles.fillColor = C.green
+            data.cell.styles.textColor = C.white
           }
         }
       },
