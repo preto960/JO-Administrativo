@@ -63,9 +63,9 @@ export async function POST(
     // Validate payment method(s)
     const isHybrid = Array.isArray(hybridPayments) && hybridPayments.length > 1
     let pmInfo: { code: string; isCash: boolean; isCredit: boolean; isLocalCurrency: boolean } | null = null
+    const pmList = await getPaymentMethodsFromDB().catch(() => FALLBACK_METHODS)
     if (isHybrid) {
       // Hybrid: validate all methods exist
-      const pmList = await getPaymentMethodsFromDB().catch(() => FALLBACK_METHODS)
       for (const p of hybridPayments) {
         const found = pmList.find((m: any) => m.code === p.method)
         if (!found) return NextResponse.json({ error: `Método de pago no válido: ${p.method}` }, { status: 400 })
@@ -78,7 +78,6 @@ export async function POST(
       }
       pmInfo = { code: 'hibrido', isCash: false, isCredit: false, isLocalCurrency: false }
     } else if (paymentMethod) {
-      const pmList = await getPaymentMethodsFromDB().catch(() => FALLBACK_METHODS)
       pmInfo = pmList.find((m: any) => m.code === paymentMethod) || null
       if (!pmInfo) return NextResponse.json({ error: 'Método de pago no válido' }, { status: 400 })
     }
@@ -228,39 +227,29 @@ export async function POST(
         })
         saleId = sale.id
 
-        // Handle cash register: add to balance for all non-credit payments
+        // Handle cash register: only add CASH payments to physical register balance
         if (cashRegId && pmInfo && !pmInfo.isCredit) {
           const register = await db.cashRegister.findUnique({ where: { id: cashRegId } })
           if (register && register.status === 'abierta') {
-            await db.cashRegister.update({
-              where: { id: cashRegId },
-              data: { currentAmt: Math.round((register.currentAmt + plan.cost) * 100) / 100 },
-            })
+            const cashAmount = isHybrid
+              ? hybridPayments
+                  .filter(p => {
+                    const pm = pmList.find((m: any) => m.code === p.method)
+                    return pm?.isCash
+                  })
+                  .reduce((s, p) => s + (p.amount || 0), 0)
+              : pmInfo.isCash
+                ? plan.cost
+                : 0
+
+            if (cashAmount > 0) {
+              await db.cashRegister.update({
+                where: { id: cashRegId },
+                data: { currentAmt: Math.round((register.currentAmt + cashAmount) * 100) / 100 },
+              })
+            }
           } else if (register && register.status !== 'abierta') {
             movementError = `Caja está cerrada (status: ${register.status})`
-          }
-        }
-
-        // Create CashMovement for visibility in cash register
-        if (cashRegId) {
-          const register = await db.cashRegister.findUnique({ where: { id: cashRegId } })
-          if (register && register.status === 'abierta') {
-            try {
-              const conceptWithId = `[${saleId}] ${concept}`
-              const movement = await db.cashMovement.create({
-                data: {
-                  cashRegId,
-                  userId: auth.userId,
-                  type: 'entrada',
-                  amount: plan.cost,
-                  concept: conceptWithId,
-                  currencyId: resolvedCurrencyId,
-                },
-              })
-              movementId = movement.id
-            } catch (err) {
-              movementError = err instanceof Error ? err.message : String(err)
-            }
           }
         }
 
