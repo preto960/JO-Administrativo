@@ -125,15 +125,48 @@ export async function GET(request: NextRequest) {
       include: { product: true },
     })
 
-    // ─── KPIs (exclude credit sales from income) ───
+    // ─── Credit payments (cobros de credito) from cash movements ───
+    // Credit payments are stored as movements, not as sales — we need to add them to income
+    const creditPaymentsToday = await db.cashMovement.aggregate({
+      where: {
+        type: 'entrada',
+        concept: { startsWith: 'Cobro credito:' },
+        createdAt: { gte: today },
+        cashReg: { branchId },
+      },
+      _sum: { amount: true },
+    })
+    const creditPaymentsMonth = await db.cashMovement.aggregate({
+      where: {
+        type: 'entrada',
+        concept: { startsWith: 'Cobro credito:' },
+        createdAt: { gte: monthStart },
+        cashReg: { branchId },
+      },
+      _sum: { amount: true },
+    })
+    const creditPaymentsPeriod = await db.cashMovement.aggregate({
+      where: {
+        type: 'entrada',
+        concept: { startsWith: 'Cobro credito:' },
+        createdAt: { gte: startDate, lte: endDate },
+        cashReg: { branchId },
+      },
+      _sum: { amount: true },
+    })
+    const creditTodayAmt = Math.round((creditPaymentsToday._sum.amount || 0) * 100) / 100
+    const creditMonthAmt = Math.round((creditPaymentsMonth._sum.amount || 0) * 100) / 100
+    const creditPeriodAmt = Math.round((creditPaymentsPeriod._sum.amount || 0) * 100) / 100
+
+    // ─── KPIs (exclude credit sales from income, but ADD credit payments received) ───
     const nonCreditToday = filterNonCredit(salesToday)
     const nonCreditMonth = filterNonCredit(salesMonth)
     const nonCreditPeriod = filterNonCredit(salesPeriod)
 
-    // FIX: nonCreditMonth/Yoday ya incluyen renovaciones, no sumar renewalMes/Hoy de nuevo
-    const ingresosHoy = Math.round(nonCreditToday.reduce((s, sale) => s + sale.total, 0) * 100) / 100
+    // FIX: nonCreditMonth/Today ya incluyen renovaciones, no sumar renewalMes/Hoy de nuevo
+    const ingresosHoy = Math.round((nonCreditToday.reduce((s, sale) => s + sale.total, 0) + creditTodayAmt) * 100) / 100
     const gastosHoy = Math.round(expensesToday.reduce((s, e) => s + e.amount, 0) * 100) / 100
-    const ingresosMes = Math.round(nonCreditMonth.reduce((s, sale) => s + sale.total, 0) * 100) / 100
+    const ingresosMes = Math.round((nonCreditMonth.reduce((s, sale) => s + sale.total, 0) + creditMonthAmt) * 100) / 100
     const gastosMes = Math.round(expensesMonth.reduce((s, e) => s + e.amount, 0) * 100) / 100
 
     // ─── Costo de ventas (solo líneas de productos, las suscripciones no tienen líneas → costo 0) ───
@@ -167,7 +200,7 @@ export async function GET(request: NextRequest) {
     const utilidadNetaMes = Math.round((ingresosMes - costoVentasMes - gastosMes - impuestoMes - cuentasPorCobrarMes - perdidasMes + interesesMes) * 100) / 100
 
     // ─── Period totals ───
-    const ingresosPeriodo = Math.round(nonCreditPeriod.reduce((s, sale) => s + sale.total, 0) * 100) / 100
+    const ingresosPeriodo = Math.round((nonCreditPeriod.reduce((s, sale) => s + sale.total, 0) + creditPeriodAmt) * 100) / 100
     const gastosPeriodo = Math.round(expensesPeriod.reduce((s, e) => s + e.amount, 0) * 100) / 100
 
     const costoVentasPeriodo = nonCreditPeriod.reduce((s, sale) =>
