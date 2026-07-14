@@ -2330,7 +2330,7 @@ export function ClientsTable() {
                 {renewMethods.length > 0 ? (
                   <HybridPaymentSelector
                     methods={renewMethods as any}
-                    total={(() => { const p = plans.find(p => p.id === renewPlanId); return p?.effectivePrice ?? p?.cost || 0 })()}
+                    total={(() => { const p = plans.find(p => p.id === renewPlanId); return (p?.effectivePrice ?? p?.cost) || 0 })()}
                     currencySymbol={fmt(0).replace(/[\d.,\s]/g, '').split('').find(c => /[^\w]/) || '$'}
                     onChange={setRenewHybridPayments}
                     onModeChange={setRenewIsHybrid}
