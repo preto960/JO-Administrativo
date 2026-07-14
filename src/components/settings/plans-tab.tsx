@@ -102,6 +102,15 @@ interface Plan {
   cost: number
   description: string | null
   active: boolean
+  discountPercentage: number
+  discountStartDate: string | null
+  discountEndDate: string | null
+  promoPrice: number | null
+  promoStartDate: string | null
+  promoEndDate: string | null
+  effectivePrice?: number
+  hasActivePromo?: boolean
+  hasActiveDiscount?: boolean
   createdAt: string
   updatedAt: string
 }
@@ -127,6 +136,12 @@ export function PlansTab() {
   const [formCost, setFormCost] = useState('')
   const [formDescription, setFormDescription] = useState('')
   const [formActive, setFormActive] = useState(true)
+  const [formDiscountPct, setFormDiscountPct] = useState('')
+  const [formDiscountStart, setFormDiscountStart] = useState('')
+  const [formDiscountEnd, setFormDiscountEnd] = useState('')
+  const [formPromoPrice, setFormPromoPrice] = useState('')
+  const [formPromoStart, setFormPromoStart] = useState('')
+  const [formPromoEnd, setFormPromoEnd] = useState('')
 
   const fetchPlans = async () => {
     try {
@@ -152,6 +167,12 @@ export function PlansTab() {
     setFormCost('')
     setFormDescription('')
     setFormActive(true)
+    setFormDiscountPct('')
+    setFormDiscountStart('')
+    setFormDiscountEnd('')
+    setFormPromoPrice('')
+    setFormPromoStart('')
+    setFormPromoEnd('')
   }
 
   const openCreate = () => {
@@ -172,6 +193,12 @@ export function PlansTab() {
     setFormCost(plan.cost ? String(plan.cost) : '')
     setFormDescription(plan.description || '')
     setFormActive(plan.active)
+    setFormDiscountPct(plan.discountPercentage ? String(plan.discountPercentage) : '')
+    setFormDiscountStart(plan.discountStartDate ? plan.discountStartDate.slice(0, 10) : '')
+    setFormDiscountEnd(plan.discountEndDate ? plan.discountEndDate.slice(0, 10) : '')
+    setFormPromoPrice(plan.promoPrice != null ? String(plan.promoPrice) : '')
+    setFormPromoStart(plan.promoStartDate ? plan.promoStartDate.slice(0, 10) : '')
+    setFormPromoEnd(plan.promoEndDate ? plan.promoEndDate.slice(0, 10) : '')
     setShowDialog(true)
   }
 
@@ -207,6 +234,12 @@ export function PlansTab() {
         endTime: formPlanType === 'horario' ? formEndTime : null,
         cost: Number(formCost) || 0,
         description: formDescription.trim() || null,
+        discountPercentage: Number(formDiscountPct) || 0,
+        discountStartDate: formDiscountStart || null,
+        discountEndDate: formDiscountEnd || null,
+        promoPrice: formPromoPrice ? Number(formPromoPrice) : null,
+        promoStartDate: formPromoStart || null,
+        promoEndDate: formPromoEnd || null,
       }
 
       if (editingPlan) {
@@ -329,9 +362,24 @@ export function PlansTab() {
                         )}
                       </TableCell>
                       <TableCell>
-                        <div className="flex items-center gap-1.5 text-sm font-semibold">
-                          <DollarSign className="h-3.5 w-3.5 text-emerald-600" />
-                          {fmt(plan.cost)}
+                        <div className="flex flex-col gap-0.5">
+                          <div className="flex items-center gap-1.5 text-sm font-semibold">
+                            <DollarSign className="h-3.5 w-3.5 text-emerald-600" />
+                            {plan.effectivePrice != null && plan.effectivePrice !== plan.cost ? (
+                              <>
+                                <span>{fmt(plan.effectivePrice)}</span>
+                                <span className="text-xs text-muted-foreground line-through font-normal ml-1">{fmt(plan.cost)}</span>
+                              </>
+                            ) : (
+                              <span>{fmt(plan.cost)}</span>
+                            )}
+                          </div>
+                          {plan.hasActivePromo && (
+                            <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">Promo activa</span>
+                          )}
+                          {plan.hasActiveDiscount && (
+                            <span className="text-[10px] text-blue-600 dark:text-blue-400 font-medium">{plan.discountPercentage}% descuento</span>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell className="hidden md:table-cell text-sm text-muted-foreground max-w-[250px] truncate">
@@ -384,7 +432,7 @@ export function PlansTab() {
 
       {/* Create/Edit Dialog */}
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{editingPlan ? 'Editar Plan' : 'Nuevo Plan'}</DialogTitle>
             <DialogDescription>
@@ -567,6 +615,88 @@ export function PlansTab() {
                 onChange={(e) => setFormDescription(e.target.value)}
                 placeholder="Descripción opcional del plan..."
               />
+            </div>
+
+            {/* Separator: Descuento y Promocion */}
+            <div className="border-t pt-4 mt-2">
+              <p className="text-sm font-semibold text-muted-foreground mb-3">Descuento y Precio Promocional</p>
+
+              {/* Descuento porcentual */}
+              <div className="grid grid-cols-[1fr_auto_auto] gap-2 items-end mb-4">
+                <div className="space-y-1">
+                  <Label className="text-xs">Descuento (%)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    step={0.1}
+                    value={formDiscountPct}
+                    onChange={(e) => setFormDiscountPct(e.target.value)}
+                    placeholder="0"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Desde</Label>
+                  <Input
+                    type="date"
+                    value={formDiscountStart}
+                    onChange={(e) => setFormDiscountStart(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Hasta</Label>
+                  <Input
+                    type="date"
+                    value={formDiscountEnd}
+                    onChange={(e) => setFormDiscountEnd(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {/* Precio promocional */}
+              <div className="grid grid-cols-[1fr_auto_auto] gap-2 items-end">
+                <div className="space-y-1">
+                  <Label className="text-xs">Precio Promocional</Label>
+                  <div className="relative">
+                    <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      type="number"
+                      min={0}
+                      step={0.01}
+                      value={formPromoPrice}
+                      onChange={(e) => setFormPromoPrice(e.target.value)}
+                      placeholder="0.00"
+                      className="pl-9"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Desde</Label>
+                  <Input
+                    type="date"
+                    value={formPromoStart}
+                    onChange={(e) => setFormPromoStart(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Hasta</Label>
+                  <Input
+                    type="date"
+                    value={formPromoEnd}
+                    onChange={(e) => setFormPromoEnd(e.target.value)}
+                  />
+                </div>
+              </div>
+              {(formDiscountPct || formPromoPrice) && (
+                <p className="text-[11px] text-muted-foreground mt-2">
+                  {formPromoPrice && formPromoStart && formPromoEnd
+                    ? `Promo: ${formPromoPrice} del ${formPromoStart} al ${formPromoEnd}`
+                    : ''}
+                  {formDiscountPct && formDiscountStart && formDiscountEnd
+                    ? `${formPromoPrice && formPromoStart ? ' | ' : ''}Descuento: ${formDiscountPct}% del ${formDiscountStart} al ${formDiscountEnd}`
+                    : ''}
+                </p>
+              )}
             </div>
 
             {/* Active toggle (only on edit) */}

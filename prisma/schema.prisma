@@ -585,6 +585,17 @@ model Plan {
   cost         Float    @default(0)
   description  String?
   active       Boolean  @default(true)
+
+  // Descuento porcentual con vigencia
+  discountPercentage Float  @default(0)
+  discountStartDate DateTime?
+  discountEndDate   DateTime?
+
+  // Precio promocional con vigencia
+  promoPrice      Float?
+  promoStartDate   DateTime?
+  promoEndDate     DateTime?
+
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 

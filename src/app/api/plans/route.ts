@@ -6,6 +6,31 @@ import { getPermissions } from '@/lib/permissions'
 const VALID_DURATION_TYPES = ['1_mes', 'bimestral', 'anual', 'dia', 'otro'] as const
 const VALID_PLAN_TYPES = ['dias', 'horario', 'tickets'] as const
 
+/** Calculate the effective price for a plan at a given moment */
+function getEffectivePrice(plan: { cost: number; discountPercentage: number; discountStartDate: Date | null; discountEndDate: Date | null; promoPrice: number | null; promoStartDate: Date | null; promoEndDate: Date | null }, now: Date): { price: number; hasPromo: boolean; hasDiscount: boolean } {
+  let basePrice = plan.cost
+  let hasPromo = false
+  let hasDiscount = false
+
+  // Check promo price (replaces base price if active)
+  if (plan.promoPrice != null && plan.promoPrice > 0 && plan.promoStartDate && plan.promoEndDate) {
+    if (now >= plan.promoStartDate && now <= plan.promoEndDate) {
+      basePrice = plan.promoPrice
+      hasPromo = true
+    }
+  }
+
+  // Check discount percentage (applied on top of base/promo price)
+  if (plan.discountPercentage > 0 && plan.discountStartDate && plan.discountEndDate) {
+    if (now >= plan.discountStartDate && now <= plan.discountEndDate) {
+      basePrice = Math.round((basePrice - (basePrice * plan.discountPercentage / 100)) * 100) / 100
+      hasDiscount = true
+    }
+  }
+
+  return { price: basePrice, hasPromo, hasDiscount }
+}
+
 export async function GET() {
   const auth = await requireAuth()
   if ('status' in auth) return auth
@@ -15,7 +40,13 @@ export async function GET() {
     const plans = await db.plan.findMany({
       orderBy: { createdAt: 'asc' },
     })
-    return NextResponse.json(plans)
+    const now = new Date()
+    // Attach effective price to each plan
+    const plansWithPrice = plans.map(p => {
+      const { price, hasPromo, hasDiscount } = getEffectivePrice(p, now)
+      return { ...p, effectivePrice: price, hasActivePromo: hasPromo, hasActiveDiscount: hasDiscount }
+    })
+    return NextResponse.json(plansWithPrice)
   } catch (error) {
     console.error('[Plans GET]', error)
     return NextResponse.json({ error: 'Error al obtener planes' }, { status: 500 })
@@ -32,7 +63,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { name, planType, durationType, durationDays, ticketCount, startTime, endTime, cost, description } = body
+    const { name, planType, durationType, durationDays, ticketCount, startTime, endTime, cost, description, discountPercentage, discountStartDate, discountEndDate, promoPrice, promoStartDate, promoEndDate } = body
 
     if (!name?.trim()) {
       return NextResponse.json({ error: 'El nombre es obligatorio' }, { status: 400 })
@@ -76,10 +107,18 @@ export async function POST(request: NextRequest) {
         endTime: resolvedPlanType === 'horario' ? endTime : null,
         cost: Number(cost) || 0,
         description: description?.trim() || null,
+        discountPercentage: Number(discountPercentage) || 0,
+        discountStartDate: discountStartDate ? new Date(discountStartDate) : null,
+        discountEndDate: discountEndDate ? new Date(discountEndDate) : null,
+        promoPrice: promoPrice != null ? Number(promoPrice) : null,
+        promoStartDate: promoStartDate ? new Date(promoStartDate) : null,
+        promoEndDate: promoEndDate ? new Date(promoEndDate) : null,
       },
     })
 
-    return NextResponse.json(plan, { status: 201 })
+    const now = new Date()
+    const { price, hasPromo, hasDiscount } = getEffectivePrice(plan, now)
+    return NextResponse.json({ ...plan, effectivePrice: price, hasActivePromo: hasPromo, hasActiveDiscount: hasDiscount }, { status: 201 })
   } catch (error: unknown) {
     if (error && typeof error === 'object' && 'code' in error && (error as { code: string }).code === 'P2002') {
       return NextResponse.json({ error: 'Ya existe un plan con ese nombre' }, { status: 409 })
@@ -99,7 +138,7 @@ export async function PUT(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { id, name, planType, durationType, durationDays, ticketCount, startTime, endTime, cost, description, active } = body
+    const { id, name, planType, durationType, durationDays, ticketCount, startTime, endTime, cost, description, active, discountPercentage, discountStartDate, discountEndDate, promoPrice, promoStartDate, promoEndDate } = body
 
     if (!id) {
       return NextResponse.json({ error: 'ID requerido' }, { status: 400 })
@@ -140,10 +179,18 @@ export async function PUT(request: NextRequest) {
         cost: cost !== undefined ? Number(cost) : undefined,
         description: description !== undefined ? (description?.trim() || null) : undefined,
         active: active !== undefined ? active : undefined,
+        discountPercentage: discountPercentage !== undefined ? Number(discountPercentage) : undefined,
+        discountStartDate: discountStartDate ? new Date(discountStartDate) : (discountStartDate === null ? null : undefined),
+        discountEndDate: discountEndDate ? new Date(discountEndDate) : (discountEndDate === null ? null : undefined),
+        promoPrice: promoPrice !== undefined ? (promoPrice != null ? Number(promoPrice) : null) : undefined,
+        promoStartDate: promoStartDate ? new Date(promoStartDate) : (promoStartDate === null ? null : undefined),
+        promoEndDate: promoEndDate ? new Date(promoEndDate) : (promoEndDate === null ? null : undefined),
       },
     })
 
-    return NextResponse.json(plan)
+    const now = new Date()
+    const { price, hasPromo, hasDiscount } = getEffectivePrice(plan, now)
+    return NextResponse.json({ ...plan, effectivePrice: price, hasActivePromo: hasPromo, hasActiveDiscount: hasDiscount })
   } catch (error: unknown) {
     if (error && typeof error === 'object' && 'code' in error && (error as { code: string }).code === 'P2002') {
       return NextResponse.json({ error: 'Ya existe un plan con ese nombre' }, { status: 409 })

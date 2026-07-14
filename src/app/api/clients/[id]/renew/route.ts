@@ -64,6 +64,21 @@ export async function POST(
     const isHybrid = Array.isArray(hybridPayments) && hybridPayments.length > 1
     let pmInfo: { code: string; isCash: boolean; isCredit: boolean; isLocalCurrency: boolean } | null = null
     const pmList = await getPaymentMethodsFromDB().catch(() => FALLBACK_METHODS)
+
+    // ── Calculate effective price (promo + discount auto-applied) ──
+    const now = new Date()
+    let effectivePrice = plan.cost
+    if (plan.promoPrice != null && plan.promoPrice > 0 && plan.promoStartDate && plan.promoEndDate) {
+      if (now >= plan.promoStartDate && now <= plan.promoEndDate) {
+        effectivePrice = plan.promoPrice
+      }
+    }
+    if (plan.discountPercentage > 0 && plan.discountStartDate && plan.discountEndDate) {
+      if (now >= plan.discountStartDate && now <= plan.discountEndDate) {
+        effectivePrice = Math.round((effectivePrice - (effectivePrice * plan.discountPercentage / 100)) * 100) / 100
+      }
+    }
+
     if (isHybrid) {
       // Hybrid: validate all methods exist
       for (const p of hybridPayments) {
@@ -71,10 +86,10 @@ export async function POST(
         if (!found) return NextResponse.json({ error: `Método de pago no válido: ${p.method}` }, { status: 400 })
         if (found.isCredit) return NextResponse.json({ error: 'Los pagos híbridos no permiten crédito' }, { status: 400 })
       }
-      // Validate amounts sum to plan.cost
+      // Validate amounts sum to effectivePrice
       const sum = hybridPayments.reduce((s, p) => s + (p.amount || 0), 0)
-      if (Math.abs(sum - plan.cost) > 0.01) {
-        return NextResponse.json({ error: `Los pagos (${sum}) no coinciden con el costo del plan (${plan.cost})` }, { status: 400 })
+      if (Math.abs(sum - effectivePrice) > 0.01) {
+        return NextResponse.json({ error: `Los pagos (${sum}) no coinciden con el precio del plan (${effectivePrice})` }, { status: 400 })
       }
       pmInfo = { code: 'hibrido', isCash: false, isCredit: false, isLocalCurrency: false }
     } else if (paymentMethod) {
@@ -194,7 +209,7 @@ export async function POST(
             }))
           : [{
               method: paymentMethod!,
-              amount: plan.cost,
+              amount: effectivePrice,
               currencyId: resolvedCurrencyId,
               reference: paymentReference?.trim() || null,
             }]
@@ -216,7 +231,7 @@ export async function POST(
             cashRegId: cashRegId || null,
             userId: auth.userId,
             branchId: effectiveBranchId ?? undefined,
-            total: plan.cost,
+            total: effectivePrice,
             status: 'completada',
             currencyId: resolvedCurrencyId,
             syncStatus: 'synced',
@@ -239,7 +254,7 @@ export async function POST(
                   })
                   .reduce((s, p) => s + (p.amount || 0), 0)
               : pmInfo.isCash
-                ? plan.cost
+                ? effectivePrice
                 : 0
 
             if (cashAmount > 0) {
@@ -259,8 +274,8 @@ export async function POST(
             data: {
               clientId: id,
               saleId: sale.id,
-              amount: plan.cost,
-              pendingBalance: plan.cost,
+              amount: effectivePrice,
+              pendingBalance: effectivePrice,
               status: 'pendiente',
               currencyId: resolvedCurrencyId,
               dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
@@ -284,7 +299,8 @@ export async function POST(
         planType,
         totalDays: effectiveDays,
         ticketCount: planType === 'tickets' ? ticketCount : 0,
-        cost: plan.cost,
+        cost: effectivePrice,
+        originalCost: plan.cost,
         paymentMethod: isHybrid ? `Híbrido (${hybridPayments.map(p => p.method).join(', ')})` : (paymentMethod || null),
         saleId,
         movementId,

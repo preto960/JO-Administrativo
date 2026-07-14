@@ -123,6 +123,10 @@ interface PlanOption {
   endTime: string | null
   cost: number
   active: boolean
+  effectivePrice?: number
+  hasActivePromo?: boolean
+  hasActiveDiscount?: boolean
+  discountPercentage?: number
 }
 
 interface SaleRecord {
@@ -1016,7 +1020,8 @@ export function ClientsTable() {
       const selectedPlan = plans.find(p => p.id === renewPlanId)
       if (!selectedPlan) { toast.error('Plan no encontrado'); return }
       const sum = renewHybridPayments.reduce((s, p) => s + p.amount, 0)
-      if (Math.abs(sum - selectedPlan.cost) > 0.01) {
+      const effectivePrice = selectedPlan.effectivePrice ?? selectedPlan.cost
+      if (Math.abs(sum - effectivePrice) > 0.01) {
         toast.error('Los pagos híbridos no cubren el total del plan')
         return
       }
@@ -1532,7 +1537,7 @@ export function ClientsTable() {
                   <SelectContent>
                     {plans.map(p => (
                       <SelectItem key={p.id} value={p.id}>
-                        {p.name} — {fmt(p.cost)}
+                        {p.name} — {fmt(p.effectivePrice ?? p.cost)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -1573,7 +1578,7 @@ export function ClientsTable() {
                       <span className="text-sm font-medium">Costo del plan:</span>
                     </div>
                     <span className="text-lg font-bold text-primary">
-                      {fmt(selectedPlan.cost)}
+                      {fmt(selectedPlan.effectivePrice ?? selectedPlan.cost)}
                     </span>
                   </div>
                 </div>
@@ -2265,14 +2270,20 @@ export function ClientsTable() {
                     <SelectValue placeholder="Elige un plan..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {plans.map(p => (
+                    {plans.map(p => {
+                      const showEffective = p.effectivePrice != null && p.effectivePrice !== p.cost
+                      return (
                       <SelectItem key={p.id} value={p.id}>
                         <div className="flex items-center justify-between gap-4">
                           <span>{p.name}</span>
-                          <span className="text-muted-foreground font-mono">{fmt(p.cost)}</span>
+                          <div className="flex items-center gap-2">
+                            {showEffective && <span className="text-muted-foreground font-mono line-through text-xs">{fmt(p.cost)}</span>}
+                            <span className={showEffective ? 'text-emerald-600 dark:text-emerald-400 font-mono font-semibold' : 'text-muted-foreground font-mono'}>{fmt(p.effectivePrice ?? p.cost)}</span>
+                          </div>
                         </div>
                       </SelectItem>
-                    ))}
+                      )
+                    })}
                     {plans.length === 0 && (
                       <SelectItem value="none" disabled>No hay planes activos configurados</SelectItem>
                     )}
@@ -2280,20 +2291,29 @@ export function ClientsTable() {
                 </Select>
               </div>
 
-              {/* Cost display — adapts to selected payment method currency */}
+              {/* Cost display — shows effective price (with promo/discount) */}
               {renewPlanId && (() => {
-                const selectedPlan = plans.find(p => p.id === renewPlanId)
+                const selectedPlan = plans.find((p: any) => p.id === renewPlanId)
                 if (!selectedPlan) return null
+                const effectivePrice = selectedPlan.effectivePrice ?? selectedPlan.cost
+                const hasDiscount = selectedPlan.hasActiveDiscount || selectedPlan.hasActivePromo
                 return (
-                  <div className="rounded-md bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 p-3">
+                  <div className={`rounded-md border p-3 ${hasDiscount ? 'bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800' : 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800'}`}>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <DollarSign className="h-4 w-4 text-emerald-600" />
-                        <span className="text-sm font-medium">Costo del plan:</span>
+                        <DollarSign className={`h-4 w-4 ${hasDiscount ? 'text-amber-600' : 'text-emerald-600'}`} />
+                        <span className="text-sm font-medium">
+                          {selectedPlan.hasActivePromo ? 'Precio promo:' : selectedPlan.hasActiveDiscount ? 'Precio con descuento:' : 'Costo del plan:'}
+                        </span>
                       </div>
-                      <span className="text-lg font-bold text-emerald-700 dark:text-emerald-400">
-                        {fmt(selectedPlan.cost)}
-                      </span>
+                      <div className="text-right">
+                        {hasDiscount && (
+                          <span className="text-xs text-muted-foreground line-through block">{fmt(selectedPlan.cost)}</span>
+                        )}
+                        <span className={`text-lg font-bold ${hasDiscount ? 'text-amber-700 dark:text-amber-400' : 'text-emerald-700 dark:text-emerald-400'}`}>
+                          {fmt(effectivePrice)}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 )
@@ -2310,7 +2330,7 @@ export function ClientsTable() {
                 {renewMethods.length > 0 ? (
                   <HybridPaymentSelector
                     methods={renewMethods as any}
-                    total={(() => { const p = plans.find(p => p.id === renewPlanId); return p?.cost || 0 })()}
+                    total={(() => { const p = plans.find(p => p.id === renewPlanId); return p?.effectivePrice ?? p?.cost || 0 })()}
                     currencySymbol={fmt(0).replace(/[\d.,\s]/g, '').split('').find(c => /[^\w]/) || '$'}
                     onChange={setRenewHybridPayments}
                     onModeChange={setRenewIsHybrid}
