@@ -274,9 +274,12 @@ model Sale {
   branchId   String
   currencyId String   @default("")
   date       DateTime @default(now())
-  total      Float    @default(0)
-  status     String   @default("completada")
-  syncStatus String   @default("synced")
+  total         Float    @default(0)
+  originalTotal Float    @default(0) // precio original del plan antes de descuento/promo
+  discountAmount Float   @default(0) // monto descontado (0 si no hubo descuento)
+  discountNotes  String? // "Promo", "Descuento 10%", "Promo + Descuento 15%"
+  status        String   @default("completada")
+  syncStatus    String   @default("synced")
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 

@@ -68,16 +68,30 @@ export async function POST(
     // ── Calculate effective price (promo + discount auto-applied) ──
     const now = new Date()
     let effectivePrice = plan.cost
+    let hasPromo = false
+    let hasDiscount = false
+
     if (plan.promoPrice != null && plan.promoPrice > 0 && plan.promoStartDate && plan.promoEndDate) {
       if (now >= plan.promoStartDate && now <= plan.promoEndDate) {
         effectivePrice = plan.promoPrice
+        hasPromo = true
       }
     }
     if (plan.discountPercentage > 0 && plan.discountStartDate && plan.discountEndDate) {
       if (now >= plan.discountStartDate && now <= plan.discountEndDate) {
         effectivePrice = Math.round((effectivePrice - (effectivePrice * plan.discountPercentage / 100)) * 100) / 100
+        hasDiscount = true
       }
     }
+
+    const discountAmount = Math.round((plan.cost - effectivePrice) * 100) / 100
+    const discountNotes = hasPromo && hasDiscount
+      ? `Promo $${plan.promoPrice} + Descuento ${plan.discountPercentage}%`
+      : hasPromo
+        ? `Precio promocional $${plan.promoPrice}`
+        : hasDiscount
+          ? `Descuento ${plan.discountPercentage}%`
+          : null
 
     if (isHybrid) {
       // Hybrid: validate all methods exist
@@ -232,6 +246,9 @@ export async function POST(
             userId: auth.userId,
             branchId: effectiveBranchId ?? undefined,
             total: effectivePrice,
+            originalTotal: plan.cost,
+            discountAmount: discountAmount > 0 ? discountAmount : 0,
+            discountNotes: discountNotes,
             status: 'completada',
             currencyId: resolvedCurrencyId,
             syncStatus: 'synced',
@@ -301,6 +318,8 @@ export async function POST(
         ticketCount: planType === 'tickets' ? ticketCount : 0,
         cost: effectivePrice,
         originalCost: plan.cost,
+        discountAmount: discountAmount > 0 ? discountAmount : undefined,
+        discountNotes: discountNotes || undefined,
         paymentMethod: isHybrid ? `Híbrido (${hybridPayments.map(p => p.method).join(', ')})` : (paymentMethod || null),
         saleId,
         movementId,

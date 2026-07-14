@@ -15,6 +15,9 @@ export interface SaleDetail {
   date: Date
   clientName: string | null
   total: number
+  originalTotal: number
+  discountAmount: number
+  discountNotes: string | null
   lines: {
     productName: string
     quantity: number
@@ -69,6 +72,8 @@ export interface CashCloseReport {
   creditPaymentsByMethod: MethodBreakdown[]
   totalCollected: number
   salesByMethod: MethodBreakdown[]
+  totalDiscounts: number
+  discountCount: number
 }
 
 // ─── Colors ───────────────────────────────────────────────────────────────────
@@ -287,6 +292,13 @@ function drawCashSummary(doc: jsPDF, report: CashCloseReport, startY: number): n
     rows.push([
       { content: '+ Ventas en Efectivo', styles: { textColor: C.green, cellPadding: { top: 4, bottom: 4, left: 8 } } },
       { content: `+${symbol}${fmt(report.totalSales)}`, styles: { halign: 'right', fontStyle: 'bold', textColor: C.green, cellPadding: { top: 4, bottom: 4, right: 8 } } },
+    ])
+  }
+
+  if (report.totalDiscounts > 0) {
+    rows.push([
+      { content: `- Descuentos Otorgados (${report.discountCount} venta${report.discountCount > 1 ? 's' : ''})`, styles: { textColor: C.amber, cellPadding: { top: 4, bottom: 4, left: 8 } } },
+      { content: `-${symbol}${fmt(report.totalDiscounts)}`, styles: { halign: 'right', fontStyle: 'bold', textColor: C.amber, cellPadding: { top: 4, bottom: 4, right: 8 } } },
     ])
   }
 
@@ -618,6 +630,17 @@ function drawSalesDetail(doc: jsPDF, report: CashCloseReport, startY: number): n
 
     linesBody.push(['', '', 'TOTAL:', `${symbol}${fmt(sale.total)}`])
 
+    // If there's a discount, add a row showing it
+    const hasDiscount = sale.discountAmount > 0 && sale.originalTotal > sale.total
+    if (hasDiscount) {
+      linesBody.push([
+        sale.discountNotes || 'Descuento aplicado',
+        '',
+        `-${symbol}${fmt(sale.discountAmount)}`,
+        `${symbol}${fmt(sale.originalTotal)} -> ${symbol}${fmt(sale.total)}`,
+      ])
+    }
+
     autoTable(doc, {
       startY: y,
       theme: 'grid',
@@ -642,9 +665,16 @@ function drawSalesDetail(doc: jsPDF, report: CashCloseReport, startY: number): n
         3: { halign: 'right', fontStyle: 'bold', textColor: C.primary },
       },
       didParseCell: (data) => {
-        if (data.section === 'body' && data.row.index === linesBody.length - 1) {
+        if (data.section === 'body' && data.row.index === linesBody.length - (hasDiscount ? 2 : 1)) {
           data.cell.styles.fillColor = C.blueBg
           data.cell.styles.fontStyle = 'bold'
+        }
+        // Style the discount row with amber background
+        if (hasDiscount && data.section === 'body' && data.row.index === linesBody.length - 1) {
+          data.cell.styles.fillColor = C.yellowBg
+          data.cell.styles.textColor = C.amber
+          data.cell.styles.fontStyle = 'italic'
+          data.cell.styles.fontSize = 7
         }
       },
     })
@@ -1116,6 +1146,9 @@ export async function buildReportFromRegister(
         date: s.date,
         clientName,
         total: s.total,
+        originalTotal: (s as any).originalTotal || s.total,
+        discountAmount: (s as any).discountAmount || 0,
+        discountNotes: (s as any).discountNotes || null,
         lines: mappedLines,
         payments: s.payments.map(p => ({
           method: p.method,
@@ -1190,6 +1223,11 @@ export async function buildReportFromRegister(
   const totalFromCredit = creditPaymentsByMethod.reduce((sum, c) => sum + c.amount, 0)
   const totalCollected = Math.round((totalFromSales + totalFromCredit) * 100) / 100
 
+  // ── 6b. Total discounts given ──
+  const discountedSales = sales.filter(s => s.discountAmount > 0)
+  const totalDiscounts = Math.round(discountedSales.reduce((sum, s) => sum + s.discountAmount, 0) * 100) / 100
+  const discountCount = discountedSales.length
+
   // ── 7. Get business email and logo ──
   let businessEmail = ''
   let logoUrl = ''
@@ -1235,5 +1273,7 @@ export async function buildReportFromRegister(
     creditPaymentsByMethod,
     totalCollected,
     salesByMethod,
+    totalDiscounts,
+    discountCount,
   }
 }

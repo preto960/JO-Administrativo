@@ -984,6 +984,10 @@ export function ClientsTable() {
     setRenewPaymentMethod('')
     setRenewPaymentReference('')
     setShowRenewDialog(true)
+    // Refresh plans to get latest effectivePrice (promo/discount may have changed)
+    api.get<PlanOption[]>('/api/plans')
+      .then(data => setPlans(Array.isArray(data) ? data.filter(p => p.active) : []))
+      .catch(() => {})
     // Load subscription-specific payment methods and open cash register
     const countryVal = country
     Promise.all([
