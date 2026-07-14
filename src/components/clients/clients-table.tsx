@@ -1539,11 +1539,24 @@ export function ClientsTable() {
                     <SelectValue placeholder="Sin plan — puedes asignarlo después" />
                   </SelectTrigger>
                   <SelectContent>
-                    {plans.map(p => (
+                    {plans.map(p => {
+                      const showEffective = p.effectivePrice != null && p.effectivePrice !== p.cost
+                      return (
                       <SelectItem key={p.id} value={p.id}>
-                        {p.name} — {fmt(p.effectivePrice ?? p.cost)}
+                        <span className="flex items-center gap-1.5">
+                          {p.name}
+                          {showEffective && (
+                            <span className="text-[9px] font-bold px-1 py-px rounded bg-amber-500 text-white leading-tight">
+                              {p.hasActivePromo ? 'PROMO' : `-${p.discountPercentage}%`}
+                            </span>
+                          )}
+                          {' — '}
+                          {showEffective && <span className="line-through text-muted-foreground text-xs mr-1">{fmt(p.cost)}</span>}
+                          <span className={showEffective ? 'text-amber-600 dark:text-amber-400 font-semibold' : ''}>{fmt(p.effectivePrice ?? p.cost)}</span>
+                        </span>
                       </SelectItem>
-                    ))}
+                      )
+                    })}
                   </SelectContent>
                 </Select>
               </div>
@@ -1573,17 +1586,29 @@ export function ClientsTable() {
             {formPlanId && (() => {
               const selectedPlan = plans.find(p => p.id === formPlanId)
               if (!selectedPlan) return null
-              const showConversion = multiCurrencyEnabled && exchangeRate > 0
+              const effectivePrice = selectedPlan.effectivePrice ?? selectedPlan.cost
+              const hasDiscount = selectedPlan.hasActivePromo || selectedPlan.hasActiveDiscount
               return (
-                <div className="rounded-md bg-primary/5 border border-primary/20 p-3">
+                <div className={`rounded-md border p-3 ${hasDiscount ? 'bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800' : 'bg-primary/5 border-primary/20'}`}>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <DollarSign className="h-4 w-4 text-primary" />
-                      <span className="text-sm font-medium">Costo del plan:</span>
+                      <DollarSign className={`h-4 w-4 ${hasDiscount ? 'text-amber-600' : 'text-primary'}`} />
+                      <span className="text-sm font-medium">
+                        {hasDiscount
+                          ? selectedPlan.hasActivePromo
+                            ? 'Precio promocional:'
+                            : `Precio con ${selectedPlan.discountPercentage}% desc.:`
+                          : 'Costo del plan:'}
+                      </span>
                     </div>
-                    <span className="text-lg font-bold text-primary">
-                      {fmt(selectedPlan.effectivePrice ?? selectedPlan.cost)}
-                    </span>
+                    <div className="text-right">
+                      {hasDiscount && (
+                        <span className="text-xs text-muted-foreground line-through block">{fmt(selectedPlan.cost)}</span>
+                      )}
+                      <span className={`text-lg font-bold ${hasDiscount ? 'text-amber-700 dark:text-amber-400' : 'text-primary'}`}>
+                        {fmt(effectivePrice)}
+                      </span>
+                    </div>
                   </div>
                 </div>
               )
@@ -2278,11 +2303,18 @@ export function ClientsTable() {
                       const showEffective = p.effectivePrice != null && p.effectivePrice !== p.cost
                       return (
                       <SelectItem key={p.id} value={p.id}>
-                        <div className="flex items-center justify-between gap-4">
-                          <span>{p.name}</span>
-                          <div className="flex items-center gap-2">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="flex items-center gap-1.5">
+                            {p.name}
+                            {showEffective && (
+                              <span className="text-[9px] font-bold px-1 py-px rounded bg-amber-500 text-white leading-tight">
+                                {p.hasActivePromo ? 'PROMO' : `-${p.discountPercentage}%`}
+                              </span>
+                            )}
+                          </span>
+                          <div className="flex items-center gap-1.5">
                             {showEffective && <span className="text-muted-foreground font-mono line-through text-xs">{fmt(p.cost)}</span>}
-                            <span className={showEffective ? 'text-emerald-600 dark:text-emerald-400 font-mono font-semibold' : 'text-muted-foreground font-mono'}>{fmt(p.effectivePrice ?? p.cost)}</span>
+                            <span className={showEffective ? 'text-amber-600 dark:text-amber-400 font-mono font-semibold' : 'text-muted-foreground font-mono'}>{fmt(p.effectivePrice ?? p.cost)}</span>
                           </div>
                         </div>
                       </SelectItem>
@@ -2301,13 +2333,20 @@ export function ClientsTable() {
                 if (!selectedPlan) return null
                 const effectivePrice = selectedPlan.effectivePrice ?? selectedPlan.cost
                 const hasDiscount = selectedPlan.hasActiveDiscount || selectedPlan.hasActivePromo
+                const savings = hasDiscount ? Math.round((selectedPlan.cost - effectivePrice) * 100) / 100 : 0
                 return (
                   <div className={`rounded-md border p-3 ${hasDiscount ? 'bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800' : 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800'}`}>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <DollarSign className={`h-4 w-4 ${hasDiscount ? 'text-amber-600' : 'text-emerald-600'}`} />
                         <span className="text-sm font-medium">
-                          {selectedPlan.hasActivePromo ? 'Precio promo:' : selectedPlan.hasActiveDiscount ? 'Precio con descuento:' : 'Costo del plan:'}
+                          {selectedPlan.hasActivePromo && selectedPlan.hasActiveDiscount
+                            ? `Promo + ${selectedPlan.discountPercentage}% desc.:`
+                            : selectedPlan.hasActivePromo
+                              ? 'Precio promocional:'
+                              : selectedPlan.hasActiveDiscount
+                                ? `Precio con ${selectedPlan.discountPercentage}% desc.:`
+                                : 'Costo del plan:'}
                         </span>
                       </div>
                       <div className="text-right">
@@ -2319,6 +2358,12 @@ export function ClientsTable() {
                         </span>
                       </div>
                     </div>
+                    {hasDiscount && savings > 0 && (
+                      <div className="mt-1.5 flex items-center gap-1 text-[11px] text-amber-600 dark:text-amber-400 font-medium">
+                        <Tag className="h-3 w-3" />
+                        Ahorro del cliente: {fmt(savings)} ({selectedPlan.hasActivePromo ? 'promo' : `${selectedPlan.discountPercentage}%`})
+                      </div>
+                    )}
                   </div>
                 )
               })()}

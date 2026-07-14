@@ -126,11 +126,11 @@ export async function POST(request: NextRequest) {
         cost: Number(cost) || 0,
         description: description?.trim() || null,
         discountPercentage: Number(discountPercentage) || 0,
-        discountStartDate: discountStartDate ? new Date(discountStartDate) : null,
-        discountEndDate: discountEndDate ? new Date(discountEndDate) : null,
+        discountStartDate: discountStartDate ? new Date(discountStartDate + 'T12:00:00Z') : null,
+        discountEndDate: discountEndDate ? new Date(discountEndDate + 'T12:00:00Z') : null,
         promoPrice: promoPrice != null ? Number(promoPrice) : null,
-        promoStartDate: promoStartDate ? new Date(promoStartDate) : null,
-        promoEndDate: promoEndDate ? new Date(promoEndDate) : null,
+        promoStartDate: promoStartDate ? new Date(promoStartDate + 'T12:00:00Z') : null,
+        promoEndDate: promoEndDate ? new Date(promoEndDate + 'T12:00:00Z') : null,
       },
     })
 
@@ -198,11 +198,11 @@ export async function PUT(request: NextRequest) {
         description: description !== undefined ? (description?.trim() || null) : undefined,
         active: active !== undefined ? active : undefined,
         discountPercentage: discountPercentage !== undefined ? Number(discountPercentage) : undefined,
-        discountStartDate: discountStartDate ? new Date(discountStartDate) : (discountStartDate === null ? null : undefined),
-        discountEndDate: discountEndDate ? new Date(discountEndDate) : (discountEndDate === null ? null : undefined),
+        discountStartDate: discountStartDate ? new Date(discountStartDate + 'T12:00:00Z') : (discountStartDate === null ? null : undefined),
+        discountEndDate: discountEndDate ? new Date(discountEndDate + 'T12:00:00Z') : (discountEndDate === null ? null : undefined),
         promoPrice: promoPrice !== undefined ? (promoPrice != null ? Number(promoPrice) : null) : undefined,
-        promoStartDate: promoStartDate ? new Date(promoStartDate) : (promoStartDate === null ? null : undefined),
-        promoEndDate: promoEndDate ? new Date(promoEndDate) : (promoEndDate === null ? null : undefined),
+        promoStartDate: promoStartDate ? new Date(promoStartDate + 'T12:00:00Z') : (promoStartDate === null ? null : undefined),
+        promoEndDate: promoEndDate ? new Date(promoEndDate + 'T12:00:00Z') : (promoEndDate === null ? null : undefined),
       },
     })
 

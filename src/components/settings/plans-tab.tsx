@@ -41,7 +41,7 @@ import {
   AlertDialogAction,
   AlertDialogCancel,
 } from '@/components/ui/alert-dialog'
-import { Plus, Pencil, Trash2, Loader2, DollarSign, CalendarDays, Tag, Clock, Ticket } from 'lucide-react'
+import { Plus, Pencil, Trash2, Loader2, DollarSign, CalendarDays, Tag, Clock, Ticket, Percent } from 'lucide-react'
 import { toast } from 'sonner'
 
 type PlanType = 'dias' | 'horario' | 'tickets'
@@ -333,9 +333,21 @@ export function PlansTab() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {plans.map((plan) => (
-                    <TableRow key={plan.id} className={!plan.active ? 'opacity-50' : ''}>
-                      <TableCell className="font-medium">{plan.name}</TableCell>
+                  {plans.map((plan) => {
+                    const isActiveOffer = plan.hasActivePromo || plan.hasActiveDiscount
+                    return (
+                    <TableRow key={plan.id} className={`${!plan.active ? 'opacity-50' : ''} ${isActiveOffer ? 'bg-amber-50/60 dark:bg-amber-950/20' : ''}`}>
+                      <TableCell className="font-medium">
+                        <div className="flex items-center gap-2">
+                          {plan.name}
+                          {isActiveOffer && (
+                            <span className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-500 text-white shrink-0">
+                              <Percent className="h-2.5 w-2.5" />
+                              {plan.hasActivePromo ? 'PROMO' : `${plan.discountPercentage}% OFF`}
+                            </span>
+                          )}
+                        </div>
+                      </TableCell>
                       <TableCell>
                         <Badge className={`text-[10px] ${getPlanTypeBadgeColor(plan.planType)}`}>
                           {getPlanTypeLabel(plan.planType)}
@@ -363,22 +375,34 @@ export function PlansTab() {
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-col gap-0.5">
-                          <div className="flex items-center gap-1.5 text-sm font-semibold">
-                            <DollarSign className="h-3.5 w-3.5 text-emerald-600" />
+                          <div className="flex items-center gap-1.5">
                             {plan.effectivePrice != null && plan.effectivePrice !== plan.cost ? (
                               <>
-                                <span>{fmt(plan.effectivePrice)}</span>
-                                <span className="text-xs text-muted-foreground line-through font-normal ml-1">{fmt(plan.cost)}</span>
+                                <DollarSign className="h-3.5 w-3.5 text-amber-600" />
+                                <span className="text-sm font-bold text-amber-700 dark:text-amber-400">{fmt(plan.effectivePrice)}</span>
+                                <span className="text-xs text-muted-foreground line-through font-normal">{fmt(plan.cost)}</span>
                               </>
                             ) : (
-                              <span>{fmt(plan.cost)}</span>
+                              <>
+                                <DollarSign className="h-3.5 w-3.5 text-emerald-600" />
+                                <span className="text-sm font-semibold">{fmt(plan.cost)}</span>
+                              </>
                             )}
                           </div>
-                          {plan.hasActivePromo && (
-                            <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">Promo activa</span>
+                          {plan.hasActivePromo && plan.hasActiveDiscount && (
+                            <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium flex items-center gap-1">
+                              <Tag className="h-2.5 w-2.5" /> Promo ${plan.promoPrice} + {plan.discountPercentage}% desc.
+                            </span>
                           )}
-                          {plan.hasActiveDiscount && (
-                            <span className="text-[10px] text-blue-600 dark:text-blue-400 font-medium">{plan.discountPercentage}% descuento</span>
+                          {plan.hasActivePromo && !plan.hasActiveDiscount && (
+                            <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium flex items-center gap-1">
+                              <Tag className="h-2.5 w-2.5" /> Precio promocional
+                            </span>
+                          )}
+                          {plan.hasActiveDiscount && !plan.hasActivePromo && (
+                            <span className="text-[10px] text-blue-600 dark:text-blue-400 font-medium flex items-center gap-1">
+                              <Percent className="h-2.5 w-2.5" /> {plan.discountPercentage}% de descuento activo
+                            </span>
                           )}
                         </div>
                       </TableCell>
