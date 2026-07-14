@@ -4,7 +4,7 @@ import { requireAuth } from '@/lib/require-auth'
 import { getPermissions } from '@/lib/permissions'
 import { logAction } from '@/lib/audit-log'
 import { getPaymentMethodsFromDB, FALLBACK_METHODS } from '@/lib/payment-methods'
-import { fetchToday } from '@/lib/tz-helpers'
+import { fetchToday, fetchAppTz } from '@/lib/tz-helpers'
 
 function getPlanDays(durationType: string, durationDays: number | null): number {
   switch (durationType) {
@@ -66,19 +66,25 @@ export async function POST(
     const pmList = await getPaymentMethodsFromDB().catch(() => FALLBACK_METHODS)
 
     // ── Calculate effective price (promo + discount auto-applied) ──
+    // Use date-only comparison to avoid timezone issues (server is UTC, user is local)
     const now = new Date()
     let effectivePrice = plan.cost
     let hasPromo = false
     let hasDiscount = false
 
+    // Get app timezone for date comparison
+    const appTz = await fetchAppTz().catch(() => ({ timezone: 'America/Bogota' }))
+    const toDS = (d: Date) => d.toLocaleDateString('sv-SE', { timeZone: appTz.timezone })
+    const nowStr = toDS(now)
+
     if (plan.promoPrice != null && plan.promoPrice > 0 && plan.promoStartDate && plan.promoEndDate) {
-      if (now >= plan.promoStartDate && now <= plan.promoEndDate) {
+      if (nowStr >= toDS(plan.promoStartDate) && nowStr <= toDS(plan.promoEndDate)) {
         effectivePrice = plan.promoPrice
         hasPromo = true
       }
     }
     if (plan.discountPercentage > 0 && plan.discountStartDate && plan.discountEndDate) {
-      if (now >= plan.discountStartDate && now <= plan.discountEndDate) {
+      if (nowStr >= toDS(plan.discountStartDate) && nowStr <= toDS(plan.discountEndDate)) {
         effectivePrice = Math.round((effectivePrice - (effectivePrice * plan.discountPercentage / 100)) * 100) / 100
         hasDiscount = true
       }

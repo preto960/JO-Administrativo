@@ -6,15 +6,31 @@ import { getPermissions } from '@/lib/permissions'
 const VALID_DURATION_TYPES = ['1_mes', 'bimestral', 'anual', 'dia', 'otro'] as const
 const VALID_PLAN_TYPES = ['dias', 'horario', 'tickets'] as const
 
+/** Extract YYYY-MM-DD from a Date, comparing in the app's timezone */
+async function toDateStr(d: Date): Promise<string> {
+  try {
+    const { fetchAppTz } = await import('@/lib/tz-helpers')
+    const { timezone } = await fetchAppTz()
+    return d.toLocaleDateString('sv-SE', { timeZone: timezone }) // 'sv-SE' locale gives YYYY-MM-DD
+  } catch {
+    // Fallback: compare as UTC date
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`
+  }
+}
+
 /** Calculate the effective price for a plan at a given moment */
-function getEffectivePrice(plan: { cost: number; discountPercentage: number; discountStartDate: Date | null; discountEndDate: Date | null; promoPrice: number | null; promoStartDate: Date | null; promoEndDate: Date | null }, now: Date): { price: number; hasPromo: boolean; hasDiscount: boolean } {
+async function getEffectivePrice(plan: { cost: number; discountPercentage: number; discountStartDate: Date | null; discountEndDate: Date | null; promoPrice: number | null; promoStartDate: Date | null; promoEndDate: Date | null }, now: Date): Promise<{ price: number; hasPromo: boolean; hasDiscount: boolean }> {
   let basePrice = plan.cost
   let hasPromo = false
   let hasDiscount = false
 
+  const nowStr = await toDateStr(now)
+
   // Check promo price (replaces base price if active)
   if (plan.promoPrice != null && plan.promoPrice > 0 && plan.promoStartDate && plan.promoEndDate) {
-    if (now >= plan.promoStartDate && now <= plan.promoEndDate) {
+    const startStr = await toDateStr(plan.promoStartDate)
+    const endStr = await toDateStr(plan.promoEndDate)
+    if (nowStr >= startStr && nowStr <= endStr) {
       basePrice = plan.promoPrice
       hasPromo = true
     }
@@ -22,7 +38,9 @@ function getEffectivePrice(plan: { cost: number; discountPercentage: number; dis
 
   // Check discount percentage (applied on top of base/promo price)
   if (plan.discountPercentage > 0 && plan.discountStartDate && plan.discountEndDate) {
-    if (now >= plan.discountStartDate && now <= plan.discountEndDate) {
+    const startStr = await toDateStr(plan.discountStartDate)
+    const endStr = await toDateStr(plan.discountEndDate)
+    if (nowStr >= startStr && nowStr <= endStr) {
       basePrice = Math.round((basePrice - (basePrice * plan.discountPercentage / 100)) * 100) / 100
       hasDiscount = true
     }
@@ -42,10 +60,10 @@ export async function GET() {
     })
     const now = new Date()
     // Attach effective price to each plan
-    const plansWithPrice = plans.map(p => {
-      const { price, hasPromo, hasDiscount } = getEffectivePrice(p, now)
+    const plansWithPrice = await Promise.all(plans.map(async p => {
+      const { price, hasPromo, hasDiscount } = await getEffectivePrice(p, now)
       return { ...p, effectivePrice: price, hasActivePromo: hasPromo, hasActiveDiscount: hasDiscount }
-    })
+    }))
     return NextResponse.json(plansWithPrice)
   } catch (error) {
     console.error('[Plans GET]', error)
@@ -117,7 +135,7 @@ export async function POST(request: NextRequest) {
     })
 
     const now = new Date()
-    const { price, hasPromo, hasDiscount } = getEffectivePrice(plan, now)
+    const { price, hasPromo, hasDiscount } = await getEffectivePrice(plan, now)
     return NextResponse.json({ ...plan, effectivePrice: price, hasActivePromo: hasPromo, hasActiveDiscount: hasDiscount }, { status: 201 })
   } catch (error: unknown) {
     if (error && typeof error === 'object' && 'code' in error && (error as { code: string }).code === 'P2002') {
@@ -189,7 +207,7 @@ export async function PUT(request: NextRequest) {
     })
 
     const now = new Date()
-    const { price, hasPromo, hasDiscount } = getEffectivePrice(plan, now)
+    const { price, hasPromo, hasDiscount } = await getEffectivePrice(plan, now)
     return NextResponse.json({ ...plan, effectivePrice: price, hasActivePromo: hasPromo, hasActiveDiscount: hasDiscount })
   } catch (error: unknown) {
     if (error && typeof error === 'object' && 'code' in error && (error as { code: string }).code === 'P2002') {
