@@ -1539,24 +1539,21 @@ export function ClientsTable() {
                     <SelectValue placeholder="Sin plan — puedes asignarlo después" />
                   </SelectTrigger>
                   <SelectContent>
-                    {plans.map(p => {
-                      const showEffective = p.effectivePrice != null && p.effectivePrice !== p.cost
-                      return (
+                    {plans.map(p => (
                       <SelectItem key={p.id} value={p.id}>
                         <span className="flex items-center gap-1.5">
                           {p.name}
-                          {showEffective && (
+                          {(p.effectivePrice != null && p.effectivePrice !== p.cost) && (
                             <span className="text-[9px] font-bold px-1 py-px rounded bg-amber-500 text-white leading-tight">
                               {p.hasActivePromo ? 'PROMO' : `-${p.discountPercentage}%`}
                             </span>
                           )}
                           {' — '}
-                          {showEffective && <span className="line-through text-muted-foreground text-xs mr-1">{fmt(p.cost)}</span>}
-                          <span className={showEffective ? 'text-amber-600 dark:text-amber-400 font-semibold' : ''}>{fmt(p.effectivePrice ?? p.cost)}</span>
+                          {(p.effectivePrice != null && p.effectivePrice !== p.cost) && <span className="line-through text-muted-foreground text-xs mr-1">{fmt(p.cost)}</span>}
+                          <span className={(p.effectivePrice != null && p.effectivePrice !== p.cost) ? 'text-amber-600 dark:text-amber-400 font-semibold' : ''}>{fmt(p.effectivePrice ?? p.cost)}</span>
                         </span>
                       </SelectItem>
-                      )
-                    })}
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -2299,27 +2296,24 @@ export function ClientsTable() {
                     <SelectValue placeholder="Elige un plan..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {plans.map(p => {
-                      const showEffective = p.effectivePrice != null && p.effectivePrice !== p.cost
-                      return (
+                    {plans.map(p => (
                       <SelectItem key={p.id} value={p.id}>
                         <div className="flex items-center justify-between gap-3">
                           <span className="flex items-center gap-1.5">
                             {p.name}
-                            {showEffective && (
+                            {(p.effectivePrice != null && p.effectivePrice !== p.cost) && (
                               <span className="text-[9px] font-bold px-1 py-px rounded bg-amber-500 text-white leading-tight">
                                 {p.hasActivePromo ? 'PROMO' : `-${p.discountPercentage}%`}
                               </span>
                             )}
                           </span>
                           <div className="flex items-center gap-1.5">
-                            {showEffective && <span className="text-muted-foreground font-mono line-through text-xs">{fmt(p.cost)}</span>}
-                            <span className={showEffective ? 'text-amber-600 dark:text-amber-400 font-mono font-semibold' : 'text-muted-foreground font-mono'}>{fmt(p.effectivePrice ?? p.cost)}</span>
+                            {(p.effectivePrice != null && p.effectivePrice !== p.cost) && <span className="text-muted-foreground font-mono line-through text-xs">{fmt(p.cost)}</span>}
+                            <span className={(p.effectivePrice != null && p.effectivePrice !== p.cost) ? 'text-amber-600 dark:text-amber-400 font-mono font-semibold' : 'text-muted-foreground font-mono'}>{fmt(p.effectivePrice ?? p.cost)}</span>
                           </div>
                         </div>
                       </SelectItem>
-                      )
-                    })}
+                    ))}
                     {plans.length === 0 && (
                       <SelectItem value="none" disabled>No hay planes activos configurados</SelectItem>
                     )}

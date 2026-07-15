@@ -1038,15 +1038,12 @@ export function CashRegisterView() {
                                 {breakdownData.subscriptionSales.length === 0 && (
                                   <p className="text-xs text-muted-foreground text-center py-3">Sin suscripciones</p>
                                 )}
-                                {breakdownData.subscriptionSales.map(s => {
-                                  const planChanged = s.planName.includes('->')
-                                  const planDisplay = planChanged ? s.planName.replace('->', ' → ') : s.planName
-                                  return (
+                                {breakdownData.subscriptionSales.map(s => (
                                     <div key={s.id} className="flex items-center justify-between text-xs py-1.5 border-b last:border-b-0 border-muted">
                                       <div className="min-w-0 flex-1">
                                         <span className="font-medium truncate block">
                                           {s.planName ? (
-                                            <>Renovación "<span className={planChanged ? 'text-amber-600' : ''}>{planDisplay}</span>"</>
+                                            <>Renovación "<span className={s.planName.includes('->') ? 'text-amber-600' : ''}>{s.planName.includes('->') ? s.planName.replace('->', ' → ') : s.planName}</span>"</>
                                           ) : 'Renovación'}
                                         </span>
                                         {s.clientName && <span className="text-muted-foreground">{s.clientName}</span>}
@@ -1057,8 +1054,7 @@ export function CashRegisterView() {
                                         <span className="text-muted-foreground ml-1">{s.method}</span>
                                       </div>
                                     </div>
-                                  )
-                                })}
+                                ))}
                               </div>
                             </TabsContent>
 
