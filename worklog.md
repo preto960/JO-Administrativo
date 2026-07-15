@@ -224,3 +224,22 @@ Stage Summary:
 - UI: Pagos Realizados table in history, Quitar Deuda button on client card
 - Note: prisma db push needed on production for ClientPayment table + AccountReceivable.createdAt column
 
+---
+Task ID: 2
+Agent: Main Agent
+Task: Fix "Application error: client-side exception" al seleccionar plan con descuento en renovación
+
+Work Log:
+- Investigado el flujo de renovación en clients-table.tsx (diálogo de renovar, selector de plan, bloque de ahorro)
+- Encontrada la causa raíz: línea 2357 usaba <Tag className="h-3 w-3" /> pero el ícono Tag NO estaba importado de lucide-react
+- El bloque "Ahorro del cliente" (con <Tag>) solo se renderiza cuando hasDiscount && savings > 0 → por eso el error solo aparecía al seleccionar un plan con descuento activo
+- El bug pasó a producción porque next.config.ts tiene typescript.ignoreBuildErrors: true, así que el build no detectó la referencia indefinida
+- Fixes anteriores (timezone, parse errors Turbopack) atacaron otros problemas pero no este
+- Agregado Tag al import de lucide-react en la línea 57
+- Verificado con tsc --noEmit: clients-table.tsx ahora compila sin errores (los demás errores TS del proyecto son preexistentes y no relacionados)
+- Commit + push a main
+
+Stage Summary:
+- Tag import agregado en src/components/clients/clients-table.tsx
+- El error de "client-side exception" al seleccionar plan con descuento para renovar queda resuelto
+- Archivo modificado: src/components/clients/clients-table.tsx (1 línea)
