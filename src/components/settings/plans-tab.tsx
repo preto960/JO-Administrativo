@@ -335,8 +335,7 @@ export function PlansTab() {
                 <TableBody>
                   {plans.map((plan) => {
                     const isActiveOffer = plan.hasActivePromo || plan.hasActiveDiscount
-                    return (
-                    <TableRow key={plan.id} className={`${!plan.active ? 'opacity-50' : ''} ${isActiveOffer ? 'bg-amber-50/60 dark:bg-amber-950/20' : ''}`}>
+                    return <TableRow key={plan.id} className={`${!plan.active ? 'opacity-50' : ''} ${isActiveOffer ? 'bg-amber-50/60 dark:bg-amber-950/20' : ''}`}>
                       <TableCell className="font-medium">
                         <div className="flex items-center gap-2">
                           {plan.name}
@@ -446,7 +445,7 @@ export function PlansTab() {
                         </div>
                       </TableCell>
                     </TableRow>
-                  ))}
+                  })}
                 </TableBody>
               </Table>
             </div>

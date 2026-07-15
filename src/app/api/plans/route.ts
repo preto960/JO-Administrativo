@@ -2,34 +2,28 @@ import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/require-auth'
 import { getPermissions } from '@/lib/permissions'
+import { fetchAppTz } from '@/lib/tz-helpers'
 
 const VALID_DURATION_TYPES = ['1_mes', 'bimestral', 'anual', 'dia', 'otro'] as const
 const VALID_PLAN_TYPES = ['dias', 'horario', 'tickets'] as const
 
-/** Extract YYYY-MM-DD from a Date, comparing in the app's timezone */
-async function toDateStr(d: Date): Promise<string> {
-  try {
-    const { fetchAppTz } = await import('@/lib/tz-helpers')
-    const { timezone } = await fetchAppTz()
-    return d.toLocaleDateString('sv-SE', { timeZone: timezone }) // 'sv-SE' locale gives YYYY-MM-DD
-  } catch {
-    // Fallback: compare as UTC date
-    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`
-  }
+/** Convert a Date to YYYY-MM-DD string in the given timezone */
+function toDateStr(d: Date, tz: string): string {
+  return d.toLocaleDateString('sv-SE', { timeZone: tz })
 }
 
 /** Calculate the effective price for a plan at a given moment */
-async function getEffectivePrice(plan: { cost: number; discountPercentage: number; discountStartDate: Date | null; discountEndDate: Date | null; promoPrice: number | null; promoStartDate: Date | null; promoEndDate: Date | null }, now: Date): Promise<{ price: number; hasPromo: boolean; hasDiscount: boolean }> {
+async function getEffectivePrice(plan: { cost: number; discountPercentage: number; discountStartDate: Date | null; discountEndDate: Date | null; promoPrice: number | null; promoStartDate: Date | null; promoEndDate: Date | null }, now: Date, tz: string): Promise<{ price: number; hasPromo: boolean; hasDiscount: boolean }> {
   let basePrice = plan.cost
   let hasPromo = false
   let hasDiscount = false
 
-  const nowStr = await toDateStr(now)
+  const nowStr = toDateStr(now, tz)
 
   // Check promo price (replaces base price if active)
   if (plan.promoPrice != null && plan.promoPrice > 0 && plan.promoStartDate && plan.promoEndDate) {
-    const startStr = await toDateStr(plan.promoStartDate)
-    const endStr = await toDateStr(plan.promoEndDate)
+    const startStr = toDateStr(plan.promoStartDate, tz)
+    const endStr = toDateStr(plan.promoEndDate, tz)
     if (nowStr >= startStr && nowStr <= endStr) {
       basePrice = plan.promoPrice
       hasPromo = true
@@ -38,8 +32,8 @@ async function getEffectivePrice(plan: { cost: number; discountPercentage: numbe
 
   // Check discount percentage (applied on top of base/promo price)
   if (plan.discountPercentage > 0 && plan.discountStartDate && plan.discountEndDate) {
-    const startStr = await toDateStr(plan.discountStartDate)
-    const endStr = await toDateStr(plan.discountEndDate)
+    const startStr = toDateStr(plan.discountStartDate, tz)
+    const endStr = toDateStr(plan.discountEndDate, tz)
     if (nowStr >= startStr && nowStr <= endStr) {
       basePrice = Math.round((basePrice - (basePrice * plan.discountPercentage / 100)) * 100) / 100
       hasDiscount = true
@@ -59,9 +53,10 @@ export async function GET() {
       orderBy: { createdAt: 'asc' },
     })
     const now = new Date()
+    const { timezone } = await fetchAppTz()
     // Attach effective price to each plan
     const plansWithPrice = await Promise.all(plans.map(async p => {
-      const { price, hasPromo, hasDiscount } = await getEffectivePrice(p, now)
+      const { price, hasPromo, hasDiscount } = await getEffectivePrice(p, now, timezone)
       return { ...p, effectivePrice: price, hasActivePromo: hasPromo, hasActiveDiscount: hasDiscount }
     }))
     return NextResponse.json(plansWithPrice)
@@ -135,7 +130,8 @@ export async function POST(request: NextRequest) {
     })
 
     const now = new Date()
-    const { price, hasPromo, hasDiscount } = await getEffectivePrice(plan, now)
+    const { timezone } = await fetchAppTz()
+    const { price, hasPromo, hasDiscount } = await getEffectivePrice(plan, now, timezone)
     return NextResponse.json({ ...plan, effectivePrice: price, hasActivePromo: hasPromo, hasActiveDiscount: hasDiscount }, { status: 201 })
   } catch (error: unknown) {
     if (error && typeof error === 'object' && 'code' in error && (error as { code: string }).code === 'P2002') {
@@ -207,7 +203,8 @@ export async function PUT(request: NextRequest) {
     })
 
     const now = new Date()
-    const { price, hasPromo, hasDiscount } = await getEffectivePrice(plan, now)
+    const { timezone } = await fetchAppTz()
+    const { price, hasPromo, hasDiscount } = await getEffectivePrice(plan, now, timezone)
     return NextResponse.json({ ...plan, effectivePrice: price, hasActivePromo: hasPromo, hasActiveDiscount: hasDiscount })
   } catch (error: unknown) {
     if (error && typeof error === 'object' && 'code' in error && (error as { code: string }).code === 'P2002') {
