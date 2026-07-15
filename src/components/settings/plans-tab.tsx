@@ -333,13 +333,12 @@ export function PlansTab() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {plans.map((plan) => {
-                    const isActiveOffer = plan.hasActivePromo || plan.hasActiveDiscount
-                    return <TableRow key={plan.id} className={`${!plan.active ? 'opacity-50' : ''} ${isActiveOffer ? 'bg-amber-50/60 dark:bg-amber-950/20' : ''}`}>
+                  {plans.map((plan) => (
+                    <TableRow key={plan.id} className={`${!plan.active ? 'opacity-50' : ''} ${(plan.hasActivePromo || plan.hasActiveDiscount) ? 'bg-amber-50/60 dark:bg-amber-950/20' : ''}`}>
                       <TableCell className="font-medium">
                         <div className="flex items-center gap-2">
                           {plan.name}
-                          {isActiveOffer && (
+                          {(plan.hasActivePromo || plan.hasActiveDiscount) && (
                             <span className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-500 text-white shrink-0">
                               <Percent className="h-2.5 w-2.5" />
                               {plan.hasActivePromo ? 'PROMO' : `${plan.discountPercentage}% OFF`}
@@ -445,7 +444,7 @@ export function PlansTab() {
                         </div>
                       </TableCell>
                     </TableRow>
-                  })}
+                  ))}
                 </TableBody>
               </Table>
             </div>
