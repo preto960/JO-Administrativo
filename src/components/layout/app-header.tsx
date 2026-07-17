@@ -26,6 +26,7 @@ import { Moon, Sun, LogOut, Settings, GitBranch, BookOpen } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { Button } from '@/components/ui/button'
 import { NotificationBell } from '@/components/layout/notification-bell'
+import { CashierTargetIndicator } from '@/components/layout/cashier-target-indicator'
 import { SessionTimer } from '@/components/settings/session-timer'
 import { useAuth } from '@/hooks/use-auth'
 import { signOut } from 'next-auth/react'
@@ -182,6 +183,7 @@ export function AppHeader() {
           </Badge>
         )}
 
+        {isCashier && <CashierTargetIndicator />}
         <SessionTimer />
         <NotificationBell />
         <Button

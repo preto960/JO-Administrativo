@@ -7,7 +7,7 @@ import { useAppStore } from '@/stores/use-app-store'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { TrendingUp, TrendingDown, DollarSign, ShoppingCart, Target, PiggyBank, Package, Users, Receipt, Filter, CalendarDays, CheckCircle2, XCircle, Settings2, Loader2, UserCheck } from 'lucide-react'
+import { TrendingUp, TrendingDown, DollarSign, ShoppingCart, Target, PiggyBank, Package, Users, Receipt, Filter, CalendarDays, CheckCircle2, XCircle, Settings2, Loader2, UserCheck, Sun, Zap } from 'lucide-react'
 import {
   AreaChart,
   Area,
@@ -23,6 +23,7 @@ import {
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 
 interface DashboardData {
   ingresosHoy: number
@@ -70,19 +71,31 @@ interface VendorPerformance {
   role: string
   productSales: number
   renewalSales: number
-  totalSales: number
+  totalSales: number // period-filtered sales
+  monthProductSales: number
+  monthRenewalSales: number
+  monthTotalSales: number // full month sales
   target: number
+  dailyTarget: number
+  applyDailyAllMonth: boolean
   achieved: boolean
   remaining: number
   percent: number
   overTarget: number
+  dailySales: number
+  dailyProductSales: number
+  dailyRenewalSales: number
+  dailyCollectedCredit: number
 }
 
 interface SalesPerformanceData {
   month: string
+  period: string
+  periodLabel: string
   performance: VendorPerformance[]
   totalMonthSales: number
   totalMonthTarget: number
+  totalPeriodSales: number
 }
 
 const periodOptions: { value: PeriodOption; label: string }[] = [
@@ -90,6 +103,15 @@ const periodOptions: { value: PeriodOption; label: string }[] = [
   { value: 'week', label: 'Semana' },
   { value: 'month', label: 'Mes' },
   { value: 'year', label: 'Año' },
+  { value: 'custom', label: 'Personalizado' },
+]
+
+type PerfPeriod = 'today' | 'week' | 'month' | 'custom'
+
+const perfPeriodOptions: { value: PerfPeriod; label: string }[] = [
+  { value: 'today', label: 'Hoy' },
+  { value: 'week', label: 'Semana' },
+  { value: 'month', label: 'Mes' },
   { value: 'custom', label: 'Personalizado' },
 ]
 
@@ -159,8 +181,13 @@ export function FinancialDashboard() {
   })
   const [perfData, setPerfData] = useState<SalesPerformanceData | null>(null)
   const [perfLoading, setPerfLoading] = useState(false)
+  const [perfPeriod, setPerfPeriod] = useState<PerfPeriod>('today')
+  const [perfCustomFrom, setPerfCustomFrom] = useState('')
+  const [perfCustomTo, setPerfCustomTo] = useState('')
   const [showTargetDialog, setShowTargetDialog] = useState(false)
   const [targetInputs, setTargetInputs] = useState<Record<string, string>>({})
+  const [dailyTargetInputs, setDailyTargetInputs] = useState<Record<string, string>>({})
+  const [applyDailyAllMonth, setApplyDailyAllMonth] = useState<Record<string, boolean>>({})
   const [savingTargets, setSavingTargets] = useState(false)
 
   // Validate custom date range (derived value, no setState)
@@ -206,37 +233,82 @@ export function FinancialDashboard() {
   // Fetch sales performance data
   useEffect(() => {
     setPerfLoading(true)
-    api.get<SalesPerformanceData>(`/api/dashboard/sales-performance?month=${perfMonth}`)
+    const params = new URLSearchParams()
+    params.set('month', perfMonth)
+    params.set('period', perfPeriod)
+    if (perfPeriod === 'custom' && perfCustomFrom) params.set('from', perfCustomFrom)
+    if (perfPeriod === 'custom' && perfCustomTo) params.set('to', perfCustomTo)
+    api.get<SalesPerformanceData>(`/api/dashboard/sales-performance?${params.toString()}`)
       .then(setPerfData)
       .catch(() => {})
       .finally(() => setPerfLoading(false))
-  }, [perfMonth])
+  }, [perfMonth, perfPeriod, perfCustomFrom, perfCustomTo])
+
+  // Validate custom date range for perf filters (derived value)
+  const { perfDateError, isPerfCustomValid } = useMemo(() => {
+    if (perfPeriod !== 'custom') return { perfDateError: '', isPerfCustomValid: true }
+    if (!perfCustomFrom || !perfCustomTo) return { perfDateError: '', isPerfCustomValid: false }
+    const from = new Date(perfCustomFrom)
+    const to = new Date(perfCustomTo)
+    if (from > to) return { perfDateError: 'La fecha "Desde" no puede ser posterior a "Hasta"', isPerfCustomValid: false }
+    // Clamp: dates must be within the selected month
+    const [y, m] = perfMonth.split('-').map(Number)
+    const monthStart = `${y}-${String(m).padStart(2, '0')}-01`
+    const lastDay = new Date(y, m, 0).getDate()
+    const monthEnd = `${y}-${String(m).padStart(2, '0')}-${lastDay}`
+    if (perfCustomFrom < monthStart || perfCustomTo > monthEnd) {
+      return { perfDateError: `Las fechas deben estar dentro de ${perfMonth}`, isPerfCustomValid: false }
+    }
+    return { perfDateError: '', isPerfCustomValid: true }
+  }, [perfPeriod, perfCustomFrom, perfCustomTo, perfMonth])
 
   // Open target dialog and load current targets
   const handleOpenTargetDialog = async () => {
     setShowTargetDialog(true)
-    api.get<{ users: { id: string; name: string }[]; targets: { userId: string; yearMonth: string; targetAmount: number }[] }>(`/api/sales-targets?month=${perfMonth}`)
+    api.get<{ users: { id: string; name: string }[]; targets: { userId: string; yearMonth: string; targetAmount: number; dailyTargetAmount: number; applyDailyAllMonth: boolean }[] }>(`/api/sales-targets?month=${perfMonth}`)
       .then(({ users, targets }) => {
         const inputs: Record<string, string> = {}
+        const dailyInputs: Record<string, string> = {}
+        const allMonth: Record<string, boolean> = {}
         users.forEach(u => {
           const t = targets.find(t => t.userId === u.id && t.yearMonth === perfMonth)
           inputs[u.id] = t ? String(t.targetAmount) : ''
+          dailyInputs[u.id] = t && t.dailyTargetAmount ? String(t.dailyTargetAmount) : ''
+          allMonth[u.id] = t ? t.applyDailyAllMonth : false
         })
         setTargetInputs(inputs)
+        setDailyTargetInputs(dailyInputs)
+        setApplyDailyAllMonth(allMonth)
       })
       .catch(() => {})
   }
 
   const handleSaveTargets = async () => {
     setSavingTargets(true)
-    const targets = Object.entries(targetInputs)
-      .filter(([, v]) => v && Number(v) > 0)
-      .map(([userId, v]) => ({ userId, yearMonth: perfMonth, targetAmount: Number(v) }))
+    // Get all user IDs from either targetInputs or dailyTargetInputs
+    const allUserIds = new Set([...Object.keys(targetInputs), ...Object.keys(dailyTargetInputs)])
+    const targets = []
+    for (const userId of allUserIds) {
+      const targetAmount = Number(targetInputs[userId]) || 0
+      const dailyAmount = Number(dailyTargetInputs[userId]) || 0
+      const allMonth = applyDailyAllMonth[userId] || false
+      if (targetAmount > 0 || dailyAmount > 0) {
+        targets.push({ userId, yearMonth: perfMonth, targetAmount, dailyTargetAmount: dailyAmount, applyDailyAllMonth: allMonth })
+      } else {
+        // Both are 0, send to delete
+        targets.push({ userId, yearMonth: perfMonth, targetAmount: 0, dailyTargetAmount: 0, applyDailyAllMonth: false })
+      }
+    }
 
     await api.put('/api/sales-targets', { targets })
     setShowTargetDialog(false)
     // Refresh performance data
-    api.get<SalesPerformanceData>(`/api/dashboard/sales-performance?month=${perfMonth}`)
+    const params = new URLSearchParams()
+    params.set('month', perfMonth)
+    params.set('period', perfPeriod)
+    if (perfPeriod === 'custom' && perfCustomFrom) params.set('from', perfCustomFrom)
+    if (perfPeriod === 'custom' && perfCustomTo) params.set('to', perfCustomTo)
+    api.get<SalesPerformanceData>(`/api/dashboard/sales-performance?${params.toString()}`)
       .then(setPerfData)
       .catch(() => {})
     setSavingTargets(false)
@@ -580,31 +652,81 @@ export function FinancialDashboard() {
           </div>
         </CardHeader>
         <CardContent>
+          {/* Period filters — scoped to the selected month */}
+          <div className="space-y-3 mb-4">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Filter className="h-4 w-4 text-muted-foreground" />
+              <span className="text-xs text-muted-foreground">Periodo:</span>
+              {perfPeriodOptions.map((opt) => (
+                <Button
+                  key={opt.value}
+                  size="sm"
+                  variant={perfPeriod === opt.value ? 'default' : 'outline'}
+                  className={perfPeriod === opt.value ? 'bg-primary hover:bg-primary/90 text-white h-7 text-xs' : 'h-7 text-xs'}
+                  onClick={() => setPerfPeriod(opt.value)}
+                >
+                  {opt.label}
+                </Button>
+              ))}
+            </div>
+
+            {/* Custom Date Range for performance */}
+            {perfPeriod === 'custom' && (
+              <div className="flex items-center gap-3 flex-wrap rounded-lg border bg-muted/30 p-2">
+                <CalendarDays className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                <div className="flex items-center gap-2">
+                  <label className="text-[10px] text-muted-foreground">Desde</label>
+                  <input
+                    type="date"
+                    value={perfCustomFrom}
+                    onChange={(e) => setPerfCustomFrom(e.target.value)}
+                    className="rounded-md border bg-background px-2 py-0.5 text-xs focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    max={perfCustomTo || undefined}
+                  />
+                </div>
+                <span className="text-muted-foreground text-xs">—</span>
+                <div className="flex items-center gap-2">
+                  <label className="text-[10px] text-muted-foreground">Hasta</label>
+                  <input
+                    type="date"
+                    value={perfCustomTo}
+                    onChange={(e) => setPerfCustomTo(e.target.value)}
+                    className="rounded-md border bg-background px-2 py-0.5 text-xs focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    min={perfCustomFrom || undefined}
+                  />
+                </div>
+                {perfDateError && (
+                  <p className="text-[10px] text-red-500">{perfDateError}</p>
+                )}
+              </div>
+            )}
+          </div>
+
           {perfLoading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
             </div>
           ) : perfData && perfData.performance.length > 0 ? (
             <div className="space-y-6">
-              {/* Summary KPIs */}
+              {/* Summary KPIs — period sales vs month target */}
               <div className="grid grid-cols-3 gap-3 text-center">
                 <div className="rounded-lg bg-muted/50 p-2">
-                  <p className="text-[10px] text-muted-foreground uppercase">Total Ventas</p>
-                  <p className="text-sm font-bold">{fmt(perfData.totalMonthSales)}</p>
+                  <p className="text-[10px] text-muted-foreground uppercase">Ventas {perfData.periodLabel}</p>
+                  <p className="text-sm font-bold">{fmt(perfData.totalPeriodSales)}</p>
                 </div>
                 <div className="rounded-lg bg-muted/50 p-2">
-                  <p className="text-[10px] text-muted-foreground uppercase">Meta Total</p>
+                  <p className="text-[10px] text-muted-foreground uppercase">Meta del Mes</p>
                   <p className="text-sm font-bold">{fmt(perfData.totalMonthTarget)}</p>
                 </div>
                 <div className="rounded-lg bg-muted/50 p-2">
-                  <p className="text-[10px] text-muted-foreground uppercase">% General</p>
+                  <p className="text-[10px] text-muted-foreground uppercase">% General (Mes)</p>
                   <p className={`text-sm font-bold ${perfData.totalMonthTarget > 0 && perfData.totalMonthSales >= perfData.totalMonthTarget ? 'text-green-600' : ''}`}>
                     {perfData.totalMonthTarget > 0 ? `${Math.round((perfData.totalMonthSales / perfData.totalMonthTarget) * 100)}%` : '—'}
                   </p>
                 </div>
               </div>
 
-              {/* Bar Chart */}
+              {/* Bar Chart — always shows monthly data */}
               {chartData.length > 0 && (
                 <div className="h-56">
                   <ResponsiveContainer width="100%" height="100%">
@@ -638,51 +760,91 @@ export function FinancialDashboard() {
 
               {/* Vendor Breakdown */}
               <div className="space-y-3">
-                {perfData.performance.map((p) => (
-                  <div key={p.userId} className="rounded-lg border p-3">
-                    <div className="flex items-center justify-between mb-1.5">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium">{p.userName}</span>
-                        {p.target > 0 && (
-                          p.achieved ? (
-                            <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-green-200 dark:border-green-800 text-[10px]">
-                              <CheckCircle2 className="h-3 w-3 mr-0.5" /> Cumplido
-                            </Badge>
-                          ) : (
-                            <Badge variant="outline" className="text-[10px]">
-                              <XCircle className="h-3 w-3 mr-0.5 text-amber-500" />
-                              Faltan {fmt(p.remaining)}
-                            </Badge>
-                          )
-                        )}
+                {perfData.performance.map((p) => {
+                  const dailyPct = p.dailyTarget > 0 ? Math.round((p.dailySales / p.dailyTarget) * 100) : 0
+                  const dailyAchieved = p.dailyTarget > 0 && p.dailySales >= p.dailyTarget
+                  const dailyRemaining = p.dailyTarget > 0 ? Math.max(0, p.dailyTarget - p.dailySales) : 0
+                  return (
+                    <div key={p.userId} className="rounded-lg border p-3">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium">{p.userName}</span>
+                          {/* Monthly target badge */}
+                          {p.target > 0 && (
+                            p.achieved ? (
+                              <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-green-200 dark:border-green-800 text-[10px]">
+                                <CheckCircle2 className="h-3 w-3 mr-0.5" /> Cumplido
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-[10px]">
+                                <XCircle className="h-3 w-3 mr-0.5 text-amber-500" />
+                                Faltan {fmt(p.remaining)}
+                              </Badge>
+                            )
+                          )}
+                        </div>
+                        <span className="text-sm font-bold">{fmt(p.totalSales)}</span>
                       </div>
-                      <span className="text-sm font-bold">{fmt(p.totalSales)}</span>
+
+                      {/* Daily target progress (if configured) */}
+                      {p.dailyTarget > 0 && (
+                        <div className="space-y-1 mb-2 rounded-md bg-amber-50/50 dark:bg-amber-950/20 p-2 border border-amber-100 dark:border-amber-900/30">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-1.5">
+                              <Sun className="h-3 w-3 text-amber-500" />
+                              <span className="text-[10px] font-medium text-amber-700 dark:text-amber-400">Meta del día</span>
+                              {dailyAchieved ? (
+                                <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-green-200 dark:border-green-800 text-[9px] h-4 px-1">
+                                  <Zap className="h-2.5 w-2.5 mr-0.5" /> Cumplida
+                                </Badge>
+                              ) : (
+                                <span className="text-[9px] text-amber-600 dark:text-amber-400">Faltan {fmt(dailyRemaining)}</span>
+                              )}
+                            </div>
+                            <span className="text-[10px] font-bold text-amber-700 dark:text-amber-400">{dailyPct}%</span>
+                          </div>
+                          <div className="h-1.5 rounded-full bg-amber-100 dark:bg-amber-900/30 overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all duration-500 ${
+                                dailyAchieved ? 'bg-green-500' : dailyPct >= 70 ? 'bg-amber-500' : 'bg-amber-400'
+                              }`}
+                              style={{ width: `${Math.min(dailyPct, 100)}%` }}
+                            />
+                          </div>
+                          <div className="flex items-center justify-between text-[9px] text-muted-foreground">
+                            <span>Ventas hoy: {fmt(p.dailySales)}</span>
+                            <span>Meta: {fmt(p.dailyTarget)}{p.applyDailyAllMonth ? ' (todo el mes)' : ''}</span>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Monthly target progress */}
+                      {p.target > 0 && (
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                            <span>Productos: {fmt(p.productSales)}</span>
+                            <span>Renovaciones: {fmt(p.renewalSales)}</span>
+                            <span>Meta mensual: {fmt(p.target)} — {p.percent}%</span>
+                          </div>
+                          <div className="h-2 rounded-full bg-muted overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all duration-500 ${
+                                p.achieved ? 'bg-green-500' : p.percent >= 70 ? 'bg-amber-500' : 'bg-primary'
+                              }`}
+                              style={{ width: `${Math.min(p.percent, 100)}%` }}
+                            />
+                          </div>
+                          {p.overTarget > 0 && (
+                            <p className="text-[10px] text-green-600 font-medium">
+                              <TrendingUp className="h-3 w-3 inline mr-0.5" />
+                              Supera la meta por {fmt(p.overTarget)}
+                            </p>
+                          )}
+                        </div>
+                      )}
                     </div>
-                    {p.target > 0 && (
-                      <div className="space-y-1">
-                        <div className="flex items-center justify-between text-[10px] text-muted-foreground">
-                          <span>Productos: {fmt(p.productSales)}</span>
-                          <span>Renovaciones: {fmt(p.renewalSales)}</span>
-                          <span>Meta: {fmt(p.target)} — {p.percent}%</span>
-                        </div>
-                        <div className="h-2 rounded-full bg-muted overflow-hidden">
-                          <div
-                            className={`h-full rounded-full transition-all duration-500 ${
-                              p.achieved ? 'bg-green-500' : p.percent >= 70 ? 'bg-amber-500' : 'bg-primary'
-                            }`}
-                            style={{ width: `${Math.min(p.percent, 100)}%` }}
-                          />
-                        </div>
-                        {p.overTarget > 0 && (
-                          <p className="text-[10px] text-green-600 font-medium">
-                            <TrendingUp className="h-3 w-3 inline mr-0.5" />
-                            Supera la meta por {fmt(p.overTarget)}
-                          </p>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </div>
           ) : (
@@ -695,33 +857,68 @@ export function FinancialDashboard() {
 
       {/* Target Configuration Dialog */}
       <Dialog open={showTargetDialog} onOpenChange={setShowTargetDialog}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Configurar Metas de Vendedores</DialogTitle>
             <DialogDescription>
-              Establece la meta de ventas para cada vendedor en el mes {perfMonth}. Deja vacio si no tiene meta.
+              Establece las metas para cada vendedor en {perfMonth}. La meta diaria es opcional.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3 max-h-80 overflow-y-auto">
+          <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
             {Object.entries(targetInputs).map(([userId, value]) => {
               const perf = perfData?.performance.find(p => p.userId === userId)
+              const hasDaily = Boolean(dailyTargetInputs[userId] && Number(dailyTargetInputs[userId]) > 0)
               return (
-                <div key={userId} className="flex items-center gap-3">
-                  <div className="flex-1 min-w-0">
-                    <Label className="text-sm">{perf?.userName || userId}</Label>
-                    {perf && perf.totalSales > 0 && (
-                      <p className="text-[10px] text-muted-foreground">Ventas actuales: {fmt(perf.totalSales)}</p>
+                <div key={userId} className="rounded-lg border p-3 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="min-w-0">
+                      <Label className="text-sm font-medium">{perf?.userName || userId}</Label>
+                      {perf && perf.monthTotalSales > 0 && (
+                        <p className="text-[10px] text-muted-foreground">Ventas del mes: {fmt(perf.monthTotalSales)}</p>
+                      )}
+                    </div>
+                  </div>
+                  {/* Meta mensual */}
+                  <div className="flex items-center gap-3">
+                    <Label className="text-xs text-muted-foreground whitespace-nowrap w-20">Meta mensual</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="1000"
+                      placeholder="0"
+                      value={value}
+                      onChange={(e) => setTargetInputs(prev => ({ ...prev, [userId]: e.target.value }))}
+                      className="flex-1 text-right h-8 text-sm"
+                    />
+                  </div>
+                  {/* Meta diaria */}
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-3">
+                      <Label className="text-xs text-muted-foreground whitespace-nowrap w-20">Meta diaria</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="100"
+                        placeholder="0"
+                        value={dailyTargetInputs[userId] || ''}
+                        onChange={(e) => setDailyTargetInputs(prev => ({ ...prev, [userId]: e.target.value }))}
+                        className="flex-1 text-right h-8 text-sm"
+                      />
+                    </div>
+                    {/* Switch: Aplicar todo el mes */}
+                    {(hasDaily || Number(dailyTargetInputs[userId]) > 0) && (
+                      <div className="flex items-center gap-2 ml-20">
+                        <Switch
+                          size="sm"
+                          checked={applyDailyAllMonth[userId] || false}
+                          onCheckedChange={(checked: boolean) => setApplyDailyAllMonth(prev => ({ ...prev, [userId]: checked }))}
+                        />
+                        <Label className="text-[11px] text-muted-foreground cursor-pointer">
+                          Aplicar todos los días del mes
+                        </Label>
+                      </div>
                     )}
                   </div>
-                  <Input
-                    type="number"
-                    min="0"
-                    step="1000"
-                    placeholder="0"
-                    value={value}
-                    onChange={(e) => setTargetInputs(prev => ({ ...prev, [userId]: e.target.value }))}
-                    className="w-32 text-right"
-                  />
                 </div>
               )
             })}

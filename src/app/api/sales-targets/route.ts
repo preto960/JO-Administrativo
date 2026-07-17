@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
 
     const targets = await db.salesTarget.findMany({
       where: month ? { yearMonth: month } : {},
-      select: { id: true, userId: true, yearMonth: true, targetAmount: true },
+      select: { id: true, userId: true, yearMonth: true, targetAmount: true, dailyTargetAmount: true, applyDailyAllMonth: true },
     })
 
     const targetMap = new Map(targets.map(t => [`${t.userId}_${t.yearMonth}`, t]))
@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
 }
 
 // PUT /api/sales-targets — upsert targets (batch)
-// Body: { targets: [{ userId, yearMonth, targetAmount }] }
+// Body: { targets: [{ userId, yearMonth, targetAmount, dailyTargetAmount?, applyDailyAllMonth? }] }
 export async function PUT(request: NextRequest) {
   const auth = await requireAuth()
   if ('status' in auth) return auth
@@ -45,7 +45,7 @@ export async function PUT(request: NextRequest) {
   try {
     const body = await request.json()
     const { targets } = body as {
-      targets: { userId: string; yearMonth: string; targetAmount: number }[]
+      targets: { userId: string; yearMonth: string; targetAmount: number; dailyTargetAmount?: number; applyDailyAllMonth?: boolean }[]
     }
 
     if (!targets || !Array.isArray(targets)) {
@@ -54,8 +54,8 @@ export async function PUT(request: NextRequest) {
 
     const results = []
     for (const t of targets) {
-      if (t.targetAmount <= 0) {
-        // Remove target if amount is 0 or negative
+      if (t.targetAmount <= 0 && (!t.dailyTargetAmount || t.dailyTargetAmount <= 0)) {
+        // Remove target if both amounts are 0 or negative
         await db.salesTarget.deleteMany({
           where: { userId: t.userId, yearMonth: t.yearMonth },
         })
@@ -63,8 +63,18 @@ export async function PUT(request: NextRequest) {
       } else {
         const upserted = await db.salesTarget.upsert({
           where: { userId_yearMonth: { userId: t.userId, yearMonth: t.yearMonth } },
-          create: { userId: t.userId, yearMonth: t.yearMonth, targetAmount: t.targetAmount },
-          update: { targetAmount: t.targetAmount },
+          create: {
+            userId: t.userId,
+            yearMonth: t.yearMonth,
+            targetAmount: t.targetAmount || 0,
+            dailyTargetAmount: t.dailyTargetAmount || 0,
+            applyDailyAllMonth: t.applyDailyAllMonth ?? false,
+          },
+          update: {
+            targetAmount: t.targetAmount || 0,
+            dailyTargetAmount: t.dailyTargetAmount ?? 0,
+            applyDailyAllMonth: t.applyDailyAllMonth ?? false,
+          },
         })
         results.push(upserted)
       }
