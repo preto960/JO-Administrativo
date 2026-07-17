@@ -243,3 +243,37 @@ Stage Summary:
 - Tag import agregado en src/components/clients/clients-table.tsx
 - El error de "client-side exception" al seleccionar plan con descuento para renovar queda resuelto
 - Archivo modificado: src/components/clients/clients-table.tsx (1 línea)
+---
+Task ID: 3
+Agent: Main Agent
+Task: Atribución de meta de ventas al creador del crédito + visibilidad de créditos pendientes en caja
+
+Work Log:
+- Schema: agregado campo `createdById String?` a `AccountReceivable` (denormaliza Sale.userId)
+- Schema: agregada relación `createdBy User?` con nombre "CreditCreator" + `createdCredits AccountReceivable[]` en User
+- Migración SQL: `prisma/migrations/20260717000000_add_credit_createdby/migration.sql` (ALTER TABLE + backfill + FK)
+- prisma db push ejecutado contra Neon — schema aplicado
+- Backfill ejecutado via script tsx: 35 créditos existentes ahora tienen createdById seteado (= Sale.userId), 0 nulos
+- Actualizado src/app/api/sales/route.ts: `createdById: userId` al crear AccountReceivable (POS crédito)
+- Actualizado src/app/api/clients/[id]/renew/route.ts: `createdById: auth.userId` al crear AccountReceivable (renovación crédito)
+- Actualizado src/app/api/clients/[id]/dispatch/route.ts: `createdById: userId` al crear AccountReceivable (despacho crédito)
+- Modificado src/app/api/dashboard/sales-performance/route.ts:
+  * Agregado bucket `collectedPayments` que suma ClientPayment del mes, atribuidos al creador del crédito (vía receivable.createdById)
+  * `totalSales = productSales + renewalSales + collectedCredit` (por usuario creador)
+  * Crédito parcial: si B cobra 50% en marzo y C cobra 50% en abril, cada parte cuenta al creador en el mes que se cobró
+  * Incluye cajeros inactivos (deletedAt) si tienen cobros ese mes — su meta histórica se mantiene correcta
+- Modificado src/app/api/cash-register/[id]/sales-breakdown/route.ts:
+  * Agregado `systemPendingCredits` — todos los AccountReceivable pendientes/parciales de la sucursal, sin filtrar por cashRegId
+  * Incluye nombre del cajero creador, monto pendiente, monto total, status
+  * Nuevos campos en response: systemPendingCredits, systemPendingTotal
+- Modificado src/components/cash/cash-register-view.tsx:
+  * Nuevo tab "Créd. Sistema" (color naranja) en el breakdown de caja
+  * Muestra lista con cliente, "Creado por: <name>", saldo pendiente (con tachado del total si es parcial)
+  * Header con total pendiente de la sucursal
+- Cobro (clients/[id]/payment/route.ts) y DELETE de pago: NO tocados. La meta se calcula on-the-fly desde ClientPayment, así que eliminar un pago automáticamente lo saca de la meta del creador.
+- tsc verificado: 3 errores preexistentes en archivos tocados (líneas 72/249/192) — ninguno coincide con líneas modificadas. Sin errores nuevos.
+
+Stage Summary:
+- 6 archivos modificados + 1 migración nueva
+- DB Neon actualizada: columna createdById agregada, 35 créditos backfilled
+- Próximo paso: commit + push a main para que Vercel redeploye

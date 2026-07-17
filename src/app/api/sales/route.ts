@@ -263,6 +263,7 @@ export async function POST(request: NextRequest) {
               pendingBalance: cp.amount,
               status: 'pendiente',
               currencyId: refCurrency?.id || '',
+              createdById: userId,
               dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
             },
           })

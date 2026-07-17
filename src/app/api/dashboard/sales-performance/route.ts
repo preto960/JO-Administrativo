@@ -75,18 +75,48 @@ export async function GET(request: NextRequest) {
     const salesMap = new Map(salesByUser.map(s => [s.userId, s._sum.total || 0]))
     const renewalsMap = new Map(renewalsByUser.map(r => [r.userId, r._sum.total || 0]))
 
-    // 3. Get targets
+    // 3. Sum collected credit payments in this month, attributed to the credit CREATOR (not the collector)
+    // This way: cashier A created the credit on day X, cashier B collects it on day Y in this month →
+    // the collected amount counts toward A's performance this month (not B's).
+    const collectedPayments = await db.clientPayment.findMany({
+      where: { createdAt: { gte: startDate, lte: endDate } },
+      select: {
+        amount: true,
+        receivable: { select: { createdById: true } },
+      },
+    })
+    const collectedByCreator = new Map<string, number>()
+    for (const p of collectedPayments) {
+      const creatorId = p.receivable?.createdById
+      if (!creatorId) continue
+      collectedByCreator.set(creatorId, Math.round(((collectedByCreator.get(creatorId) || 0) + p.amount) * 100) / 100)
+    }
+
+    // 4. Get targets
     const targets = await db.salesTarget.findMany({
       where: { yearMonth: month },
       select: { userId: true, targetAmount: true },
     })
     const targetMap = new Map(targets.map(t => [t.userId, t.targetAmount]))
 
-    // 4. Build result
-    const performance = users.map(u => {
+    // 5. Build result — also include inactive users (deletedAt) if they have collected credits this month
+    // so their meta stays correct even after they're given de baja.
+    const activeUserIds = new Set(users.map(u => u.id))
+    const extraCreatorIds = [...collectedByCreator.keys()].filter(id => !activeUserIds.has(id))
+    let allUsers = users
+    if (extraCreatorIds.length > 0) {
+      const extraUsers = await db.user.findMany({
+        where: { id: { in: extraCreatorIds } },
+        select: { id: true, name: true, role: true },
+      })
+      allUsers = [...users, ...extraUsers]
+    }
+
+    const performance = allUsers.map(u => {
       const productSales = salesMap.get(u.id) || 0
       const renewalSales = renewalsMap.get(u.id) || 0
-      const totalSales = Math.round((productSales + renewalSales) * 100) / 100
+      const collectedCredit = collectedByCreator.get(u.id) || 0
+      const totalSales = Math.round((productSales + renewalSales + collectedCredit) * 100) / 100
       const target = targetMap.get(u.id) || 0
       const achieved = target > 0 && totalSales >= target
       const remaining = target > 0 ? Math.max(0, Math.round((target - totalSales) * 100) / 100) : 0

@@ -111,6 +111,7 @@ export async function POST(
           pendingBalance: totalAmount,
           dueDate,
           status: 'pendiente',
+          createdById: userId,
         },
       })
 

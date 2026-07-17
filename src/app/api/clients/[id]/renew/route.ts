@@ -301,6 +301,7 @@ export async function POST(
               pendingBalance: effectivePrice,
               status: 'pendiente',
               currencyId: resolvedCurrencyId,
+              createdById: auth.userId,
               dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
             },
           })

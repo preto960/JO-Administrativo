@@ -177,9 +177,40 @@ export async function GET(
     const totalExits = cashAffectingMovements.filter(m => m.type === 'salida').reduce((s, m) => s + m.amount, 0)
     const netMovements = totalEntries - totalExits
 
-    // Get register initial amount
-    const cashReg = await db.cashRegister.findUnique({ where: { id }, select: { initialAmt: true } })
+    // Get register initial amount and branch (for system-wide pending credits filter)
+    const cashReg = await db.cashRegister.findUnique({
+      where: { id },
+      select: { initialAmt: true, branchId: true },
+    })
     const initialAmt = cashReg?.initialAmt ?? 0
+    const registerBranchId = cashReg?.branchId
+
+    // System-wide pending credits (created by any cashier in this branch, regardless of cashRegId)
+    // These are visible to the open cashier so they know what outstanding credit exists in the branch.
+    const systemPendingReceivables = await db.accountReceivable.findMany({
+      where: {
+        status: { in: ['pendiente', 'parcial'] },
+        sale: { branchId: registerBranchId || undefined },
+      },
+      include: {
+        client: { select: { name: true, lastName: true } },
+        createdBy: { select: { name: true } },
+        sale: { select: { date: true, cashRegId: true, total: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    })
+
+    const systemPendingCredits = systemPendingReceivables.map(r => ({
+      id: r.id,
+      date: r.sale.date,
+      amount: r.pendingBalance,
+      totalAmount: r.amount,
+      status: r.status,
+      clientName: r.client ? `${r.client.name}${r.client.lastName ? ' ' + r.client.lastName : ''}` : null,
+      createdByName: r.createdBy?.name || '—',
+      createdAt: r.createdAt.toISOString(),
+    }))
+    const systemPendingTotal = systemPendingReceivables.reduce((s, r) => s + r.pendingBalance, 0)
 
     // Sum only cash (isCash) payments from non-credit sales
     const cashPaymentsTotal = nonCreditSales.reduce((sum, s) =>
@@ -206,6 +237,8 @@ export async function GET(
       totalCount: nonCreditSales.length,
       creditSales: creditItems,
       creditTotal,
+      systemPendingCredits,
+      systemPendingTotal,
       methodTotals,
       realInRegister,
       movements: movementEntries,

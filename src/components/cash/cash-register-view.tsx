@@ -299,6 +299,8 @@ export function CashRegisterView() {
     totalCount: number
     creditSales: Array<{ id: string; date: string; total: number; clientName: string | null; description: string }>
     creditTotal: number
+    systemPendingCredits: Array<{ id: string; date: string; amount: number; totalAmount: number; status: string; clientName: string | null; createdByName: string; createdAt: string }>
+    systemPendingTotal: number
     methodTotals: Record<string, { amount: number; count: number }>
     realInRegister: number
     movements: Array<{ id: string; date: string; type: 'entrada' | 'salida'; amount: number; concept: string }>
@@ -1006,6 +1008,11 @@ export function CashRegisterView() {
                                   Crédito{breakdownData.creditSales.length > 0 && <span className="ml-0.5 opacity-70">({breakdownData.creditSales.length})</span>}
                                 </TabsTrigger>
                               )}
+                              {breakdownData.systemPendingCredits && breakdownData.systemPendingCredits.length > 0 && (
+                                <TabsTrigger value="syscredits" className="text-[10px] h-7 flex-1 gap-1 data-[state=active]:bg-orange-100 data-[state=active]:text-orange-700 dark:data-[state=active]:bg-orange-950 dark:data-[state=active]:text-orange-300">
+                                  Créd. Sistema{breakdownData.systemPendingCredits.length > 0 && <span className="ml-0.5 opacity-70">({breakdownData.systemPendingCredits.length})</span>}
+                                </TabsTrigger>
+                              )}
                               {breakdownData.movements && breakdownData.movements.length > 0 && (
                                 <TabsTrigger value="movements" className="text-[10px] h-7 flex-1 gap-1 data-[state=active]:bg-purple-100 data-[state=active]:text-purple-700 dark:data-[state=active]:bg-purple-950 dark:data-[state=active]:text-purple-300">
                                   Mov.{breakdownData.movements.length > 0 && <span className="ml-0.5 opacity-70">({breakdownData.movements.length})</span>}
@@ -1074,6 +1081,34 @@ export function CashRegisterView() {
                               </TabsContent>
                             )}
 
+                            {breakdownData.systemPendingCredits && breakdownData.systemPendingCredits.length > 0 && (
+                              <TabsContent value="syscredits" className="mt-2">
+                                <div className="max-h-56 overflow-y-auto space-y-0">
+                                  <div className="flex items-center justify-between text-[11px] mb-1 px-1 py-0.5 rounded bg-orange-50 dark:bg-orange-950/30 text-orange-700 dark:text-orange-300">
+                                    <span>Créditos pendientes en la sucursal</span>
+                                    <span className="font-semibold">{fmtBase(breakdownData.systemPendingTotal)}</span>
+                                  </div>
+                                  {breakdownData.systemPendingCredits.map(c => (
+                                    <div key={c.id} className="flex items-center justify-between text-xs py-1.5 border-b last:border-b-0 border-orange-200 dark:border-orange-800">
+                                      <div className="min-w-0 flex-1">
+                                        <span className="font-medium truncate block text-orange-700 dark:text-orange-300">{c.clientName || 'Sin cliente'}</span>
+                                        <span className="text-muted-foreground truncate block text-[10px]">
+                                          Creado por: <span className="font-medium">{c.createdByName}</span>
+                                          {c.status === 'parcial' && <span className="ml-1 text-amber-600 dark:text-amber-400">• Parcial</span>}
+                                        </span>
+                                      </div>
+                                      <div className="text-right shrink-0 ml-2">
+                                        <span className="font-semibold text-orange-700 dark:text-orange-300">{fmtBase(c.amount)}</span>
+                                        {c.amount < c.totalAmount && (
+                                          <span className="text-muted-foreground ml-1 text-[10px] line-through">{fmtBase(c.totalAmount)}</span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </TabsContent>
+                            )}
+
                             {breakdownData.movements && breakdownData.movements.length > 0 && (
                               <TabsContent value="movements" className="mt-2">
                                 <div className="max-h-48 overflow-y-auto space-y-0">
@@ -1096,7 +1131,7 @@ export function CashRegisterView() {
                             )}
                           </Tabs>
 
-                          {breakdownData.posSales.length === 0 && breakdownData.subscriptionSales.length === 0 && breakdownData.creditSales.length === 0 && (!breakdownData.movements || breakdownData.movements.length === 0) && (
+                          {breakdownData.posSales.length === 0 && breakdownData.subscriptionSales.length === 0 && breakdownData.creditSales.length === 0 && (!breakdownData.movements || breakdownData.movements.length === 0) && (!breakdownData.systemPendingCredits || breakdownData.systemPendingCredits.length === 0) && (
                             <p className="text-xs text-muted-foreground text-center py-2">No hay ventas registradas en esta caja</p>
                           )}
                         </>

@@ -32,6 +32,7 @@ model User {
   branch           Branch?               @relation(fields: [branchId], references: [id])
   salesTargets     SalesTarget[]
   freezeApprovals  MembershipFreeze[]
+  createdCredits   AccountReceivable[]  @relation("CreditCreator")
 }
 
 model Client {
@@ -409,12 +410,14 @@ model AccountReceivable {
   pendingBalance Float
   dueDate        DateTime?
   status         String    @default("pendiente")
+  createdById    String?   // Denormalized from Sale.userId — the cashier who created the credit
   createdAt      DateTime  @default(now())
 
-  client   Client          @relation(fields: [clientId], references: [id])
-  sale     Sale            @relation(fields: [saleId], references: [id])
-  currency Currency?       @relation(fields: [currencyId], references: [id])
-  payments ClientPayment[]
+  client    Client          @relation(fields: [clientId], references: [id])
+  sale      Sale            @relation(fields: [saleId], references: [id])
+  currency  Currency?       @relation(fields: [currencyId], references: [id])
+  payments  ClientPayment[]
+  createdBy User?           @relation("CreditCreator", fields: [createdById], references: [id])
 }
 
 model ClientPayment {
