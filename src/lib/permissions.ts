@@ -30,7 +30,7 @@ export interface UserPermissions {
 const defaultRolePermissions: Record<string, UserPermissions> = {
   admin: {
     role: 'admin',
-    views: ['pos', 'dashboard', 'products', 'clients', 'suppliers', 'cash', 'expenses', 'settings'],
+    views: ['pos', 'dashboard', 'products', 'clients', 'suppliers', 'cash', 'expenses', 'reports', 'settings'],
     canManageUsers: true,
     canAccessSettings: true,
     canManageProducts: true,
@@ -56,7 +56,7 @@ const defaultRolePermissions: Record<string, UserPermissions> = {
   },
   gerente: {
     role: 'gerente',
-    views: ['pos', 'dashboard', 'products', 'clients', 'suppliers', 'cash', 'expenses'],
+    views: ['pos', 'dashboard', 'products', 'clients', 'suppliers', 'cash', 'expenses', 'reports'],
     canManageUsers: false,
     canAccessSettings: true,
     canManageProducts: true,

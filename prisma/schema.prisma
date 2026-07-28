@@ -33,6 +33,8 @@ model User {
   salesTargets     SalesTarget[]
   freezeApprovals  MembershipFreeze[]
   createdCredits   AccountReceivable[]  @relation("CreditCreator")
+  inventoryChecks  InventoryCheck[]
+  costEntries      CostEntry[]
 }
 
 model Client {
@@ -48,6 +50,9 @@ model Client {
   gender         String? // Masculino, Femenino
   note           String?
   lastAttendance DateTime?
+  source         String?   // "nuevo" | "renovado" | "recuperado" | "referido" | "otro"
+  agreementName  String?   // nombre del convenio si aplica
+  promotionName  String?   // nombre de la promocion si aplica
   deletedAt      DateTime?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
@@ -138,6 +143,7 @@ model Currency {
   cashRegisters     CashRegister[]
   receivables       AccountReceivable[]
   payables          AccountPayable[]
+  costEntries       CostEntry[]
 }
 
 model ExchangeRate {
@@ -175,6 +181,7 @@ model Product {
   adjustments       InventoryAdjustment[]
   recipeAsParent    RecipeComponent[]     @relation("ParentProduct")
   recipeAsComponent RecipeComponent[]     @relation("ComponentProduct")
+  inventoryCheckItems InventoryCheckItem[]
 }
 
 model Category {
@@ -216,6 +223,7 @@ model Branch {
   cashRegisters        CashRegister[]
   expenses             Expense[]
   inventoryAdjustments InventoryAdjustment[]
+  inventoryChecks     InventoryCheck[]
   users                User[]
 }
 
@@ -634,5 +642,90 @@ model SalesTarget {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, yearMonth], name: "userId_yearMonth")
+  @@index([yearMonth])
+}
+
+// ── Reportes: Inventario ──
+
+model InventoryCheck {
+  id        String   @id @default(cuid())
+  branchId  String
+  userId    String
+  checkDate DateTime @default(now())
+  status    String   @default("pendiente") // "pendiente" | "verificado"
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user   User     @relation(fields: [userId], references: [id])
+  branch Branch   @relation(fields: [branchId], references: [id])
+  items  InventoryCheckItem[]
+
+  @@index([branchId])
+  @@index([checkDate])
+}
+
+model InventoryCheckItem {
+  id              String   @id @default(cuid())
+  checkId         String
+  productId       String
+  productName     String
+  initialStock    Float
+  verifiedStock   Float
+  unitPrice       Float
+  discrepancyQty  Float
+  discrepancyAmt  Float
+  notes           String?
+
+  check   InventoryCheck @relation(fields: [checkId], references: [id], onDelete: Cascade)
+  product Product         @relation(fields: [productId], references: [id])
+
+  @@index([checkId])
+}
+
+// ── Reportes: Financieros ──
+
+model CostCenter {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  code      String?  @unique
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  entries  CostEntry[]
+  budgets  ExpenseBudget[]
+}
+
+model CostEntry {
+  id          String   @id @default(cuid())
+  costCenterId String
+  concept     String
+  amount      Float
+  currencyId  String
+  date        DateTime @default(now())
+  userId      String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  costCenter CostCenter @relation(fields: [costCenterId], references: [id])
+  currency   Currency    @relation(fields: [currencyId], references: [id])
+  user       User        @relation(fields: [userId], references: [id])
+
+  @@index([costCenterId])
+  @@index([date])
+}
+
+model ExpenseBudget {
+  id            String   @id @default(cuid())
+  costCenterId String
+  yearMonth     String
+  budgetAmount  Float   @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  costCenter CostCenter @relation(fields: [costCenterId], references: [id])
+
+  @@unique([costCenterId, yearMonth])
   @@index([yearMonth])
 }
