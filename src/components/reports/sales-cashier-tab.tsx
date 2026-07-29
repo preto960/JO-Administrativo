@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
-  Download, Loader2, Search, CashRegister, BarChart3,
+  Download, Loader2, Search, Calculator, BarChart3,
 } from 'lucide-react'
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -151,7 +151,7 @@ export function SalesCashierTab() {
         ) : searched ? (
           cashiers.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
-              <CashRegister className="mx-auto mb-2 h-8 w-8 opacity-50" />
+              <Calculator className="mx-auto mb-2 h-8 w-8 opacity-50" />
               No se encontraron datos para el periodo seleccionado
             </div>
           ) : (
