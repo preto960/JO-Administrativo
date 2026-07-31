@@ -114,8 +114,9 @@ function timestamp() {
 
 /**
  * Escapa un valor para usar dentro de un INSERT SQL.
- * Usa $$ quoting de PostgreSQL para evitar problemas con comillas simples,
- * punto y coma, y caracteres especiales dentro de strings.
+ * Usa comillas simples estándar SQL con escaping de comillas dobles ('').
+ * Nota: NO se usa $$ quoting porque si un valor contiene $$ adentro
+ * (ej: texto con variables, templates), se rompe el delimiter.
  */
 function escapeSqlValue(val) {
   if (val === null || val === undefined) return 'NULL';
@@ -125,18 +126,15 @@ function escapeSqlValue(val) {
   if (type === 'number') return String(val);
   if (type === 'boolean') return val ? 'true' : 'false';
 
-  // Para strings, JSON, fechas: usar $$ quoting de PostgreSQL
-  // Esto evita problemas con comillas simples, punto y coma, y caracteres especiales
-  // $$ es un delimiter literal seguro que no necesita escaping interno
+  // JSON objects/arrays
   if (type === 'object') {
-    return '$$' + JSON.stringify(val) + '$$';
+    const jsonStr = JSON.stringify(val)
+      .replace(/'/g, "''");  // escapar comillas simples dentro del JSON
+    return `'${jsonStr}'`;
   }
 
-  if (type === 'string') {
-    return '$$' + String(val) + '$$';
-  }
-
-  return String(val);
+  // Strings y fechas: comillas simples con escaping estándar SQL
+  return `'${String(val).replace(/'/g, "''")}'`;
 }
 
 /**
@@ -414,32 +412,47 @@ async function restoreBackup(inputFile) {
     const lines = sqlContent.split('\n').filter(l => l.trim().length > 0);
     console.log(`   📄 Archivo tiene ${lines.length} líneas`);
 
-    // Separar sentencias SQL respetando strings delimitados por $$
-    // El backup usa $$ quoting, así que ';' dentro de $$ NO es un separador
+    // Separar sentencias SQL respetando strings delimitados por comillas simples.
+    // El split por ';' simple rompe cuando un valor contiene ';' adentro
+    // (ej: User-Agent 'Mozilla/5.0 (Macintosh; Intel...)').
+    // Este parser es state-aware: solo splitea ';' fuera de strings.
     function splitSqlStatements(sql) {
       const statements = [];
       let current = '';
-      let inDollarQuote = false;
+      let inSingleQuote = false;
       let i = 0;
       while (i < sql.length) {
-        // Detectar $$ (inicio o fin de dollar quoting)
-        if (sql[i] === '$' && i + 1 < sql.length && sql[i + 1] === '$') {
-          inDollarQuote = !inDollarQuote;
-          current += '$$';
-          i += 2;
-          continue;
-        }
-        // Solo split por ; si NO estamos dentro de $$ quoting
-        if (sql[i] === ';' && !inDollarQuote) {
+        const ch = sql[i];
+
+        // Comilla simple: abre/cierra string (escaped '' dentro no cuenta)
+        if (ch === "'" && !inSingleQuote) {
+          inSingleQuote = true;
+          current += ch;
+          i++;
+        } else if (ch === "'" && inSingleQuote) {
+          // Check if it's an escaped quote ('')
+          if (i + 1 < sql.length && sql[i + 1] === "'") {
+            // Escaped quote, keep both characters
+            current += "''";
+            i += 2;
+          } else {
+            // Closing quote
+            inSingleQuote = false;
+            current += ch;
+            i++;
+          }
+        } else if (ch === ';' && !inSingleQuote) {
+          // Split point: ; outside of string
           const trimmed = current.trim();
           if (trimmed.length > 0 && !trimmed.startsWith('--')) {
             statements.push(trimmed);
           }
           current = '';
+          i++;
         } else {
-          current += sql[i];
+          current += ch;
+          i++;
         }
-        i++;
       }
       // Última sentencia si no termina con ;
       const last = current.trim();
