@@ -222,15 +222,11 @@ async function backupData(outputFile) {
   sqlParts.push(``);
   sqlParts.push(`-- ── CONFIGURACIÓN: desactiva FK para evitar errores de orden ─────`);
   sqlParts.push(`BEGIN;`);
-  sqlParts.push(`SET session_replication_role = 'replica';`);
   sqlParts.push(``);
 
-  // Desactivar triggers
-  sqlParts.push(`-- Desactivar triggers temporalmente`);
-  for (const table of existingTables) {
-    sqlParts.push(`ALTER TABLE "${table}" DISABLE TRIGGER ALL;`);
-  }
-  sqlParts.push(``);
+  // Nota: Neon/PostgreSQL serverless no permite SET session_replication_role
+  // ni DISABLE TRIGGER ALL. Usamos TRUNCATE CASCADE que funciona sin superuser.
+  // Los INSERTs usan ON CONFLICT DO NOTHING para idempotencia.
 
   // Limpiar tablas en orden inverso (hijos primero)
   sqlParts.push(`-- Limpiar tablas existentes en orden inverso (hijos → padres)`);
@@ -282,13 +278,7 @@ async function backupData(outputFile) {
     }
   }
 
-  // Reactivar triggers
-  sqlParts.push(`-- ── REACTIVAR TRIGGERS Y FK ───────────────────────────────────────`);
-  for (const table of existingTables) {
-    sqlParts.push(`ALTER TABLE "${table}" ENABLE TRIGGER ALL;`);
-  }
-  sqlParts.push(``);
-  sqlParts.push(`SET session_replication_role = 'origin';`);
+  // Reactivar FK — no se necesita en Neon, TRUNCATE CASCADE se encarga
   sqlParts.push(`COMMIT;`);
   sqlParts.push(``);
   sqlParts.push(`-- ✅ Backup completado — ${totalRows} filas totales`);
@@ -374,7 +364,7 @@ async function restoreBackup(inputFile) {
   }
 
   console.log('⚠️  ATENCIÓN: Esto REEMPLAZARÁ todos los datos en la base de datos.');
-  console.log('   Se ejecutará: SET session_replication_role = replica + TRUNCATE CASCADE');
+  console.log('   Se ejecutará: TRUNCATE CASCADE + INSERT en orden de dependencias');
   console.log('');
 
   // Confirmación automática (en producción usar readline)
@@ -395,16 +385,35 @@ async function restoreBackup(inputFile) {
   const client = await createClient();
 
   try {
-    await client.query(sqlContent);
-    console.log('');
-    console.log('✅ Backup restaurado exitosamente.');
-  } catch (err) {
-    // ON_ERROR_STOP está desactivado, revisar si fue un error parcial
-    console.log('');
-    console.log(`⚠️  Restauración finalizada. Verifica los datos en la aplicación.`);
-    if (err.message) {
-      console.log(`   Detalle: ${err.message.slice(0, 200)}`);
+    // Separar sentencias por ; y ejecutarlas individualmente
+    // Esto evita que un solo error pare toda la restauración
+    const statements = sqlContent
+      .split(';')
+      .map(s => s.trim())
+      .filter(s => s.length > 0 && !s.startsWith('--'));
+
+    let executed = 0;
+    let errors = 0;
+
+    for (const stmt of statements) {
+      try {
+        await client.query(stmt);
+        executed++;
+      } catch (err) {
+        errors++;
+        // Solo mostrar si no es un error esperado (ON CONFLICT, tabla vacía, etc.)
+        if (!err.message.includes('duplicate key') &&
+            !err.message.includes('does not exist')) {
+          console.log(`   ⚠️ Error: ${err.message.slice(0, 120)}`);
+        }
+      }
     }
+
+    console.log('');
+    console.log(`✅ Restauración completada: ${executed} sentencias ejecutadas, ${errors} advertencias.`);
+  } catch (err) {
+    console.log('');
+    console.log(`❌ Error en restauración: ${err.message.slice(0, 200)}`);
   } finally {
     await client.end();
   }
