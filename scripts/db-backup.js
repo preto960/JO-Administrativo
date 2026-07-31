@@ -23,7 +23,7 @@
 const { Client } = require('pg');
 const fs = require('fs');
 const path = require('path');
-require('dotenv').config({ path: path.resolve(__dirname, '..', 'JO-Administrativo', '.env.local') });
+require('dotenv').config({ path: path.resolve(__dirname, '..', '.env.local') });
 
 // ── Config ──────────────────────────────────────────────────────────────────
 
