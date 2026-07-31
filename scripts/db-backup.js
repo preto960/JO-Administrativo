@@ -66,7 +66,6 @@ function escapeSqlValue(val) {
 /**
  * Parser state-machine para dividir SQL en sentencias.
  * Maneja comillas simples (') y escapes ('') correctamente.
- * Ignora líneas de comentarios (--).
  */
 function splitSqlStatements(sql) {
   const stmts = [];
@@ -89,7 +88,7 @@ function splitSqlStatements(sql) {
       cur += ch;
     } else if (ch === ';' && !inQuote) {
       const s = cur.trim();
-      if (s && !s.startsWith('--')) stmts.push(s);
+      if (s) stmts.push(s);
       cur = '';
     } else {
       cur += ch;
@@ -97,8 +96,38 @@ function splitSqlStatements(sql) {
   }
 
   const s = cur.trim();
-  if (s && !s.startsWith('--')) stmts.push(s);
+  if (s) stmts.push(s);
   return stmts;
+}
+
+/**
+ * Limpia comentarios SQL (-- ...) de una línea.
+ * NO remueve comentarios dentro de strings.
+ */
+function removeComments(sql) {
+  let result = '';
+  let inQuote = false;
+  for (let i = 0; i < sql.length; i++) {
+    const ch = sql[i];
+    const next = sql[i + 1];
+    if (ch === "'" && !inQuote) {
+      inQuote = true;
+      result += ch;
+    } else if (ch === "'" && inQuote && next === "'") {
+      result += "''";
+      i++;
+    } else if (ch === "'" && inQuote) {
+      inQuote = false;
+      result += ch;
+    } else if (ch === '-' && next === '-' && !inQuote) {
+      // Comentario: saltar hasta fin de línea
+      while (i < sql.length && sql[i] !== '\n') i++;
+      result += '\n'; // mantener la estructura de líneas
+    } else {
+      result += ch;
+    }
+  }
+  return result;
 }
 
 // ═══════════════════════════════════════════════════
@@ -280,12 +309,10 @@ async function backup() {
     let ddlCount = 0;
     let createTableCount = 0;
     for (const table of sorted) {
-      output.push(`-- ── Tabla: ${table.relname} ──`);
       const ddl = await generateTableDDL(client, table.oid);
       output.push(ddl);
       output.push('');
       ddlCount++;
-      // Contar cuántos CREATE TABLE se generaron
       createTableCount += (ddl.match(/CREATE TABLE/g) || []).length;
     }
 
@@ -413,7 +440,9 @@ async function restore(backupPath) {
   const raw = zlib.gunzipSync(fs.readFileSync(backupPath));
   const sql = raw.toString('utf-8');
   const lineCount = sql.split('\n').length;
-  const stmts = splitSqlStatements(sql);
+  // Remover comentarios antes de parsear para que no se mezclen con sentencias SQL
+  const cleanSql = removeComments(sql);
+  const stmts = splitSqlStatements(cleanSql);
 
   console.log(`   📄 ${lineCount} líneas, ${stmts.length} sentencias`);
 
