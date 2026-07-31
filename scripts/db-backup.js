@@ -44,12 +44,12 @@ const TABLE_ORDER = [
 // Se usa para LEER datos de la DB origen (SELECT, COUNT, etc.)
 const Q = (name) => `"${name}"`;
 
-// Identificadores lowercase sin comillas — para el DDL de la DB destino
-// PostgreSQL crea tablas en lowercase automáticamente si no llevan comillas
-const Qlow = (name) => name.toLowerCase();
+// Identificadores con comillas en lowercase —兼容 TablePlus y PostgreSQL reserved words
+// "user", "client", "sale" etc. son lowercase pero con quotes para evitar reserved word errors
+const Qlow = (name) => `"${name.toLowerCase()}"`;
 
-// Qc = constraint name en lowercase
-const Qc = (name) => name.toLowerCase();
+// Qc = constraint name en lowercase con quotes
+const Qc = (name) => `"${name.toLowerCase()}"`;
 
 // cleanPgDef: limpia comillas del SQL generado por pg_get_constraintdef / pg_get_indexdef
 // y convierte todo a lowercase para el DDL destino
