@@ -40,21 +40,18 @@ const TABLE_ORDER = [
   'AccountReceivable', 'ClientPayment'
 ];
 
-// Identificadores con comillas — respeta el case real de la tabla en la DB origen
-// Se usa para LEER datos de la DB origen (SELECT, COUNT, etc.)
+// Q = identificador con comillas, respeta el case original
+// Se usa para TODO: leer de origen Y escribir en destino (copia fiel)
 const Q = (name) => `"${name}"`;
+const Qlow = Q; // alias — mismo comportamiento
 
-// Identificadores con comillas en lowercase —兼容 TablePlus y PostgreSQL reserved words
-// "user", "client", "sale" etc. son lowercase pero con quotes para evitar reserved word errors
-const Qlow = (name) => `"${name.toLowerCase()}"`;
+// Qc = constraint name con comillas
+const Qc = (name) => `"${name}"`;
 
-// Qc = constraint name en lowercase con quotes
-const Qc = (name) => `"${name.toLowerCase()}"`;
-
-// cleanPgDef: limpia comillas del SQL generado por pg_get_constraintdef / pg_get_indexdef
-// y convierte todo a lowercase para el DDL destino
+// cleanPgDef: limpia comillas innecesarias de pg_catalog definitions
+// pero mantiene el case original
 function cleanPgDef(def) {
-  return def.replace(/"([^"]+)"/g, (_, name) => name.toLowerCase());
+  return def; // No modificar — pg_catalog ya genera SQL válido
 }
 
 // ═══════════════════════════════════════════════════
