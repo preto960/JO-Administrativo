@@ -1,748 +1,559 @@
 #!/usr/bin/env node
-// ═══════════════════════════════════════════════════════════════════════════════
-// JO-Administrativo — Backup completo de base de datos con orden de dependencias
-// ═══════════════════════════════════════════════════════════════════════════════
-//
-// USO:
-//   node db-backup.js                                  # backup automático
-//   node db-backup.js mi_backup                        # backup con nombre
-//   node db-backup.js --url "postgres://..." backup    # backup con URL directa
-//   node db-backup.js --restore archivo.sql.gz          # restaurar backup
-//   node db-backup.js --restore archivo.sql.gz -y       # restaurar sin confirmar
-//   node db-backup.js --schema-only                     # solo estructura
-//
-// REQUISITOS:
-//   - Node.js 18+
-//   - DATABASE_URL (en .env, variable de entorno, o con --url)
-//   - npm install pg dotenv (solo la primera vez)
-//
-// NOTA: El backup genera INSERTs en el orden correcto de dependencias FK para
-//       que al hacer restore no haya errores de llaves foráneas.
-// ═══════════════════════════════════════════════════════════════════════════════
+/**
+ * db-backup.js — JO-Administrativo Database Backup & Restore
+ *
+ * Genera un backup AUTOSUFICIENTE: al restaurar en una DB vacía/nueva,
+ * crea las tablas (DDL) y luego inserta los datos (DML).
+ * NO requiere ejecutar prisma db push por separado.
+ *
+ * BACKUP:  node scripts/db-backup.js
+ * RESTORE: node scripts/db-backup.js --restore backups/archivo.sql.gz
+ */
 
 const { Client } = require('pg');
 const fs = require('fs');
 const path = require('path');
+const zlib = require('zlib');
+const readline = require('readline');
+
+// ── Env ──
 require('dotenv').config({ path: path.resolve(__dirname, '..', '.env.local') });
-
-// ── Config ──────────────────────────────────────────────────────────────────
-
-// Buscar DATABASE_URL en: argumento --url > variable de entorno > .env.local
-let DB_URL = null;
-const urlIdx = process.argv.indexOf('--url');
-if (urlIdx !== -1 && process.argv[urlIdx + 1]) {
-  DB_URL = process.argv[urlIdx + 1];
-} else {
-  DB_URL = process.env.DATABASE_URL;
+if (!process.env.DATABASE_URL) {
+  require('dotenv').config({ path: path.resolve(__dirname, '..', '.env') });
 }
-const OUTPUT_DIR = path.join(__dirname, '..', 'backups');
-
+const DB_URL = process.env.DATABASE_URL;
 if (!DB_URL) {
-  console.error('❌ DATABASE_URL no está definida.');
-  console.error('   Crea un archivo .env.local con tu DATABASE_URL o pásala como variable de entorno.');
-  console.error('   La encuentras en: Vercel → Settings → Environment Variables');
+  console.error('❌ DATABASE_URL no encontrada. Verifica .env.local o .env');
   process.exit(1);
 }
 
-// ── Tablas en orden de dependencia (padres primero, hijos después) ──────────
-// Este orden garantiza que al importar, las tablas referenciadas existen antes
-// que las tablas que las referencian.
-
-const TABLES_ORDER = [
-  // Nivel 0: Sin dependencias FK
-  'Settings',
-  'PaymentMethod',
-  'Currency',
-  'Category',
-  'Plan',
-  'Supplier',
-  'Branch',
-  'CostCenter',
-
-  // Nivel 1: Dependen solo de nivel 0
-  'User',                // → Branch
-  'Client',              // sin FK obligatoria
-  'ExchangeRate',        // → Currency (from + to)
-  'Product',             // → Currency, Category
-
-  // Nivel 2: Dependen de nivel 1
-  'Inventory',           // → Product, Branch
-  'RecipeComponent',     // → Product (parent + component)
-  'ClientMembership',    // → Client, Plan
-  'Attendance',          // → Client
-  'Notification',        // → User, Client?
-  'AuditLog',            // → User?
-  'SalesTarget',         // → User
-  'InventoryCheck',      // → User, Branch
-  'Expense',             // → Currency, User, Branch
-  'InventoryAdjustment', // → Product, User, Branch
-  'CashRegister',        // → User, Branch, Currency
-
-  // Nivel 3: Dependen de nivel 2
-  'InventoryCheckItem',  // → InventoryCheck, Product
-  'MembershipFreeze',    // → ClientMembership, User
-  'Purchase',            // → Supplier, Currency, Branch
-  'CostEntry',           // → CostCenter, Currency, User
-  'ExpenseBudget',       // → CostCenter
-  'AccountPayable',      // → Supplier?, Purchase?, Currency
-
-  // Nivel 4: Dependen de nivel 3
-  'PurchaseLine',        // → Purchase, Product
-  'SupplierPayment',     // → Supplier?, AccountPayable?, User
-  'Sale',                // → Client?, CashRegister?, Currency?, User, Branch
-  'CashMovement',        // → CashRegister, Currency, User
-  'CashCut',             // → CashRegister
-  'CashAudit',           // → CashRegister, User
-
-  // Nivel 5: Dependen de Sale (nivel 4)
-  'SaleLine',            // → Sale, Product
-  'SalePayment',         // → Sale, Currency
-  'AccountReceivable',   // → Client, Sale, Currency?, User?
-
-  // Nivel 6: Dependen de nivel 5
-  'ClientPayment',       // → Client, AccountReceivable, User
+// ── Tablas en orden topológico de dependencias FK ──
+const TABLE_ORDER = [
+  'Settings', 'PaymentMethod', 'Currency', 'Category', 'Plan', 'Supplier',
+  'Branch', 'CostCenter', 'User', 'Client', 'ExchangeRate', 'Product',
+  'Inventory', 'RecipeComponent', 'ClientMembership', 'Attendance',
+  'Notification', 'AuditLog', 'SalesTarget', 'InventoryCheck', 'Expense',
+  'InventoryAdjustment', 'CashRegister', 'InventoryCheckItem',
+  'MembershipFreeze', 'Purchase', 'CostEntry', 'ExpenseBudget',
+  'AccountPayable', 'PurchaseLine', 'SupplierPayment', 'Sale',
+  'CashMovement', 'CashCut', 'CashAudit', 'SaleLine', 'SalePayment',
+  'AccountReceivable', 'ClientPayment'
 ];
 
-// Orden inverso para TRUNCATE (hijos primero → padres después)
-const REVERSE_ORDER = [...TABLES_ORDER].reverse();
+const Q = (name) => `"${name}"`;
 
-// ── Helpers ─────────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════
+// UTILIDADES
+// ═══════════════════════════════════════════════════
 
 function timestamp() {
   return new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
 }
 
-/**
- * Escapa un valor para usar dentro de un INSERT SQL.
- * Usa comillas simples estándar SQL con escaping de comillas dobles ('').
- * Nota: NO se usa $$ quoting porque si un valor contiene $$ adentro
- * (ej: texto con variables, templates), se rompe el delimiter.
- */
 function escapeSqlValue(val) {
   if (val === null || val === undefined) return 'NULL';
-
-  const type = typeof val;
-
-  if (type === 'number') return String(val);
-  if (type === 'boolean') return val ? 'true' : 'false';
-
-  // JSON objects/arrays
-  if (type === 'object') {
-    const jsonStr = JSON.stringify(val)
-      .replace(/'/g, "''");  // escapar comillas simples dentro del JSON
-    return `'${jsonStr}'`;
+  if (typeof val === 'boolean') return val ? 'true' : 'false';
+  if (typeof val === 'number') return String(val);
+  if (typeof val === 'bigint') return String(val);
+  if (val instanceof Date) return `'${val.toISOString()}'`;
+  if (Buffer.isBuffer(val)) return `'\\x${val.toString('hex')}'::bytea`;
+  if (typeof val === 'object') {
+    return `'${JSON.stringify(val).replace(/'/g, "''")}'`;
   }
-
-  // Strings y fechas: comillas simples con escaping estándar SQL
   return `'${String(val).replace(/'/g, "''")}'`;
 }
 
 /**
- * Genera una sentencia INSERT para una fila de datos.
+ * Parser state-machine para dividir SQL en sentencias.
+ * Maneja comillas simples (') y escapes ('') correctamente.
+ * Ignora líneas de comentarios (--).
  */
-function buildInsertRow(tableName, columns, values) {
-  const colList = columns.map(c => `"${c}"`).join(', ');
-  const valList = values.map(v => escapeSqlValue(v)).join(', ');
-  return `INSERT INTO "${tableName}" (${colList}) VALUES (${valList}) ON CONFLICT DO NOTHING;`;
-}
+function splitSqlStatements(sql) {
+  const stmts = [];
+  let cur = '';
+  let inQuote = false;
 
-// ── Funciones principales ──────────────────────────────────────────────────
+  for (let i = 0; i < sql.length; i++) {
+    const ch = sql[i];
+    const next = sql[i + 1];
 
-async function createClient() {
-  const client = new Client({
-    connectionString: DB_URL,
-    ssl: { rejectUnauthorized: false },
-  });
-  await client.connect();
-  return client;
-}
-
-/**
- * Obtiene las columnas de una tabla en orden.
- * Nota: Prisma crea tablas con quoted identifiers (PascalCase) pero
- * information_schema almacena table_name en minúsculas en PostgreSQL.
- * Por eso usamos LOWER() para comparación case-insensitive.
- */
-async function getTableColumns(client, tableName) {
-  const res = await client.query(`
-    SELECT column_name
-    FROM information_schema.columns
-    WHERE table_schema = 'public'
-      AND LOWER(table_name) = LOWER('${tableName}')
-    ORDER BY ordinal_position;
-  `);
-  return res.rows.map(r => r.column_name);
-}
-
-/**
- * Obtiene el nombre real de la tabla en la base de datos (case-sensitive).
- * Prisma usa quoted identifiers: la tabla puede ser "Settings" o "settings".
- */
-async function getRealTableName(client, tableName) {
-  const res = await client.query(`
-    SELECT table_name
-    FROM information_schema.tables
-    WHERE table_schema = 'public'
-      AND LOWER(table_name) = LOWER('${tableName.replace(/'/g, "''")}')
-    LIMIT 1;
-  `);
-  return res.rows.length > 0 ? res.rows[0].table_name : null;
-}
-
-/**
- * Obtiene todas las filas de una tabla, ordenadas por id.
- */
-async function getTableData(client, tableName, columns) {
-  const realName = await getRealTableName(client, tableName);
-  const useName = realName || tableName;
-  const colList = columns.map(c => `"${c}"`).join(', ');
-  const res = await client.query(`SELECT ${colList} FROM "${useName}" ORDER BY "id";`);
-  return res.rows;
-}
-
-/**
- * Genera el archivo SQL de backup completo con datos.
- */
-async function backupData(outputFile) {
-  console.log('📦 Conectando a la base de datos...');
-  const client = await createClient();
-
-  // Primero: listar todas las tablas reales en la DB para debug
-  const allTables = await client.query(`
-    SELECT table_name FROM information_schema.tables
-    WHERE table_schema = 'public'
-    ORDER BY table_name;
-  `);
-  console.log(`   📋 Tablas encontradas en la DB: ${allTables.rows.map(r => r.table_name).join(', ')}`);
-  console.log('');
-
-  // Verificar tablas que realmente existen (case-insensitive)
-  const existingTables = [];
-  for (const table of TABLES_ORDER) {
-    const realName = await getRealTableName(client, table);
-    if (realName) {
-      existingTables.push(realName); // Usar el nombre real de la DB
+    if (ch === "'" && !inQuote) {
+      inQuote = true;
+      cur += ch;
+    } else if (ch === "'" && inQuote && next === "'") {
+      // '' = comilla escapada dentro de string
+      cur += "''";
+      i++; // saltar la siguiente comilla
+    } else if (ch === "'" && inQuote) {
+      inQuote = false;
+      cur += ch;
+    } else if (ch === ';' && !inQuote) {
+      const s = cur.trim();
+      if (s && !s.startsWith('--')) stmts.push(s);
+      cur = '';
     } else {
-      console.log(`   ⚠️  Tabla "${table}" no existe en la base de datos, se omitirá.`);
+      cur += ch;
     }
   }
 
-  const existingReverse = [...existingTables].reverse();
-  let totalRows = 0;
+  const s = cur.trim();
+  if (s && !s.startsWith('--')) stmts.push(s);
+  return stmts;
+}
 
-  console.log(`📦 Exportando datos de ${existingTables.length} tablas en orden de dependencias...`);
+// ═══════════════════════════════════════════════════
+// DDL GENERATION — Lee estructura desde pg_catalog
+// ═══════════════════════════════════════════════════
 
-  // Generar DDL (CREATE TABLE) usando Prisma para que el restore sea auto-contenido
-  console.log('   📋 Generando schema DDL...');
-  let schemaDDL = '';
+/**
+ * Genera CREATE TABLE + ALTER TABLE (FKs) + CREATE INDEX
+ * a partir del catálogo de PostgreSQL para una tabla dada.
+ */
+async function generateTableDDL(client, tableOid) {
+  // Nombre de la tabla
+  const nameRes = await client.query(
+    `SELECT relname FROM pg_catalog.pg_class WHERE oid = $1`, [tableOid]
+  );
+  const tableName = nameRes.rows[0].relname;
+
+  // ── Columnas ──
+  const colRes = await client.query(`
+    SELECT
+      a.attname,
+      pg_catalog.format_type(a.atttypid, a.atttypmod) AS data_type,
+      a.attnotnull,
+      pg_catalog.pg_get_expr(d.adbin, d.adrelid) AS col_default
+    FROM pg_catalog.pg_attribute a
+    LEFT JOIN pg_catalog.pg_attrdef d
+      ON a.attrelid = d.adrelid AND a.attnum = d.adnum
+    WHERE a.attrelid = $1
+      AND a.attnum > 0
+      AND NOT a.attisdropped
+    ORDER BY a.attnum
+  `, [tableOid]);
+
+  // ── Constraints: PK, UNIQUE, CHECK ──
+  const consRes = await client.query(`
+    SELECT contype, conname,
+           pg_catalog.pg_get_constraintdef(oid) AS condef
+    FROM pg_catalog.pg_constraint
+    WHERE conrelid = $1 AND contype IN ('p', 'u', 'c')
+    ORDER BY
+      CASE contype WHEN 'p' THEN 1 WHEN 'u' THEN 2 WHEN 'c' THEN 3 END,
+      conname
+  `, [tableOid]);
+
+  // ── Foreign Keys ──
+  const fkRes = await client.query(`
+    SELECT conname,
+           pg_catalog.pg_get_constraintdef(oid) AS condef
+    FROM pg_catalog.pg_constraint
+    WHERE conrelid = $1 AND contype = 'f'
+    ORDER BY conname
+  `, [tableOid]);
+
+  // ── Índices que NO respaldan un constraint (PK/UNIQUE) ──
+  const idxRes = await client.query(`
+    SELECT c.relname AS idxname,
+           pg_catalog.pg_get_indexdef(c.oid) AS idxdef
+    FROM pg_catalog.pg_index ix
+    JOIN pg_catalog.pg_class c ON c.oid = ix.indexrelid
+    WHERE ix.indrelid = $1
+      AND NOT ix.indisprimary
+      AND NOT ix.indisunique
+      AND NOT EXISTS (
+        SELECT 1 FROM pg_catalog.pg_constraint cn
+        WHERE cn.conindid = c.oid
+      )
+    ORDER BY c.relname
+  `, [tableOid]);
+
+  // ── Construir CREATE TABLE ──
+  const lines = colRes.rows.map(col => {
+    let line = `  ${Q(col.attname)} ${col.data_type}`;
+    if (col.attnotnull) line += ' NOT NULL';
+    if (col.col_default !== null) line += ` DEFAULT ${col.col_default}`;
+    return line;
+  });
+
+  // Constraints inline (PK, UNIQUE, CHECK) con nombre
+  for (const c of consRes.rows) {
+    lines.push(`  CONSTRAINT ${Q(c.conname)} ${c.condef}`);
+  }
+
+  let sql = `CREATE TABLE ${Q(tableName)} (\n${lines.join(',\n')}\n);\n`;
+
+  // FKs via ALTER TABLE (para claridad)
+  for (const fk of fkRes.rows) {
+    sql += `ALTER TABLE ${Q(tableName)} ADD CONSTRAINT ${Q(fk.conname)} ${fk.condef};\n`;
+  }
+
+  // Índices independientes
+  for (const idx of idxRes.rows) {
+    sql += `${idx.idxdef};\n`;
+  }
+
+  return sql;
+}
+
+// ═══════════════════════════════════════════════════
+// BACKUP
+// ═══════════════════════════════════════════════════
+
+async function backup() {
+  console.log('📦 Conectando a la base de datos...');
+  const client = new Client({ connectionString: DB_URL });
+  await client.connect();
+
   try {
-    const { execSync } = require('child_process');
-    schemaDDL = execSync(
-      'npx prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script',
-      { cwd: path.resolve(__dirname, '..'), timeout: 60000, stdio: ['pipe', 'pipe', 'pipe'] }
-    ).toString();
-    console.log(`   ✅ Schema DDL generado (${schemaDDL.split('\n').length} líneas)`);
-  } catch (err) {
-    console.log(`   ⚠️  No se pudo generar schema DDL: ${err.message?.slice(0, 100)}`);
-    console.log('   El restore necesitará las tablas creadas previamente con prisma db push.');
-  }
+    // ── Descubrir tablas en la DB ──
+    const allTables = await client.query(`
+      SELECT c.relname, c.oid
+      FROM pg_catalog.pg_class c
+      JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public'
+        AND c.relkind = 'r'
+        AND c.relname NOT LIKE '\\_%'
+      ORDER BY c.relname
+    `);
 
-  const sqlParts = [];
+    if (allTables.rows.length === 0) {
+      console.error('');
+      console.error('❌ No se encontraron tablas en la base de datos.');
+      console.error('   ¿Estás apuntando a la DB correcta?');
+      console.error('   Para hacer backup de la DB ORIGEN, asegúrate de que .env.local');
+      console.error('   tenga la DATABASE_URL de la base de datos que tiene datos.');
+      process.exit(1);
+    }
 
-  // Cabecera
-  sqlParts.push(`-- ═══════════════════════════════════════════════════════════════════`);
-  sqlParts.push(`-- JO-Administrativo — Backup de Base de Datos`);
-  sqlParts.push(`-- Fecha: ${new Date().toISOString()}`);
-  sqlParts.push(`-- Tablas: ${existingTables.length}`);
-  sqlParts.push(`-- Incluye schema DDL: ${schemaDDL ? 'SÍ' : 'NO'}`);
-  sqlParts.push(`-- Generado por: db-backup.js`);
-  sqlParts.push(`-- ═══════════════════════════════════════════════════════════════════`);
-  sqlParts.push(``);
+    // Ordenar por known dependency order, unknowns al final
+    const orderMap = {};
+    TABLE_ORDER.forEach((name, i) => { orderMap[name.toLowerCase()] = i; });
 
-  // Incluir DDL al principio si se generó
-  if (schemaDDL) {
-    sqlParts.push(`-- ── SCHEMA DDL (CREATE TABLE) ──────────────────────────────────`);
-    sqlParts.push(`-- Estas sentencias crean las tablas si no existen.`);
-    sqlParts.push(`-- Si las tablas ya existen, fallarán pero se ignoran en el restore.`);
-    sqlParts.push(``);
-    sqlParts.push(schemaDDL.trim());
-    sqlParts.push(``);
-  }
+    const sorted = allTables.rows.sort((a, b) => {
+      const ai = orderMap[a.relname.toLowerCase()] ?? 999;
+      const bi = orderMap[b.relname.toLowerCase()] ?? 999;
+      return ai - bi;
+    });
 
-  sqlParts.push(`-- ── LIMPIAR DATOS: TRUNCATE en orden inverso (hijos → padres) ─────`);
-  sqlParts.push(`BEGIN;`);
-  sqlParts.push(``);
+    console.log(`   📋 ${sorted.length} tablas encontradas:`);
+    console.log(`   ${sorted.map(t => t.relname).join(', ')}`);
+    console.log('');
+    console.log('📦 Generando backup completo (DDL + DML)...');
 
-  // Nota: Neon/PostgreSQL serverless no permite SET session_replication_role
-  // ni DISABLE TRIGGER ALL. Usamos TRUNCATE CASCADE que funciona sin superuser.
-  // Los INSERTs usan ON CONFLICT DO NOTHING para idempotencia.
+    const output = [];
 
-  // Limpiar tablas en orden inverso (hijos primero)
-  sqlParts.push(`-- Limpiar tablas existentes en orden inverso (hijos → padres)`);
-  const truncateList = existingReverse.map(t => `"${t}"`).join(', ');
-  sqlParts.push(`TRUNCATE TABLE ${truncateList} CASCADE;`);
-  sqlParts.push(``);
+    // ── Header ──
+    output.push('-- =============================================');
+    output.push('-- JO-Administrativo — Backup Autosuficiente');
+    output.push(`-- Generado: ${new Date().toISOString()}`);
+    output.push('--');
+    output.push('-- Este archivo contiene TODO lo necesario para');
+    output.push('-- restaurar en una base de datos vacía/nueva:');
+    output.push('--   1. DROP TABLE (limpia tablas existentes)');
+    output.push('--   2. CREATE TABLE (estructura completa)');
+    output.push('--   3. INSERT DATA (todos los datos)');
+    output.push('--');
+    output.push('-- NO requiere prisma db push antes de restaurar.');
+    output.push('-- =============================================');
+    output.push('');
+    output.push('SET search_path TO public;');
+    output.push('');
 
-  // Generar INSERTs en orden de dependencia
-  sqlParts.push(`-- ── INSERT DE DATOS (en orden de dependencia, padres primero) ─────`);
-  sqlParts.push(``);
+    // ═══ PARTE 1: DROP TABLE (reverse order) ═══
+    output.push('-- ============================================================');
+    output.push('-- PARTE 1: DROP TABLE IF EXISTS CASCADE (orden inverso)');
+    output.push('-- ============================================================');
 
-  for (const table of existingTables) {
-    process.stdout.write(`   Exportando ${table}... `);
+    for (let i = sorted.length - 1; i >= 0; i--) {
+      output.push(`DROP TABLE IF EXISTS ${Q(sorted[i].relname)} CASCADE;`);
+    }
+    output.push('');
 
-    try {
-      const columns = await getTableColumns(client, table);
-      if (columns.length === 0) {
-        console.log('sin columnas, omitiendo.');
-        sqlParts.push(`-- (sin columnas) ${table}`);
-        sqlParts.push(``);
-        continue;
-      }
+    // ═══ PARTE 2: CREATE TABLE (dependency order) ═══
+    output.push('-- ============================================================');
+    output.push('-- PARTE 2: CREATE TABLE + ALTER TABLE (FK) + INDEX');
+    output.push('-- ============================================================');
+    output.push('');
 
-      // table ya es el nombre real de la DB
-      const rows = await getTableData(client, table, columns);
-      const count = rows.length;
+    let ddlCount = 0;
+    for (const table of sorted) {
+      output.push(`-- ── Tabla: ${table.relname} ──`);
+      const ddl = await generateTableDDL(client, table.oid);
+      output.push(ddl);
+      output.push('');
+      ddlCount++;
+    }
+
+    console.log(`   ✅ DDL generado: ${ddlCount} tablas`);
+
+    // ═══ PARTE 3: INSERT DATA (dependency order) ═══
+    output.push('-- ============================================================');
+    output.push('-- PARTE 3: INSERT DATA (orden de dependencias)');
+    output.push('-- ============================================================');
+    output.push('');
+
+    let totalRows = 0;
+    let insertCount = 0;
+
+    for (const table of sorted) {
+      const countRes = await client.query(
+        `SELECT COUNT(*)::int AS cnt FROM ${Q(table.relname)}`
+      );
+      const count = countRes.rows[0].cnt;
       totalRows += count;
 
       if (count === 0) {
-        console.log(`${count} filas (vacía)`);
-        sqlParts.push(`-- (vacía) ${table} — 0 filas`);
-        sqlParts.push(``);
+        console.log(`   ${table.relname}: 0 filas (vacía)`);
+        output.push(`-- ${table.relname}: 0 rows`);
+        output.push('');
         continue;
       }
 
-      // Generar INSERTs en batches de 100 para no hacer el archivo gigante
-      sqlParts.push(`-- ${table} — ${count} filas`);
+      console.log(`   ${table.relname}: ${count} filas`);
 
-      for (const row of rows) {
-        const values = columns.map(col => row[col]);
-        sqlParts.push(buildInsertRow(table, columns, values));
-      }
+      // Obtener columnas
+      const colRes = await client.query(`
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND LOWER(table_name) = LOWER($1)
+        ORDER BY ordinal_position
+      `, [table.relname]);
 
-      sqlParts.push(``);
-      console.log(`${count} filas ✅`);
-    } catch (err) {
-      console.log(`ERROR: ${err.message}`);
-      sqlParts.push(`-- ❌ ERROR en ${table}: ${err.message}`);
-      sqlParts.push(``);
-    }
-  }
+      const colNames = colRes.rows.map(r => Q(r.column_name));
+      const colList = colNames.join(', ');
+      const colRaw = colRes.rows.map(r => r.column_name);
 
-  // Reactivar FK — no se necesita en Neon, TRUNCATE CASCADE se encarga
-  sqlParts.push(`COMMIT;`);
-  sqlParts.push(``);
-  sqlParts.push(`-- ✅ Backup completado — ${totalRows} filas totales`);
-  sqlParts.push(`-- Para restaurar: node db-backup.js --restore ${path.basename(outputFile)}.gz`);
-
-  const sqlContent = sqlParts.join('\n');
-
-  await client.end();
-
-  // Guardar archivo
-  fs.mkdirSync(path.dirname(outputFile), { recursive: true });
-  fs.writeFileSync(outputFile, sqlContent, 'utf8');
-
-  // Comprimir con gzip
-  const zlib = require('zlib');
-  const gzip = zlib.createGzip();
-  const input = fs.createReadStream(outputFile);
-  const compressedFile = `${outputFile}.gz`;
-  const output = fs.createWriteStream(compressedFile);
-
-  await new Promise((resolve, reject) => {
-    input.pipe(gzip).pipe(output).on('finish', resolve).on('error', reject);
-  });
-
-  // Borrar el .sql sin comprimir para ahorrar espacio
-  fs.unlinkSync(outputFile);
-
-  const sizeMB = (fs.statSync(compressedFile).size / (1024 * 1024)).toFixed(2);
-  console.log('');
-  console.log(`✅ Backup completado:`);
-  console.log(`   📄 Archivo: ${compressedFile}`);
-  console.log(`   📊 Total filas: ${totalRows}`);
-  console.log(`   💾 Tamaño: ${sizeMB} MB`);
-  console.log('');
-  console.log(`Para restaurar: node db-backup.js --restore ${path.basename(compressedFile)}`);
-}
-
-/**
- * Exporta solo la estructura (schema) usando pg_dump o Prisma como fallback.
- */
-async function backupSchemaOnly(outputFile) {
-  console.log('📋 Generando schema SQL...');
-
-  // Intentar con Prisma diff (no necesita pg_dump)
-  const { execSync } = require('child_process');
-  const projectDir = path.resolve(__dirname, '..');
-
-  try {
-    const sql = execSync('npx prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script', {
-      cwd: projectDir,
-      timeout: 30000,
-    }).toString();
-
-    const header = `-- ═══════════════════════════════════════════════════════════════════\n-- JO-Administrativo — Schema de Base de Datos\n-- Fecha: ${new Date().toISOString()}\n-- Generado por: db-backup.js (via Prisma)\n-- ═══════════════════════════════════════════════════════════════════\n\n`;
-
-    fs.mkdirSync(path.dirname(outputFile), { recursive: true });
-    fs.writeFileSync(outputFile, header + sql, 'utf8');
-    console.log(`✅ Schema guardado: ${outputFile}`);
-  } catch (err) {
-    console.error('❌ Error al generar schema:', err.message);
-    process.exit(1);
-  }
-}
-
-/**
- * Restaura un backup desde un archivo SQL.
- */
-async function restoreBackup(inputFile) {
-  if (!fs.existsSync(inputFile)) {
-    console.error(`❌ Archivo no encontrado: ${inputFile}`);
-    process.exit(1);
-  }
-
-  // Descomprimir si es .gz
-  let sqlContent;
-  if (inputFile.endsWith('.gz')) {
-    console.log('📂 Descomprimiendo archivo...');
-    const zlib = require('zlib');
-    const compressed = fs.readFileSync(inputFile);
-    sqlContent = zlib.gunzipSync(compressed).toString('utf8');
-  } else {
-    sqlContent = fs.readFileSync(inputFile, 'utf8');
-  }
-
-  console.log('⚠️  ATENCIÓN: Esto REEMPLAZARÁ todos los datos en la base de datos.');
-  console.log('   Se ejecutará: TRUNCATE CASCADE + INSERT en orden de dependencias');
-  console.log('');
-
-  // Confirmación automática (en producción usar readline)
-  if (process.argv.includes('--yes') || process.argv.includes('-y')) {
-    console.log('   (--yes detectado, procediendo sin confirmación)');
-  } else {
-    const readline = require('readline');
-    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-    const answer = await new Promise(resolve => rl.question('¿Estás seguro? Escribe SI para continuar: ', resolve));
-    rl.close();
-    if (answer !== 'SI') {
-      console.log('❌ Cancelado.');
-      process.exit(0);
-    }
-  }
-
-  console.log('🔄 Conectando y ejecutando restore...');
-  const client = await createClient();
-
-  try {
-    // Mostrar tamaño del backup
-    const lines = sqlContent.split('\n').filter(l => l.trim().length > 0);
-    console.log(`   📄 Archivo tiene ${lines.length} líneas`);
-
-    // Separar sentencias SQL respetando strings delimitados por comillas simples.
-    // El split por ';' simple rompe cuando un valor contiene ';' adentro
-    // (ej: User-Agent 'Mozilla/5.0 (Macintosh; Intel...)').
-    // Este parser es state-aware: solo splitea ';' fuera de strings.
-    function splitSqlStatements(sql) {
-      const statements = [];
-      let current = '';
-      let inSingleQuote = false;
-      let i = 0;
-      while (i < sql.length) {
-        const ch = sql[i];
-
-        // Comilla simple: abre/cierra string (escaped '' dentro no cuenta)
-        if (ch === "'" && !inSingleQuote) {
-          inSingleQuote = true;
-          current += ch;
-          i++;
-        } else if (ch === "'" && inSingleQuote) {
-          // Check if it's an escaped quote ('')
-          if (i + 1 < sql.length && sql[i + 1] === "'") {
-            // Escaped quote, keep both characters
-            current += "''";
-            i += 2;
-          } else {
-            // Closing quote
-            inSingleQuote = false;
-            current += ch;
-            i++;
-          }
-        } else if (ch === ';' && !inSingleQuote) {
-          // Split point: ; outside of string
-          const trimmed = current.trim();
-          if (trimmed.length > 0 && !trimmed.startsWith('--')) {
-            statements.push(trimmed);
-          }
-          current = '';
-          i++;
-        } else {
-          current += ch;
-          i++;
+      // Exportar en batches
+      const BATCH = 500;
+      for (let offset = 0; offset < count; offset += BATCH) {
+        const dataRes = await client.query(
+          `SELECT * FROM ${Q(table.relname)} ORDER BY 1 LIMIT ${BATCH} OFFSET ${offset}`
+        );
+        for (const row of dataRes.rows) {
+          const vals = colRaw.map(c => escapeSqlValue(row[c]));
+          output.push(
+            `INSERT INTO ${Q(table.relname)} (${colList}) VALUES (${vals.join(', ')});`
+          );
+          insertCount++;
         }
       }
-      // Última sentencia si no termina con ;
-      const last = current.trim();
-      if (last.length > 0 && !last.startsWith('--')) {
-        statements.push(last);
-      }
-      return statements;
+      output.push('');
     }
 
-    const statements = splitSqlStatements(sqlContent);
+    console.log(`   ✅ DML generado: ${insertCount} INSERTs, ${totalRows} filas totales`);
 
-    console.log(`   📊 ${statements.length} sentencias para ejecutar`);
-
-    if (statements.length === 0) {
-      console.log('');
-      console.log('❌ El archivo de backup está vacío (0 sentencias).');
-      console.log('   Esto significa que el backup no contiene datos.');
-      console.log('   Genera un nuevo backup primero con: node db-backup.js');
-      await client.end();
-      return;
+    if (totalRows === 0) {
+      console.warn('');
+      console.warn('   ⚠️  ATENCIÓN: El backup tiene 0 filas.');
+      console.warn('   ¿DATABASE_URL apunta a la base de datos correcta (la que tiene datos)?');
+      console.warn('   Si quieres backup de la DB origen, apunta .env.local a esa DB.');
+      console.warn('');
     }
 
-    // Separar sentencias DDL (CREATE TABLE, CREATE INDEX) de sentencias de datos
-    // Las DDL se ejecutan primero para crear las tablas si no existen.
-    // Las sentencias DDL típicamente empiezan con CREATE, ALTER, DROP
-    const ddlStatements = [];
-    const dataStatements = [];
-    let inDdlSection = true; // El backup empieza con DDL antes del BEGIN
+    // ── Comprimir y guardar ──
+    console.log('   💾 Comprimiendo archivo...');
+    const fullSQL = output.join('\n');
+    const compressed = zlib.gzipSync(Buffer.from(fullSQL));
 
-    for (const stmt of statements) {
-      const upper = stmt.trimStart().toUpperCase();
-      if (upper.startsWith('CREATE') || upper.startsWith('ALTER') || upper.startsWith('DROP')) {
-        ddlStatements.push(stmt);
-      } else if (stmt === 'BEGIN' || stmt === 'COMMIT') {
-        inDdlSection = false;
-      } else if (inDdlSection && !upper.startsWith('CREATE') && !upper.startsWith('--')) {
-        // Si estamos antes del BEGIN y no es CREATE, podría ser DDL de Prisma
-        // (ej: CreateTable, CreateIndex) que Prisma genera en formato DSL
-        ddlStatements.push(stmt);
-      } else {
-        dataStatements.push(stmt);
-      }
-    }
+    const backupsDir = path.resolve(__dirname, '..', 'backups');
+    if (!fs.existsSync(backupsDir)) fs.mkdirSync(backupsDir, { recursive: true });
 
-    // ── FASE 1: Ejecutar DDL (CREATE TABLE, CREATE INDEX) ──
-    if (ddlStatements.length > 0) {
-      console.log('');
-      console.log(`   🔧 Fase 1: Creando tablas (${ddlStatements.length} sentencias DDL)...`);
-      let ddlOk = 0;
-      let ddlSkipped = 0;
-      for (let i = 0; i < ddlStatements.length; i++) {
-        const stmt = ddlStatements[i];
-        try {
-          await client.query(stmt);
-          ddlOk++;
-        } catch (err) {
-          // Ignorar errores de "ya existe" — es normal al restaurar en una BD con tablas
-          const msg = err.message || '';
-          if (msg.includes('already exists') || msg.includes('relation') || msg.includes('does not exist')) {
-            ddlSkipped++;
-          } else if (ddlOk + ddlSkipped < 5) {
-            console.log(`      ⚠️ DDL ${i + 1}: ${msg.slice(0, 100)}`);
-          }
-        }
-      }
-      console.log(`   ✅ DDL completado: ${ddlOk} creadas, ${ddlSkipped} ya existían`);
-    } else {
-      console.log('');
-      console.log('   ⚠️  Este backup NO incluye DDL. Asegúrate de ejecutar');
-      console.log('      "npx prisma db push" en la BD destino antes de restaurar.');
-    }
+    const filename = `backup_${timestamp()}.sql.gz`;
+    const filepath = path.join(backupsDir, filename);
+    fs.writeFileSync(filepath, compressed);
 
-    // ── FASE 2: Ejecutar TRUNCATE + INSERTs ──
+    const sizeMB = (compressed.length / (1024 * 1024)).toFixed(2);
     console.log('');
-    console.log(`   📥 Fase 2: Insertando datos (${dataStatements.length} sentencias)...`);
-
-    // Comandos que Neon no permite — se saltan automáticamente
-    const skipPatterns = [
-      'session_replication_role',
-      'DISABLE TRIGGER',
-      'ENABLE TRIGGER',
-    ];
-
-    let executed = 0;
-    let skipped = 0;
-    let errors = 0;
-    let firstError = null;
-    const startTime = Date.now();
-
-    // Ejecutar SIN transacción: cada sentencia es auto-commit.
-    // Esto es más rápido en Neon (1 round-trip por sentencia en vez de 3 con savepoints)
-    // y un error no aborta las demás.
-
-    console.log('   🚀 Iniciando inserción de datos...');
-
-    for (let i = 0; i < dataStatements.length; i++) {
-      const stmt = dataStatements[i];
-
-      // Saltar comandos no soportados en Neon
-      if (skipPatterns.some(p => stmt.includes(p))) {
-        skipped++;
-        continue;
-      }
-
-      // No ejecutar BEGIN/COMMIT del archivo (ya no usamos transacción)
-      if (stmt === 'BEGIN' || stmt === 'COMMIT') {
-        skipped++;
-        continue;
-      }
-
-      // Mostrar nombre de la tabla que se está insertando
-      const tableMatch = stmt.match(/INSERT INTO "(\w+)"/);
-      if (tableMatch && (executed + errors) % 50 === 0) {
-        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-        console.log(`   📥 Insertando en ${tableMatch[1]}... (${executed} ok, ${errors} err, ${elapsed}s)`);
-      } else if (stmt.startsWith('TRUNCATE')) {
-        console.log('   🗑️  Ejecutando TRUNCATE CASCADE (limpiando tablas)...');
-      }
-
-      try {
-        await client.query(stmt);
-        executed++;
-
-        // Mostrar progreso cada 500 sentencias
-        if (executed % 500 === 0) {
-          const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-          const pct = ((executed + errors) / dataStatements.length * 100).toFixed(0);
-          console.log(`   ⏳ ${executed}/${dataStatements.length} (${pct}%) — ${elapsed}s transcurridos`);
-        }
-      } catch (err) {
-        errors++;
-        const msg = err.message || '';
-
-        // MOSTRAR EL PRIMER ERROR INMEDIATAMENTE para diagnosticar
-        if (errors === 1) {
-          console.log('');
-          console.log(`   ❌ PRIMER ERROR en sentencia ${i + 1}:`);
-          console.log(`      ${msg.slice(0, 300)}`);
-          console.log(`      SQL: ${stmt.slice(0, 300)}`);
-          console.log('');
-          // Si el error es que la tabla no existe, avisar al usuario
-          if (msg.includes('does not exist') || msg.includes('relation')) {
-            console.log('   ⚠️  La tabla no existe. Esto no debería pasar si el backup');
-            console.log('      incluye DDL. Verifica que el backup se generó con la versión');
-            console.log('      más reciente del script.');
-            console.log('');
-          }
-        }
-
-        // Guardar el primer error para mostrarlo al final
-        if (!firstError) {
-          firstError = { index: i + 1, message: msg, snippet: stmt.slice(0, 200) };
-        }
-
-        // Mostrar los primeros 3 errores adicionales si son diferentes al primero
-        if (errors <= 4 && errors > 1 &&
-            !msg.includes('duplicate key') &&
-            !msg.includes('does not exist') &&
-            !msg.includes('relation')) {
-          console.log(`   ⚠️ Error ${i + 1}: ${msg.slice(0, 120)}`);
-        }
-
-        // Si hay demasiados errores iguales, parar y mostrar resumen
-        if (errors === 100) {
-          console.log('');
-          console.log(`   🛑 Demasiados errores (${errors}). Deteniendo para no perder tiempo.`);
-          console.log(`      Revisa el primer error arriba. Probablemente las tablas no existen`);
-          console.log(`      en la base de datos destino. Ejecuta: npx prisma db push`);
-          console.log('');
-          break;
-        }
-      }
-    }
-
-    const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
-
+    console.log('✅ Backup completado:');
+    console.log(`   📄 Archivo: ${filepath}`);
+    console.log(`   📊 Tablas:   ${sorted.length}`);
+    console.log(`   📊 Filas:    ${totalRows}`);
+    console.log(`   📊 INSERTs:  ${insertCount}`);
+    console.log(`   💾 Tamaño:   ${sizeMB} MB`);
     console.log('');
-    if (firstError) {
-      console.log(`   🔍 Primer error en sentencia ${firstError.index}:`);
-      console.log(`      ${firstError.message.slice(0, 200)}`);
-      console.log(`      SQL: ${firstError.snippet}`);
-      console.log('');
-    }
-    if (skipped > 0) {
-      console.log(`   ⓘ ${skipped} comandos saltados (BEGIN/COMMIT del archivo)`);
-    }
-    console.log(`✅ Restauración completada en ${totalTime}s: ${executed} ok, ${errors} advertencias.`);
-  } catch (err) {
+    console.log(`Para restaurar en otra DB:`);
+    console.log(`  1. Cambia DATABASE_URL en .env.local a la nueva DB`);
+    console.log(`  2. node scripts/db-backup.js --restore backups/${filename}`);
     console.log('');
-    console.log(`❌ Error en restauración: ${err.message.slice(0, 200)}`);
+    console.log('   ⚡ El restore creará las tablas automáticamente (no necesitas prisma db push)');
+
   } finally {
     await client.end();
   }
 }
 
-/**
- * Muestra la ayuda.
- */
-function showHelp() {
+// ═══════════════════════════════════════════════════
+// RESTORE
+// ═══════════════════════════════════════════════════
+
+async function restore(backupPath) {
+  console.log('📂 Leyendo archivo de backup...');
+
+  if (!fs.existsSync(backupPath)) {
+    console.error(`❌ Archivo no encontrado: ${backupPath}`);
+    process.exit(1);
+  }
+
+  const raw = zlib.gunzipSync(fs.readFileSync(backupPath));
+  const sql = raw.toString('utf-8');
+  const lineCount = sql.split('\n').length;
+  const stmts = splitSqlStatements(sql);
+
+  console.log(`   📄 ${lineCount} líneas, ${stmts.length} sentencias`);
+
+  if (stmts.length === 0) {
+    console.error('');
+    console.error('❌ El archivo no contiene sentencias ejecutables.');
+    console.error('   Esto significa que el backup no tiene datos.');
+    console.error('   Genera un nuevo backup primero desde la DB que tiene datos.');
+    process.exit(1);
+  }
+
+  // ── Contar sentencias por tipo ──
+  let dropCount = 0, createCount = 0, alterCount = 0, insertCount = 0, otherCount = 0;
+  for (const s of stmts) {
+    if (s.startsWith('DROP TABLE')) dropCount++;
+    else if (s.startsWith('CREATE TABLE')) createCount++;
+    else if (s.startsWith('ALTER TABLE')) alterCount++;
+    else if (s.startsWith('INSERT INTO')) insertCount++;
+    else if (s.startsWith('CREATE INDEX') || s.startsWith('SET ')) otherCount++;
+  }
   console.log('');
-  console.log('╔═══════════════════════════════════════════════════════════╗');
-  console.log('║   JO-Administrativo — Database Backup Tool              ║');
-  console.log('╠═══════════════════════════════════════════════════════════╣');
-  console.log('║                                                           ║');
-  console.log('║  node db-backup.js                  Backup completo (data)║');
-  console.log('║  node db-backup.js mi_nombre        Backup con nombre     ║');
-  console.log('║  node db-backup.js --schema-only    Solo estructura       ║');
-  console.log('║  node db-backup.js --restore arc    Restaurar backup     ║');
-  console.log('║  node db-backup.js --restore arc -y Restaurar sin confirm ║');
-  console.log('║                                                           ║');
-  console.log('║  REQUISITO: DATABASE_URL en .env.local                    ║');
-  console.log('║  npm install pg  (solo primera vez)                      ║');
-  console.log('╚═══════════════════════════════════════════════════════════╝');
+  console.log(`   📋 Contenido del backup:`);
+  console.log(`      DROP TABLE:    ${dropCount}`);
+  console.log(`      CREATE TABLE: ${createCount}`);
+  console.log(`      ALTER TABLE:  ${alterCount}`);
+  console.log(`      INSERT:        ${insertCount}`);
+  console.log(`      Otros:        ${otherCount}`);
   console.log('');
+
+  // ── Confirmación ──
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  const confirmed = await new Promise(resolve => {
+    rl.question(
+      '⚠️  ATENCIÓN: Esto REEMPLAZARÁ todos los datos en la base de datos.\n' +
+      '   Se ejecutará: DROP TABLE + CREATE TABLE + INSERT (backup autosuficiente)\n\n' +
+      '   ¿Estás seguro? Escribe SI: ',
+      ans => {
+        rl.close();
+        resolve(ans.trim() === 'SI');
+      }
+    );
+  });
+
+  if (!confirmed) {
+    console.log('❌ Cancelado.');
+    process.exit(0);
+  }
+
+  console.log('🔄 Conectando a la base de datos destino...');
+  const client = new Client({ connectionString: DB_URL });
+  await client.connect();
+
+  let ok = 0, err = 0;
+  const firstErrors = [];
+  const startTime = Date.now();
+  let lastTableName = '';
+
+  try {
+    for (let i = 0; i < stmts.length; i++) {
+      const stmt = stmts[i];
+
+      try {
+        await client.query(stmt);
+        ok++;
+      } catch (e) {
+        err++;
+        if (firstErrors.length < 5) {
+          firstErrors.push({
+            num: i + 1,
+            msg: e.message,
+            sql: stmt.substring(0, 200)
+          });
+        }
+        if (err >= 100) {
+          console.error(`\n\n❌ Demasiados errores (${err}), deteniendo restore...`);
+          break;
+        }
+      }
+
+      // Progreso
+      const total = ok + err;
+      if (total % 10 === 0 || total === stmts.length) {
+        // Detectar tabla actual
+        const m = stmt.match(/(?:DROP TABLE|CREATE TABLE|ALTER TABLE|INSERT INTO)\s+[""]?(\w{2,})/);
+        if (m) lastTableName = m[1];
+
+        const pct = (total / stmts.length * 100).toFixed(0);
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
+        process.stdout.write(
+          `\r   ⏳ ${total}/${stmts.length} (${pct}%) — ${lastTableName} — ✅${ok} ❌${err} — ${elapsed}s        `
+        );
+      }
+    }
+
+    const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
+    console.log('\n');
+    console.log('✅ Restore completado:');
+    console.log(`   ✅ ${ok} sentencias exitosas`);
+    console.log(`   ❌ ${err} sentencias fallidas`);
+    console.log(`   ⏱️  Tiempo: ${totalTime}s`);
+
+    if (firstErrors.length > 0) {
+      console.log('');
+      console.log('   Primeros errores:');
+      for (const e of firstErrors) {
+        console.log(`   [#${e.num}] ${e.msg}`);
+        console.log(`   SQL: ${e.sql}`);
+        console.log('');
+      }
+    }
+
+    if (err === 0 && createCount > 0) {
+      console.log('');
+      console.log('   🎉 Todas las tablas y datos se restauraron correctamente.');
+      console.log('   El backup era autosuficiente: no necesitas prisma db push.');
+    }
+
+  } finally {
+    await client.end();
+  }
 }
 
-// ── Main ─────────────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════
+// MAIN
+// ═══════════════════════════════════════════════════
 
-(async () => {
-  const action = process.argv[2];
-  const arg = process.argv[3];
+const args = process.argv.slice(2);
 
-  // Filtrar flags de la lista de argumentos para no interpretarlos como nombre
-  const flags = ['--url', '--restore', '--schema-only', '--help', '-h', '-y', '--yes'];
-  const nonFlagArgs = process.argv.slice(2).filter(a => !flags.includes(a));
+if (args.includes('--help') || args.includes('-h')) {
+  console.log('');
+  console.log('JO-Administrativo — Database Backup & Restore');
+  console.log('');
+  console.log('Uso:');
+  console.log('  node scripts/db-backup.js                          # Backup completo (DDL + DML)');
+  console.log('  node scripts/db-backup.js --restore <archivo>    # Restore en DB destino');
+  console.log('');
+  console.log('El backup es AUTOSUFICIENTE:');
+  console.log('  ✅ DROP TABLE (limpia tablas existentes)');
+  console.log('  ✅ CREATE TABLE (crea estructura completa con PKs, FKs, indexes)');
+  console.log('  ✅ INSERT (restaura todos los datos)');
+  console.log('');
+  console.log('NO necesitas ejecutar prisma db push en la DB destino.');
+  console.log('Solo cambia DATABASE_URL en .env.local y ejecuta --restore.');
+  console.log('');
+  process.exit(0);
+}
 
-  switch (action) {
-    case '--restore':
-      if (!arg) {
-        console.error('❌ Especifica el archivo: node db-backup.js --restore archivo.sql.gz');
-        process.exit(1);
-      }
-      await restoreBackup(arg);
-      break;
-
-    case '--schema-only':
-      const schemaFile = arg || path.join(OUTPUT_DIR, `schema_${timestamp()}.sql`);
-      await backupSchemaOnly(schemaFile);
-      break;
-
-    case '--url':
-      // --url pasa, el nombre del backup es el próximo arg que no sea flag
-      const backupName = nonFlagArgs[0] || 'backup';
-      const outputFileUrl = path.join(OUTPUT_DIR, `${backupName}_${timestamp()}.sql`);
-      await backupData(outputFileUrl);
-      break;
-
-    case '--help':
-    case '-h':
-      showHelp();
-      break;
-
-    case undefined:
-      // Sin argumentos = backup automático con fecha
-      const autoFile = path.join(OUTPUT_DIR, `backup_${timestamp()}.sql`);
-      await backupData(autoFile);
-      break;
-
-    default:
-      // Backup completo con nombre personalizado o automático
-      const name = action || 'backup';
-      const outputFile = path.join(OUTPUT_DIR, `${name}_${timestamp()}.sql`);
-      await backupData(outputFile);
-      break;
+if (args.includes('--restore')) {
+  const fileArg = args[args.indexOf('--restore') + 1];
+  if (!fileArg) {
+    console.error('Uso: node scripts/db-backup.js --restore <archivo.sql.gz>');
+    process.exit(1);
   }
-})();
+  restore(path.resolve(fileArg));
+} else {
+  backup();
+}
