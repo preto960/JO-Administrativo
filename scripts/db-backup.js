@@ -40,7 +40,17 @@ const TABLE_ORDER = [
   'AccountReceivable', 'ClientPayment'
 ];
 
-const Q = (name) => `"${name}"`;
+// Identificadores sin comillas = PostgreSQL los convierte a lowercase automáticamente
+// Esto garantiza compatibilidad con TablePlus, Neon Console, Prisma, etc.
+const Q = (name) => name.toLowerCase();
+
+// Qc = quoted constraint name (preserva el nombre original en lowercase)
+const Qc = (name) => name.toLowerCase();
+
+// Qidx = limpia comillas del SQL generado por pg_get_indexdef
+function cleanPgDef(def) {
+  return def.replace(/"([^"]+)"/g, (_, name) => name.toLowerCase());
+}
 
 // ═══════════════════════════════════════════════════
 // UTILIDADES
@@ -197,29 +207,29 @@ async function generateTableDDL(client, tableOid) {
     ORDER BY c.relname
   `, [tableOid]);
 
-  // ── Construir CREATE TABLE ──
+  // ── Construir CREATE TABLE (todo lowercase, sin comillas) ──
   const lines = colRes.rows.map(col => {
     let line = `  ${Q(col.attname)} ${col.data_type}`;
     if (col.attnotnull) line += ' NOT NULL';
-    if (col.col_default !== null) line += ` DEFAULT ${col.col_default}`;
+    if (col.col_default !== null) line += ` DEFAULT ${cleanPgDef(col.col_default)}`;
     return line;
   });
 
   // Constraints inline (PK, UNIQUE, CHECK) con nombre
   for (const c of consRes.rows) {
-    lines.push(`  CONSTRAINT ${Q(c.conname)} ${c.condef}`);
+    lines.push(`  CONSTRAINT ${Qc(c.conname)} ${cleanPgDef(c.condef)}`);
   }
 
   let sql = `CREATE TABLE ${Q(tableName)} (\n${lines.join(',\n')}\n);\n`;
 
   // FKs via ALTER TABLE (para claridad)
   for (const fk of fkRes.rows) {
-    sql += `ALTER TABLE ${Q(tableName)} ADD CONSTRAINT ${Q(fk.conname)} ${fk.condef};\n`;
+    sql += `ALTER TABLE ${Q(tableName)} ADD CONSTRAINT ${Qc(fk.conname)} ${cleanPgDef(fk.condef)};\n`;
   }
 
-  // Índices independientes
+  // Índices independientes (limpiar comillas de pg_get_indexdef)
   for (const idx of idxRes.rows) {
-    sql += `${idx.idxdef};\n`;
+    sql += `${cleanPgDef(idx.idxdef)};\n`;
   }
 
   return sql;
