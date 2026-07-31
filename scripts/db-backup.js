@@ -232,6 +232,21 @@ async function backupData(outputFile) {
 
   console.log(`📦 Exportando datos de ${existingTables.length} tablas en orden de dependencias...`);
 
+  // Generar DDL (CREATE TABLE) usando Prisma para que el restore sea auto-contenido
+  console.log('   📋 Generando schema DDL...');
+  let schemaDDL = '';
+  try {
+    const { execSync } = require('child_process');
+    schemaDDL = execSync(
+      'npx prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script',
+      { cwd: path.resolve(__dirname, '..'), timeout: 60000, stdio: ['pipe', 'pipe', 'pipe'] }
+    ).toString();
+    console.log(`   ✅ Schema DDL generado (${schemaDDL.split('\n').length} líneas)`);
+  } catch (err) {
+    console.log(`   ⚠️  No se pudo generar schema DDL: ${err.message?.slice(0, 100)}`);
+    console.log('   El restore necesitará las tablas creadas previamente con prisma db push.');
+  }
+
   const sqlParts = [];
 
   // Cabecera
@@ -239,10 +254,22 @@ async function backupData(outputFile) {
   sqlParts.push(`-- JO-Administrativo — Backup de Base de Datos`);
   sqlParts.push(`-- Fecha: ${new Date().toISOString()}`);
   sqlParts.push(`-- Tablas: ${existingTables.length}`);
+  sqlParts.push(`-- Incluye schema DDL: ${schemaDDL ? 'SÍ' : 'NO'}`);
   sqlParts.push(`-- Generado por: db-backup.js`);
   sqlParts.push(`-- ═══════════════════════════════════════════════════════════════════`);
   sqlParts.push(``);
-  sqlParts.push(`-- ── CONFIGURACIÓN: desactiva FK para evitar errores de orden ─────`);
+
+  // Incluir DDL al principio si se generó
+  if (schemaDDL) {
+    sqlParts.push(`-- ── SCHEMA DDL (CREATE TABLE) ──────────────────────────────────`);
+    sqlParts.push(`-- Estas sentencias crean las tablas si no existen.`);
+    sqlParts.push(`-- Si las tablas ya existen, fallarán pero se ignoran en el restore.`);
+    sqlParts.push(``);
+    sqlParts.push(schemaDDL.trim());
+    sqlParts.push(``);
+  }
+
+  sqlParts.push(`-- ── LIMPIAR DATOS: TRUNCATE en orden inverso (hijos → padres) ─────`);
   sqlParts.push(`BEGIN;`);
   sqlParts.push(``);
 
@@ -347,11 +374,11 @@ async function backupSchemaOnly(outputFile) {
 
   // Intentar con Prisma diff (no necesita pg_dump)
   const { execSync } = require('child_process');
-  const schemaDir = path.resolve(__dirname, '..', 'JO-Administrativo');
+  const projectDir = path.resolve(__dirname, '..');
 
   try {
     const sql = execSync('npx prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script', {
-      cwd: schemaDir,
+      cwd: projectDir,
       timeout: 30000,
     }).toString();
 
@@ -475,6 +502,60 @@ async function restoreBackup(inputFile) {
       return;
     }
 
+    // Separar sentencias DDL (CREATE TABLE, CREATE INDEX) de sentencias de datos
+    // Las DDL se ejecutan primero para crear las tablas si no existen.
+    // Las sentencias DDL típicamente empiezan con CREATE, ALTER, DROP
+    const ddlStatements = [];
+    const dataStatements = [];
+    let inDdlSection = true; // El backup empieza con DDL antes del BEGIN
+
+    for (const stmt of statements) {
+      const upper = stmt.trimStart().toUpperCase();
+      if (upper.startsWith('CREATE') || upper.startsWith('ALTER') || upper.startsWith('DROP')) {
+        ddlStatements.push(stmt);
+      } else if (stmt === 'BEGIN' || stmt === 'COMMIT') {
+        inDdlSection = false;
+      } else if (inDdlSection && !upper.startsWith('CREATE') && !upper.startsWith('--')) {
+        // Si estamos antes del BEGIN y no es CREATE, podría ser DDL de Prisma
+        // (ej: CreateTable, CreateIndex) que Prisma genera en formato DSL
+        ddlStatements.push(stmt);
+      } else {
+        dataStatements.push(stmt);
+      }
+    }
+
+    // ── FASE 1: Ejecutar DDL (CREATE TABLE, CREATE INDEX) ──
+    if (ddlStatements.length > 0) {
+      console.log('');
+      console.log(`   🔧 Fase 1: Creando tablas (${ddlStatements.length} sentencias DDL)...`);
+      let ddlOk = 0;
+      let ddlSkipped = 0;
+      for (let i = 0; i < ddlStatements.length; i++) {
+        const stmt = ddlStatements[i];
+        try {
+          await client.query(stmt);
+          ddlOk++;
+        } catch (err) {
+          // Ignorar errores de "ya existe" — es normal al restaurar en una BD con tablas
+          const msg = err.message || '';
+          if (msg.includes('already exists') || msg.includes('relation') || msg.includes('does not exist')) {
+            ddlSkipped++;
+          } else if (ddlOk + ddlSkipped < 5) {
+            console.log(`      ⚠️ DDL ${i + 1}: ${msg.slice(0, 100)}`);
+          }
+        }
+      }
+      console.log(`   ✅ DDL completado: ${ddlOk} creadas, ${ddlSkipped} ya existían`);
+    } else {
+      console.log('');
+      console.log('   ⚠️  Este backup NO incluye DDL. Asegúrate de ejecutar');
+      console.log('      "npx prisma db push" en la BD destino antes de restaurar.');
+    }
+
+    // ── FASE 2: Ejecutar TRUNCATE + INSERTs ──
+    console.log('');
+    console.log(`   📥 Fase 2: Insertando datos (${dataStatements.length} sentencias)...`);
+
     // Comandos que Neon no permite — se saltan automáticamente
     const skipPatterns = [
       'session_replication_role',
@@ -492,11 +573,10 @@ async function restoreBackup(inputFile) {
     // Esto es más rápido en Neon (1 round-trip por sentencia en vez de 3 con savepoints)
     // y un error no aborta las demás.
 
-    console.log('   🚀 Iniciando restauración (esto puede tardar varios minutos)...');
-    console.log('');
+    console.log('   🚀 Iniciando inserción de datos...');
 
-    for (let i = 0; i < statements.length; i++) {
-      const stmt = statements[i];
+    for (let i = 0; i < dataStatements.length; i++) {
+      const stmt = dataStatements[i];
 
       // Saltar comandos no soportados en Neon
       if (skipPatterns.some(p => stmt.includes(p))) {
@@ -526,8 +606,8 @@ async function restoreBackup(inputFile) {
         // Mostrar progreso cada 500 sentencias
         if (executed % 500 === 0) {
           const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-          const pct = ((executed + errors) / statements.length * 100).toFixed(0);
-          console.log(`   ⏳ ${executed}/${statements.length} (${pct}%) — ${elapsed}s transcurridos`);
+          const pct = ((executed + errors) / dataStatements.length * 100).toFixed(0);
+          console.log(`   ⏳ ${executed}/${dataStatements.length} (${pct}%) — ${elapsed}s transcurridos`);
         }
       } catch (err) {
         errors++;
@@ -542,9 +622,9 @@ async function restoreBackup(inputFile) {
           console.log('');
           // Si el error es que la tabla no existe, avisar al usuario
           if (msg.includes('does not exist') || msg.includes('relation')) {
-            console.log('   ⚠️  La tabla no existe en la base de datos destino.');
-            console.log('      Asegúrate de ejecutar PRIMERO: npx prisma db push');
-            console.log('      con la DATABASE_URL de la base de datos destino.');
+            console.log('   ⚠️  La tabla no existe. Esto no debería pasar si el backup');
+            console.log('      incluye DDL. Verifica que el backup se generó con la versión');
+            console.log('      más reciente del script.');
             console.log('');
           }
         }
