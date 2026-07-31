@@ -487,8 +487,9 @@ async function restoreBackup(inputFile) {
     let errors = 0;
     let firstError = null;
 
-    // Iniciar transacción principal (los savepoints funcionan dentro de una transacción)
-    await client.query('BEGIN');
+    // Ejecutar SIN transacción: cada sentencia es auto-commit.
+    // Esto es más rápido en Neon (1 round-trip por sentencia en vez de 3 con savepoints)
+    // y un error no aborta las demás.
 
     for (let i = 0; i < statements.length; i++) {
       const stmt = statements[i];
@@ -499,34 +500,21 @@ async function restoreBackup(inputFile) {
         continue;
       }
 
-      // No ejecutar BEGIN/COMMIT anidados o TRUNCATE sin tablas
-      if (['BEGIN', 'COMMIT', 'TRUNCATE TABLE  CASCADE', 'TRUNCATE TABLE CASCADE'].includes(stmt)) {
+      // No ejecutar BEGIN/COMMIT del archivo (ya no usamos transacción)
+      if (stmt === 'BEGIN' || stmt === 'COMMIT') {
         skipped++;
         continue;
       }
 
-      // Usar SAVEPOINT para que un error no aborte toda la transacción
-      try {
-        await client.query('SAVEPOINT sp_restore');
-      } catch (e) {
-        // Si falla el savepoint, intentar rollback y crear uno nuevo
-        try { await client.query('ROLLBACK TO SAVEPOINT sp_restore'); } catch (_) {}
-      }
-
       try {
         await client.query(stmt);
-        await client.query('RELEASE SAVEPOINT sp_restore');
         executed++;
 
-        // Mostrar progreso cada 200 sentencias
-        if (executed % 200 === 0) {
+        // Mostrar progreso cada 100 sentencias
+        if (executed % 100 === 0) {
           process.stdout.write(`   ⏳ ${executed}/${statements.length} sentencias...\n`);
         }
       } catch (err) {
-        // Rollback al savepoint para limpiar el error de la transacción
-        try { await client.query('ROLLBACK TO SAVEPOINT sp_restore'); } catch (_) {}
-        try { await client.query('RELEASE SAVEPOINT sp_restore'); } catch (_) {}
-
         errors++;
         const msg = err.message || '';
 
@@ -535,28 +523,26 @@ async function restoreBackup(inputFile) {
           firstError = { index: i + 1, message: msg, snippet: stmt.slice(0, 200) };
         }
 
-        // Mostrar errores inesperados (no duplicados, no tablas que no existen)
-        if (!msg.includes('duplicate key') &&
+        // Mostrar los primeros 10 errores inesperados (no duplicados, no tablas que no existen)
+        if (errors <= 10 &&
+            !msg.includes('duplicate key') &&
             !msg.includes('does not exist') &&
             !msg.includes('relation')) {
-          console.log(`   ⚠️ Error en sentencia ${i + 1}: ${msg.slice(0, 150)}`);
+          console.log(`   ⚠️ Error ${i + 1}: ${msg.slice(0, 120)}`);
         }
       }
     }
 
     console.log('');
     if (firstError) {
-      console.log(`   🔍 Primer error fue en sentencia ${firstError.index}:`);
+      console.log(`   🔍 Primer error en sentencia ${firstError.index}:`);
       console.log(`      ${firstError.message.slice(0, 200)}`);
       console.log(`      SQL: ${firstError.snippet}`);
       console.log('');
     }
     if (skipped > 0) {
-      console.log(`   ⓘ ${skipped} comandos saltados (no compatibles o redundantes)`);
+      console.log(`   ⓘ ${skipped} comandos saltados (BEGIN/COMMIT del archivo)`);
     }
-
-    // Commit la transacción con todo lo que sí se ejecutó
-    await client.query('COMMIT');
     console.log(`✅ Restauración completada: ${executed} sentencias ejecutadas, ${errors} advertencias.`);
   } catch (err) {
     console.log('');
