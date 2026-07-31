@@ -40,14 +40,19 @@ const TABLE_ORDER = [
   'AccountReceivable', 'ClientPayment'
 ];
 
-// Identificadores sin comillas = PostgreSQL los convierte a lowercase automáticamente
-// Esto garantiza compatibilidad con TablePlus, Neon Console, Prisma, etc.
-const Q = (name) => name.toLowerCase();
+// Identificadores con comillas — respeta el case real de la tabla en la DB origen
+// Se usa para LEER datos de la DB origen (SELECT, COUNT, etc.)
+const Q = (name) => `"${name}"`;
 
-// Qc = quoted constraint name (preserva el nombre original en lowercase)
+// Identificadores lowercase sin comillas — para el DDL de la DB destino
+// PostgreSQL crea tablas en lowercase automáticamente si no llevan comillas
+const Qlow = (name) => name.toLowerCase();
+
+// Qc = constraint name en lowercase
 const Qc = (name) => name.toLowerCase();
 
-// Qidx = limpia comillas del SQL generado por pg_get_indexdef
+// cleanPgDef: limpia comillas del SQL generado por pg_get_constraintdef / pg_get_indexdef
+// y convierte todo a lowercase para el DDL destino
 function cleanPgDef(def) {
   return def.replace(/"([^"]+)"/g, (_, name) => name.toLowerCase());
 }
@@ -207,9 +212,9 @@ async function generateTableDDL(client, tableOid) {
     ORDER BY c.relname
   `, [tableOid]);
 
-  // ── Construir CREATE TABLE (todo lowercase, sin comillas) ──
+  // ── Construir CREATE TABLE (todo lowercase, sin comillas para DB destino) ──
   const lines = colRes.rows.map(col => {
-    let line = `  ${Q(col.attname)} ${col.data_type}`;
+    let line = `  ${Qlow(col.attname)} ${col.data_type}`;
     if (col.attnotnull) line += ' NOT NULL';
     if (col.col_default !== null) line += ` DEFAULT ${cleanPgDef(col.col_default)}`;
     return line;
@@ -220,11 +225,11 @@ async function generateTableDDL(client, tableOid) {
     lines.push(`  CONSTRAINT ${Qc(c.conname)} ${cleanPgDef(c.condef)}`);
   }
 
-  let sql = `CREATE TABLE ${Q(tableName)} (\n${lines.join(',\n')}\n);\n`;
+  let sql = `CREATE TABLE ${Qlow(tableName)} (\n${lines.join(',\n')}\n);\n`;
 
   // FKs via ALTER TABLE (para claridad)
   for (const fk of fkRes.rows) {
-    sql += `ALTER TABLE ${Q(tableName)} ADD CONSTRAINT ${Qc(fk.conname)} ${cleanPgDef(fk.condef)};\n`;
+    sql += `ALTER TABLE ${Qlow(tableName)} ADD CONSTRAINT ${Qc(fk.conname)} ${cleanPgDef(fk.condef)};\n`;
   }
 
   // Índices independientes (limpiar comillas de pg_get_indexdef)
@@ -306,7 +311,7 @@ async function backup() {
     output.push('-- ============================================================');
 
     for (let i = sorted.length - 1; i >= 0; i--) {
-      output.push(`DROP TABLE IF EXISTS ${Q(sorted[i].relname)} CASCADE;`);
+      output.push(`DROP TABLE IF EXISTS ${Qlow(sorted[i].relname)} CASCADE;`);
     }
     output.push('');
 
@@ -362,7 +367,7 @@ async function backup() {
         ORDER BY ordinal_position
       `, [table.relname]);
 
-      const colNames = colRes.rows.map(r => Q(r.column_name));
+      const colNames = colRes.rows.map(r => Qlow(r.column_name));
       const colList = colNames.join(', ');
       const colRaw = colRes.rows.map(r => r.column_name);
 
@@ -375,7 +380,7 @@ async function backup() {
         for (const row of dataRes.rows) {
           const vals = colRaw.map(c => escapeSqlValue(row[c]));
           output.push(
-            `INSERT INTO ${Q(table.relname)} (${colList}) VALUES (${vals.join(', ')});`
+            `INSERT INTO ${Qlow(table.relname)} (${colList}) VALUES (${vals.join(', ')});`
           );
           insertCount++;
         }
