@@ -114,7 +114,8 @@ function timestamp() {
 
 /**
  * Escapa un valor para usar dentro de un INSERT SQL.
- * Maneja NULL, números, booleans, strings y JSON.
+ * Usa $$ quoting de PostgreSQL para evitar problemas con comillas simples,
+ * punto y coma, y caracteres especiales dentro de strings.
  */
 function escapeSqlValue(val) {
   if (val === null || val === undefined) return 'NULL';
@@ -124,19 +125,18 @@ function escapeSqlValue(val) {
   if (type === 'number') return String(val);
   if (type === 'boolean') return val ? 'true' : 'false';
 
-  // Fechas: convertirlas a timestamp ISO
-  if (val instanceof Date || (type === 'string' && val.match(/^\d{4}-\d{2}-\d{2}/))) {
-    return `'${String(val).replace(/'/g, "''")}'`;
-  }
-
-  // JSON objects/arrays
+  // Para strings, JSON, fechas: usar $$ quoting de PostgreSQL
+  // Esto evita problemas con comillas simples, punto y coma, y caracteres especiales
+  // $$ es un delimiter literal seguro que no necesita escaping interno
   if (type === 'object') {
-    const jsonStr = JSON.stringify(val);
-    return `'${jsonStr.replace(/'/g, "''")}'`;
+    return '$$' + JSON.stringify(val) + '$$';
   }
 
-  // Strings normales
-  return `'${String(val).replace(/'/g, "''")}'`;
+  if (type === 'string') {
+    return '$$' + String(val) + '$$';
+  }
+
+  return String(val);
 }
 
 /**
@@ -414,11 +414,42 @@ async function restoreBackup(inputFile) {
     const lines = sqlContent.split('\n').filter(l => l.trim().length > 0);
     console.log(`   📄 Archivo tiene ${lines.length} líneas`);
 
-    // Separar sentencias por ; y ejecutarlas individualmente
-    const statements = sqlContent
-      .split(';')
-      .map(s => s.trim())
-      .filter(s => s.length > 0 && !s.startsWith('--'));
+    // Separar sentencias SQL respetando strings delimitados por $$
+    // El backup usa $$ quoting, así que ';' dentro de $$ NO es un separador
+    function splitSqlStatements(sql) {
+      const statements = [];
+      let current = '';
+      let inDollarQuote = false;
+      let i = 0;
+      while (i < sql.length) {
+        // Detectar $$ (inicio o fin de dollar quoting)
+        if (sql[i] === '$' && i + 1 < sql.length && sql[i + 1] === '$') {
+          inDollarQuote = !inDollarQuote;
+          current += '$$';
+          i += 2;
+          continue;
+        }
+        // Solo split por ; si NO estamos dentro de $$ quoting
+        if (sql[i] === ';' && !inDollarQuote) {
+          const trimmed = current.trim();
+          if (trimmed.length > 0 && !trimmed.startsWith('--')) {
+            statements.push(trimmed);
+          }
+          current = '';
+        } else {
+          current += sql[i];
+        }
+        i++;
+      }
+      // Última sentencia si no termina con ;
+      const last = current.trim();
+      if (last.length > 0 && !last.startsWith('--')) {
+        statements.push(last);
+      }
+      return statements;
+    }
+
+    const statements = splitSqlStatements(sqlContent);
 
     console.log(`   📊 ${statements.length} sentencias para ejecutar`);
 
