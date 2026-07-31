@@ -533,17 +533,43 @@ async function restoreBackup(inputFile) {
         errors++;
         const msg = err.message || '';
 
+        // MOSTRAR EL PRIMER ERROR INMEDIATAMENTE para diagnosticar
+        if (errors === 1) {
+          console.log('');
+          console.log(`   ❌ PRIMER ERROR en sentencia ${i + 1}:`);
+          console.log(`      ${msg.slice(0, 300)}`);
+          console.log(`      SQL: ${stmt.slice(0, 300)}`);
+          console.log('');
+          // Si el error es que la tabla no existe, avisar al usuario
+          if (msg.includes('does not exist') || msg.includes('relation')) {
+            console.log('   ⚠️  La tabla no existe en la base de datos destino.');
+            console.log('      Asegúrate de ejecutar PRIMERO: npx prisma db push');
+            console.log('      con la DATABASE_URL de la base de datos destino.');
+            console.log('');
+          }
+        }
+
         // Guardar el primer error para mostrarlo al final
         if (!firstError) {
           firstError = { index: i + 1, message: msg, snippet: stmt.slice(0, 200) };
         }
 
-        // Mostrar los primeros 5 errores inesperados
-        if (errors <= 5 &&
+        // Mostrar los primeros 3 errores adicionales si son diferentes al primero
+        if (errors <= 4 && errors > 1 &&
             !msg.includes('duplicate key') &&
             !msg.includes('does not exist') &&
             !msg.includes('relation')) {
           console.log(`   ⚠️ Error ${i + 1}: ${msg.slice(0, 120)}`);
+        }
+
+        // Si hay demasiados errores iguales, parar y mostrar resumen
+        if (errors === 100) {
+          console.log('');
+          console.log(`   🛑 Demasiados errores (${errors}). Deteniendo para no perder tiempo.`);
+          console.log(`      Revisa el primer error arriba. Probablemente las tablas no existen`);
+          console.log(`      en la base de datos destino. Ejecuta: npx prisma db push`);
+          console.log('');
+          break;
         }
       }
     }
