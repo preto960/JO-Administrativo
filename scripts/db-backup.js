@@ -278,15 +278,18 @@ async function backup() {
     output.push('');
 
     let ddlCount = 0;
+    let createTableCount = 0;
     for (const table of sorted) {
       output.push(`-- ── Tabla: ${table.relname} ──`);
       const ddl = await generateTableDDL(client, table.oid);
       output.push(ddl);
       output.push('');
       ddlCount++;
+      // Contar cuántos CREATE TABLE se generaron
+      createTableCount += (ddl.match(/CREATE TABLE/g) || []).length;
     }
 
-    console.log(`   ✅ DDL generado: ${ddlCount} tablas`);
+    console.log(`   ✅ DDL generado: ${ddlCount} tablas (${createTableCount} CREATE TABLE)`);
 
     // ═══ PARTE 3: INSERT DATA (dependency order) ═══
     output.push('-- ============================================================');
@@ -365,14 +368,24 @@ async function backup() {
     const filepath = path.join(backupsDir, filename);
     fs.writeFileSync(filepath, compressed);
 
+    // Verificación final: contar CREATE TABLEs en el archivo generado
+    const finalCreateCount = (fullSQL.match(/CREATE TABLE/g) || []).length;
+
     const sizeMB = (compressed.length / (1024 * 1024)).toFixed(2);
     console.log('');
     console.log('✅ Backup completado:');
     console.log(`   📄 Archivo: ${filepath}`);
     console.log(`   📊 Tablas:   ${sorted.length}`);
+    console.log(`   📊 CREATE TABLE: ${finalCreateCount}`);
     console.log(`   📊 Filas:    ${totalRows}`);
     console.log(`   📊 INSERTs:  ${insertCount}`);
     console.log(`   💾 Tamaño:   ${sizeMB} MB`);
+    if (finalCreateCount === 0) {
+      console.warn('');
+      console.warn('   ❌ ERROR: El backup NO contiene CREATE TABLE!');
+      console.warn('   Esto es un bug. El restore no podrá crear tablas.');
+      console.warn('');
+    }
     console.log('');
     console.log(`Para restaurar en otra DB:`);
     console.log(`  1. Cambia DATABASE_URL en .env.local a la nueva DB`);
