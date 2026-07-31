@@ -51,11 +51,12 @@ interface Budget {
 
 interface ERIItem {
   id: string
-  description: string
-  category: string
-  income: number
-  expense: number
-  net: number
+  nombre: string
+  codigo: string
+  presupuesto: number
+  gastoReal: number
+  variacion: number
+  porcentajeUtilizado: number
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────
@@ -120,7 +121,10 @@ export function FinancialTab({ userRole }: FinancialTabProps) {
     setLoadingCostCenters(true)
     api
       .get<CostCenter[]>('/api/reports/financial/cost-centers')
-      .then(setCostCenters)
+      .then((data) => {
+        // API returns array directly, ensure it's always an array
+        setCostCenters(Array.isArray(data) ? data : [])
+      })
       .catch(() => toast.error('Error al cargar centros de costo'))
       .finally(() => setLoadingCostCenters(false))
   }
@@ -172,7 +176,15 @@ export function FinancialTab({ userRole }: FinancialTabProps) {
     params.set('dateTo', costDateTo)
     api
       .get<CostEntry[]>(`/api/reports/financial/cost-entries?${params.toString()}`)
-      .then(setCostEntries)
+      .then((data) => {
+        // API returns { entries, totalsByCenter, grandTotal }
+        const wrapped = data as Record<string, unknown>
+        if (wrapped && Array.isArray(wrapped.entries)) {
+          setCostEntries(wrapped.entries as CostEntry[])
+        } else {
+          setCostEntries(Array.isArray(data) ? data : [])
+        }
+      })
       .catch(() => toast.error('Error al cargar registro de costos'))
       .finally(() => setLoadingCostEntries(false))
   }
@@ -223,7 +235,10 @@ export function FinancialTab({ userRole }: FinancialTabProps) {
     params.set('yearMonth', budgetYearMonth)
     api
       .get<Budget[]>(`/api/reports/financial/budgets?${params.toString()}`)
-      .then(setBudgets)
+      .then((data) => {
+        // API returns array directly, ensure it's always an array
+        setBudgets(Array.isArray(data) ? data : [])
+      })
       .catch(() => toast.error('Error al cargar presupuestos'))
       .finally(() => setLoadingBudgets(false))
   }
@@ -272,10 +287,15 @@ export function FinancialTab({ userRole }: FinancialTabProps) {
     params.set('dateFrom', eriDateFrom)
     params.set('dateTo', eriDateTo)
     try {
-      const data = await api.get<ERIItem[]>(
+      const data = await api.get<ERIItem[] | { centros?: ERIItem[] }>(
         `/api/reports/financial/statement?${params.toString()}`,
       )
-      setEriItems(data)
+      // API returns { centros: [...] }, extract the array
+      if (Array.isArray(data)) {
+        setEriItems(data)
+      } else {
+        setEriItems((data as { centros?: ERIItem[] }).centros || [])
+      }
       setEriGenerated(true)
     } catch {
       toast.error('Error al generar informe ERI')
@@ -749,48 +769,50 @@ export function FinancialTab({ userRole }: FinancialTabProps) {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Descripción</TableHead>
-                    <TableHead>Categoría</TableHead>
-                    <TableHead className="text-right">Ingresos</TableHead>
-                    <TableHead className="text-right">Egresos</TableHead>
-                    <TableHead className="text-right">Neto</TableHead>
+                    <TableHead>Centro de Costo</TableHead>
+                    <TableHead>Código</TableHead>
+                    <TableHead className="text-right">Presupuesto</TableHead>
+                    <TableHead className="text-right">Gasto Real</TableHead>
+                    <TableHead className="text-right">Variación</TableHead>
+                    <TableHead className="text-center">% Utilizado</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {eriItems.map((item) => (
                     <TableRow key={item.id}>
-                      <TableCell className="font-medium">{item.description}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{item.category}</Badge>
-                      </TableCell>
+                      <TableCell className="font-medium">{item.nombre}</TableCell>
+                      <TableCell>{item.codigo || '-'}</TableCell>
+                      <TableCell className="text-right">{fmtMoney(item.presupuesto)}</TableCell>
                       <TableCell className="text-right">
-                        {item.income > 0 ? (
-                          <span className="text-green-600">{fmtMoney(item.income)}</span>
+                        {item.gastoReal > 0 ? (
+                          <span className="text-red-600">{fmtMoney(item.gastoReal)}</span>
                         ) : (
                           <span className="text-muted-foreground">0.00</span>
                         )}
                       </TableCell>
                       <TableCell className="text-right">
-                        {item.expense > 0 ? (
-                          <span className="text-red-600">{fmtMoney(item.expense)}</span>
-                        ) : (
-                          <span className="text-muted-foreground">0.00</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right font-semibold">
                         <span
                           className={
-                            item.net >= 0 ? 'text-green-600' : 'text-red-600'
+                            item.variacion < 0
+                              ? 'text-red-600 font-semibold'
+                              : item.variacion > 0
+                                ? 'text-green-600 font-semibold'
+                                : ''
                           }
                         >
-                          {item.net >= 0 ? '+' : '-'}{fmtMoney(item.net)}
+                          {item.variacion >= 0 ? '+' : '-'}{fmtMoney(item.variacion)}
                         </span>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <Badge variant={utilizationBadgeColor(item.porcentajeUtilizado)}>
+                          {item.porcentajeUtilizado.toFixed(1)}%
+                        </Badge>
                       </TableCell>
                     </TableRow>
                   ))}
                   {eriItems.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                      <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                         No se encontraron datos para el periodo seleccionado
                       </TableCell>
                     </TableRow>

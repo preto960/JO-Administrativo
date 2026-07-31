@@ -86,7 +86,7 @@ interface InventoryAdminTabProps {
 export function InventoryAdminTab({ userRole }: InventoryAdminTabProps) {
   // ── Filters ─────────────────────────────────────────────────────────────
   const [yearMonth, setYearMonth] = useState(getCurrentYearMonth)
-  const [branchId, setBranchId] = useState('')
+  const [branchId, setBranchId] = useState('all')
 
   // ── Branches ────────────────────────────────────────────────────────────
   const [branches, setBranches] = useState<Branch[]>([])
@@ -108,11 +108,11 @@ export function InventoryAdminTab({ userRole }: InventoryAdminTabProps) {
     try {
       const params = new URLSearchParams()
       params.set('yearMonth', yearMonth)
-      if (branchId) params.set('branchId', branchId)
-      const data = await api.get<MonthlyItem[]>(
+      if (branchId && branchId !== 'all') params.set('branchId', branchId)
+      const res = await api.get<{ products: MonthlyItem[] }>(
         `/api/reports/inventory-admin/monthly?${params.toString()}`,
       )
-      setMonthlyItems(data)
+      setMonthlyItems(res.products || [])
       setReportGenerated(true)
     } catch {
       toast.error('Error al generar reporte mensual')
@@ -124,7 +124,7 @@ export function InventoryAdminTab({ userRole }: InventoryAdminTabProps) {
   const handleDownloadReportPdf = () => {
     const params = new URLSearchParams()
     params.set('yearMonth', yearMonth)
-    if (branchId) params.set('branchId', branchId)
+    if (branchId && branchId !== 'all') params.set('branchId', branchId)
     window.open(
       `/api/reports/inventory-admin/monthly/pdf?${params.toString()}`,
       '_blank',
@@ -193,7 +193,7 @@ export function InventoryAdminTab({ userRole }: InventoryAdminTabProps) {
                   <SelectValue placeholder="Todas las sucursales" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Todas las sucursales</SelectItem>
+                  <SelectItem value="all">Todas las sucursales</SelectItem>
                   {branches.map((b) => (
                     <SelectItem key={b.id} value={b.id}>
                       {b.name}
