@@ -386,30 +386,60 @@ async function restoreBackup(inputFile) {
 
   try {
     // Separar sentencias por ; y ejecutarlas individualmente
-    // Esto evita que un solo error pare toda la restauración
     const statements = sqlContent
       .split(';')
       .map(s => s.trim())
       .filter(s => s.length > 0 && !s.startsWith('--'));
 
+    // Comandos que Neon no permite — se saltan automáticamente
+    const skipPatterns = [
+      'session_replication_role',
+      'DISABLE TRIGGER',
+      'ENABLE TRIGGER',
+    ];
+
     let executed = 0;
+    let skipped = 0;
     let errors = 0;
 
-    for (const stmt of statements) {
+    for (let i = 0; i < statements.length; i++) {
+      const stmt = statements[i];
+
+      // Saltar comandos no soportados en Neon
+      if (skipPatterns.some(p => stmt.includes(p))) {
+        skipped++;
+        continue;
+      }
+
+      // No ejecutar BEGIN/COMMIT vacíos o TRUNCATE sin tablas
+      if (stmt === 'BEGIN' || stmt === 'COMMIT' || stmt === 'TRUNCATE TABLE  CASCADE') {
+        continue;
+      }
+
       try {
         await client.query(stmt);
         executed++;
+
+        // Mostrar progreso cada 500 sentencias
+        if (executed % 500 === 0) {
+          process.stdout.write(`   ${executed} sentencias ejecutadas...\n`);
+        }
       } catch (err) {
         errors++;
-        // Solo mostrar si no es un error esperado (ON CONFLICT, tabla vacía, etc.)
-        if (!err.message.includes('duplicate key') &&
-            !err.message.includes('does not exist')) {
-          console.log(`   ⚠️ Error: ${err.message.slice(0, 120)}`);
+        // Mostrar errores inesperados
+        const msg = err.message || '';
+        if (!msg.includes('duplicate key') &&
+            !msg.includes('does not exist') &&
+            !msg.includes('relation')) {
+          console.log(`   ⚠️ Error en sentencia ${i + 1}: ${msg.slice(0, 120)}`);
         }
       }
     }
 
     console.log('');
+    if (skipped > 0) {
+      console.log(`   ⓘ ${skipped} comandos saltados (no compatibles con Neon)`);
+    }
     console.log(`✅ Restauración completada: ${executed} sentencias ejecutadas, ${errors} advertencias.`);
   } catch (err) {
     console.log('');
