@@ -201,6 +201,7 @@ async function generateTableDDL(client, tableOid) {
 // ═══════════════════════════════════════════════════
 
 async function backup() {
+  console.log('📦 db-backup.js v2 — Backup AUTOSUFICIENTE (DDL + DML)');
   console.log('📦 Conectando a la base de datos...');
   const client = new Client({ connectionString: DB_URL });
   await client.connect();
@@ -424,6 +425,13 @@ async function restore(backupPath) {
   console.log(`   📋 Contenido del backup:`);
   console.log(`      DROP TABLE:    ${dropCount}`);
   console.log(`      CREATE TABLE: ${createCount}`);
+  if (createCount === 0 && insertCount > 0) {
+    console.warn('');
+    console.warn('   ⚠️  WARNING: Este backup NO tiene CREATE TABLE.');
+    console.warn('   Necesitas generar un nuevo backup con el script v2.');
+    console.warn('   Ejecuta: node scripts/db-backup.js');
+    console.warn('');
+  }
   console.log(`      ALTER TABLE:  ${alterCount}`);
   console.log(`      INSERT:        ${insertCount}`);
   console.log(`      Otros:        ${otherCount}`);
