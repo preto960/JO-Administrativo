@@ -167,7 +167,7 @@ async function getTableColumns(client, tableName) {
     SELECT column_name
     FROM information_schema.columns
     WHERE table_schema = 'public'
-      AND table_name = '${tableName.toLowerCase()}'
+      AND table_name = '${tableName}'
     ORDER BY ordinal_position;
   `);
   return res.rows.map(r => r.column_name);
@@ -195,7 +195,7 @@ async function backupData(outputFile) {
     const res = await client.query(`
       SELECT EXISTS (
         SELECT FROM information_schema.tables
-        WHERE table_schema = 'public' AND table_name = '${table.toLowerCase()}'
+        WHERE table_schema = 'public' AND table_name = '${table}'
       );
     `);
     if (res.rows[0].exists) {
