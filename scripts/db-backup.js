@@ -472,8 +472,9 @@ async function restoreBackup(inputFile) {
     let executed = 0;
     let skipped = 0;
     let errors = 0;
+    let firstError = null;
 
-    // Envolver en transacción manual
+    // Iniciar transacción principal (los savepoints funcionan dentro de una transacción)
     await client.query('BEGIN');
 
     for (let i = 0; i < statements.length; i++) {
@@ -491,18 +492,37 @@ async function restoreBackup(inputFile) {
         continue;
       }
 
+      // Usar SAVEPOINT para que un error no aborte toda la transacción
+      try {
+        await client.query('SAVEPOINT sp_restore');
+      } catch (e) {
+        // Si falla el savepoint, intentar rollback y crear uno nuevo
+        try { await client.query('ROLLBACK TO SAVEPOINT sp_restore'); } catch (_) {}
+      }
+
       try {
         await client.query(stmt);
+        await client.query('RELEASE SAVEPOINT sp_restore');
         executed++;
 
-        // Mostrar progreso cada 100 sentencias
-        if (executed % 100 === 0) {
+        // Mostrar progreso cada 200 sentencias
+        if (executed % 200 === 0) {
           process.stdout.write(`   ⏳ ${executed}/${statements.length} sentencias...\n`);
         }
       } catch (err) {
+        // Rollback al savepoint para limpiar el error de la transacción
+        try { await client.query('ROLLBACK TO SAVEPOINT sp_restore'); } catch (_) {}
+        try { await client.query('RELEASE SAVEPOINT sp_restore'); } catch (_) {}
+
         errors++;
-        // Mostrar errores inesperados
         const msg = err.message || '';
+
+        // Guardar el primer error para mostrarlo al final
+        if (!firstError) {
+          firstError = { index: i + 1, message: msg, snippet: stmt.slice(0, 200) };
+        }
+
+        // Mostrar errores inesperados (no duplicados, no tablas que no existen)
         if (!msg.includes('duplicate key') &&
             !msg.includes('does not exist') &&
             !msg.includes('relation')) {
@@ -511,12 +531,19 @@ async function restoreBackup(inputFile) {
       }
     }
 
-    await client.query('COMMIT');
-
     console.log('');
+    if (firstError) {
+      console.log(`   🔍 Primer error fue en sentencia ${firstError.index}:`);
+      console.log(`      ${firstError.message.slice(0, 200)}`);
+      console.log(`      SQL: ${firstError.snippet}`);
+      console.log('');
+    }
     if (skipped > 0) {
       console.log(`   ⓘ ${skipped} comandos saltados (no compatibles o redundantes)`);
     }
+
+    // Commit la transacción con todo lo que sí se ejecutó
+    await client.query('COMMIT');
     console.log(`✅ Restauración completada: ${executed} sentencias ejecutadas, ${errors} advertencias.`);
   } catch (err) {
     console.log('');
