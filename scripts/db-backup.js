@@ -109,7 +109,7 @@ const REVERSE_ORDER = [...TABLES_ORDER].reverse();
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 function timestamp() {
-  return new Date().toISOString().replace(/[-:T]/g, '').slice(0, 15);
+  return new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
 }
 
 /**
@@ -160,25 +160,45 @@ async function createClient() {
 }
 
 /**
- * Obiene las columnas de una tabla en orden.
+ * Obtiene las columnas de una tabla en orden.
+ * Nota: Prisma crea tablas con quoted identifiers (PascalCase) pero
+ * information_schema almacena table_name en minúsculas en PostgreSQL.
+ * Por eso usamos LOWER() para comparación case-insensitive.
  */
 async function getTableColumns(client, tableName) {
   const res = await client.query(`
     SELECT column_name
     FROM information_schema.columns
     WHERE table_schema = 'public'
-      AND table_name = '${tableName}'
+      AND LOWER(table_name) = LOWER('${tableName}')
     ORDER BY ordinal_position;
   `);
   return res.rows.map(r => r.column_name);
 }
 
 /**
+ * Obtiene el nombre real de la tabla en la base de datos (case-sensitive).
+ * Prisma usa quoted identifiers: la tabla puede ser "Settings" o "settings".
+ */
+async function getRealTableName(client, tableName) {
+  const res = await client.query(`
+    SELECT table_name
+    FROM information_schema.tables
+    WHERE table_schema = 'public'
+      AND LOWER(table_name) = LOWER('${tableName.replace(/'/g, "''")}')
+    LIMIT 1;
+  `);
+  return res.rows.length > 0 ? res.rows[0].table_name : null;
+}
+
+/**
  * Obtiene todas las filas de una tabla, ordenadas por id.
  */
 async function getTableData(client, tableName, columns) {
+  const realName = await getRealTableName(client, tableName);
+  const useName = realName || tableName;
   const colList = columns.map(c => `"${c}"`).join(', ');
-  const res = await client.query(`SELECT ${colList} FROM "${tableName}" ORDER BY "id";`);
+  const res = await client.query(`SELECT ${colList} FROM "${useName}" ORDER BY "id";`);
   return res.rows;
 }
 
@@ -189,17 +209,21 @@ async function backupData(outputFile) {
   console.log('📦 Conectando a la base de datos...');
   const client = await createClient();
 
-  // Verificar tablas que realmente existen
+  // Primero: listar todas las tablas reales en la DB para debug
+  const allTables = await client.query(`
+    SELECT table_name FROM information_schema.tables
+    WHERE table_schema = 'public'
+    ORDER BY table_name;
+  `);
+  console.log(`   📋 Tablas encontradas en la DB: ${allTables.rows.map(r => r.table_name).join(', ')}`);
+  console.log('');
+
+  // Verificar tablas que realmente existen (case-insensitive)
   const existingTables = [];
   for (const table of TABLES_ORDER) {
-    const res = await client.query(`
-      SELECT EXISTS (
-        SELECT FROM information_schema.tables
-        WHERE table_schema = 'public' AND table_name = '${table}'
-      );
-    `);
-    if (res.rows[0].exists) {
-      existingTables.push(table);
+    const realName = await getRealTableName(client, table);
+    if (realName) {
+      existingTables.push(realName); // Usar el nombre real de la DB
     } else {
       console.log(`   ⚠️  Tabla "${table}" no existe en la base de datos, se omitirá.`);
     }
@@ -250,6 +274,7 @@ async function backupData(outputFile) {
         continue;
       }
 
+      // table ya es el nombre real de la DB
       const rows = await getTableData(client, table, columns);
       const count = rows.length;
       totalRows += count;
@@ -385,11 +410,26 @@ async function restoreBackup(inputFile) {
   const client = await createClient();
 
   try {
+    // Mostrar tamaño del backup
+    const lines = sqlContent.split('\n').filter(l => l.trim().length > 0);
+    console.log(`   📄 Archivo tiene ${lines.length} líneas`);
+
     // Separar sentencias por ; y ejecutarlas individualmente
     const statements = sqlContent
       .split(';')
       .map(s => s.trim())
       .filter(s => s.length > 0 && !s.startsWith('--'));
+
+    console.log(`   📊 ${statements.length} sentencias para ejecutar`);
+
+    if (statements.length === 0) {
+      console.log('');
+      console.log('❌ El archivo de backup está vacío (0 sentencias).');
+      console.log('   Esto significa que el backup no contiene datos.');
+      console.log('   Genera un nuevo backup primero con: node db-backup.js');
+      await client.end();
+      return;
+    }
 
     // Comandos que Neon no permite — se saltan automáticamente
     const skipPatterns = [
@@ -402,6 +442,9 @@ async function restoreBackup(inputFile) {
     let skipped = 0;
     let errors = 0;
 
+    // Envolver en transacción manual
+    await client.query('BEGIN');
+
     for (let i = 0; i < statements.length; i++) {
       const stmt = statements[i];
 
@@ -411,8 +454,9 @@ async function restoreBackup(inputFile) {
         continue;
       }
 
-      // No ejecutar BEGIN/COMMIT vacíos o TRUNCATE sin tablas
-      if (stmt === 'BEGIN' || stmt === 'COMMIT' || stmt === 'TRUNCATE TABLE  CASCADE') {
+      // No ejecutar BEGIN/COMMIT anidados o TRUNCATE sin tablas
+      if (['BEGIN', 'COMMIT', 'TRUNCATE TABLE  CASCADE', 'TRUNCATE TABLE CASCADE'].includes(stmt)) {
+        skipped++;
         continue;
       }
 
@@ -420,9 +464,9 @@ async function restoreBackup(inputFile) {
         await client.query(stmt);
         executed++;
 
-        // Mostrar progreso cada 500 sentencias
-        if (executed % 500 === 0) {
-          process.stdout.write(`   ${executed} sentencias ejecutadas...\n`);
+        // Mostrar progreso cada 100 sentencias
+        if (executed % 100 === 0) {
+          process.stdout.write(`   ⏳ ${executed}/${statements.length} sentencias...\n`);
         }
       } catch (err) {
         errors++;
@@ -431,14 +475,16 @@ async function restoreBackup(inputFile) {
         if (!msg.includes('duplicate key') &&
             !msg.includes('does not exist') &&
             !msg.includes('relation')) {
-          console.log(`   ⚠️ Error en sentencia ${i + 1}: ${msg.slice(0, 120)}`);
+          console.log(`   ⚠️ Error en sentencia ${i + 1}: ${msg.slice(0, 150)}`);
         }
       }
     }
 
+    await client.query('COMMIT');
+
     console.log('');
     if (skipped > 0) {
-      console.log(`   ⓘ ${skipped} comandos saltados (no compatibles con Neon)`);
+      console.log(`   ⓘ ${skipped} comandos saltados (no compatibles o redundantes)`);
     }
     console.log(`✅ Restauración completada: ${executed} sentencias ejecutadas, ${errors} advertencias.`);
   } catch (err) {
