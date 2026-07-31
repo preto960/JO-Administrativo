@@ -486,10 +486,14 @@ async function restoreBackup(inputFile) {
     let skipped = 0;
     let errors = 0;
     let firstError = null;
+    const startTime = Date.now();
 
     // Ejecutar SIN transacción: cada sentencia es auto-commit.
     // Esto es más rápido en Neon (1 round-trip por sentencia en vez de 3 con savepoints)
     // y un error no aborta las demás.
+
+    console.log('   🚀 Iniciando restauración (esto puede tardar varios minutos)...');
+    console.log('');
 
     for (let i = 0; i < statements.length; i++) {
       const stmt = statements[i];
@@ -506,13 +510,24 @@ async function restoreBackup(inputFile) {
         continue;
       }
 
+      // Mostrar nombre de la tabla que se está insertando
+      const tableMatch = stmt.match(/INSERT INTO "(\w+)"/);
+      if (tableMatch && (executed + errors) % 50 === 0) {
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+        console.log(`   📥 Insertando en ${tableMatch[1]}... (${executed} ok, ${errors} err, ${elapsed}s)`);
+      } else if (stmt.startsWith('TRUNCATE')) {
+        console.log('   🗑️  Ejecutando TRUNCATE CASCADE (limpiando tablas)...');
+      }
+
       try {
         await client.query(stmt);
         executed++;
 
-        // Mostrar progreso cada 100 sentencias
-        if (executed % 100 === 0) {
-          process.stdout.write(`   ⏳ ${executed}/${statements.length} sentencias...\n`);
+        // Mostrar progreso cada 500 sentencias
+        if (executed % 500 === 0) {
+          const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+          const pct = ((executed + errors) / statements.length * 100).toFixed(0);
+          console.log(`   ⏳ ${executed}/${statements.length} (${pct}%) — ${elapsed}s transcurridos`);
         }
       } catch (err) {
         errors++;
@@ -523,8 +538,8 @@ async function restoreBackup(inputFile) {
           firstError = { index: i + 1, message: msg, snippet: stmt.slice(0, 200) };
         }
 
-        // Mostrar los primeros 10 errores inesperados (no duplicados, no tablas que no existen)
-        if (errors <= 10 &&
+        // Mostrar los primeros 5 errores inesperados
+        if (errors <= 5 &&
             !msg.includes('duplicate key') &&
             !msg.includes('does not exist') &&
             !msg.includes('relation')) {
@@ -532,6 +547,8 @@ async function restoreBackup(inputFile) {
         }
       }
     }
+
+    const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
 
     console.log('');
     if (firstError) {
@@ -543,7 +560,7 @@ async function restoreBackup(inputFile) {
     if (skipped > 0) {
       console.log(`   ⓘ ${skipped} comandos saltados (BEGIN/COMMIT del archivo)`);
     }
-    console.log(`✅ Restauración completada: ${executed} sentencias ejecutadas, ${errors} advertencias.`);
+    console.log(`✅ Restauración completada en ${totalTime}s: ${executed} ok, ${errors} advertencias.`);
   } catch (err) {
     console.log('');
     console.log(`❌ Error en restauración: ${err.message.slice(0, 200)}`);
