@@ -464,8 +464,13 @@ function showHelp() {
 
     case '--help':
     case '-h':
-    case undefined:
       showHelp();
+      break;
+
+    case undefined:
+      // Sin argumentos = backup automático con fecha
+      const autoFile = path.join(OUTPUT_DIR, `backup_${timestamp()}.sql`);
+      await backupData(autoFile);
       break;
 
     default:
