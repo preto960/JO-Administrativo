@@ -24,6 +24,14 @@ import {
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
+interface Currency {
+  id: string
+  code: string
+  name: string
+  symbol: string
+  isBase: boolean
+}
+
 interface CostCenter {
   id: string
   name: string
@@ -109,6 +117,15 @@ export function FinancialTab({ userRole }: FinancialTabProps) {
   const canEdit = userRole === 'admin' || userRole === 'gerente'
 
   // ─────────────────────────────────────────────────────────────────────
+  // Shared: Currencies
+  // ─────────────────────────────────────────────────────────────────────
+  const [currencies, setCurrencies] = useState<Currency[]>([])
+
+  useEffect(() => {
+    api.get<Currency[]>('/api/currencies').then(setCurrencies).catch(() => {})
+  }, [])
+
+  // ─────────────────────────────────────────────────────────────────────
   // A) Centros de Costo
   // ─────────────────────────────────────────────────────────────────────
   const [costCenters, setCostCenters] = useState<CostCenter[]>([])
@@ -168,6 +185,16 @@ export function FinancialTab({ userRole }: FinancialTabProps) {
     currencyId: '',
   })
   const [ceSubmitting, setCeSubmitting] = useState(false)
+
+  // Pre-fill currencyId with base currency when currencies load
+  useEffect(() => {
+    if (currencies.length > 0 && !ceForm.currencyId) {
+      const baseCurrency = currencies.find((c) => c.isBase)
+      if (baseCurrency) {
+        setCeForm((prev) => ({ ...prev, currencyId: baseCurrency.id }))
+      }
+    }
+  }, [currencies])
 
   const fetchCostEntries = () => {
     setLoadingCostEntries(true)
@@ -578,10 +605,11 @@ export function FinancialTab({ userRole }: FinancialTabProps) {
                   <SelectValue placeholder="Seleccionar moneda" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="usd">USD — Dólar</SelectItem>
-                  <SelectItem value="eur">EUR — Euro</SelectItem>
-                  <SelectItem value="cop">COP — Peso Colombiano</SelectItem>
-                  <SelectItem value="ves">VES — Bolívar</SelectItem>
+                  {currencies.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.code} — {c.name}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

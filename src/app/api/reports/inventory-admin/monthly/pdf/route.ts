@@ -24,9 +24,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'yearMonth es requerido (formato: "2025-07")' }, { status: 400 })
     }
 
-    if (!branchId) {
-      return NextResponse.json({ error: 'branchId es requerido' }, { status: 400 })
-    }
+    // branchId is optional — when not provided, fetch all branches
 
     // ── Fetch data (same logic as monthly route) ──
     const [yearStr, monthStr] = yearMonth.split('-')
@@ -37,10 +35,14 @@ export async function GET(request: NextRequest) {
     const endDate = new Date(year, month, 0, 23, 59, 59, 999)
 
     const branch = await db.branch.findUnique({ where: { id: branchId }, select: { name: true } })
-    const branchName = branch?.name || 'Sucursal'
+    // Build branch filter — null means all branches
+    const branchFilter: Record<string, unknown> = branchId ? { branchId } : {}
+    const branchName = branch
+      ? branch.name
+      : 'Todas las Sucursales'
 
     const inventoryItems = await db.inventory.findMany({
-      where: { branchId },
+      where: branchFilter,
       include: {
         product: {
           select: { id: true, name: true, active: true, sku: true, currency: { select: { symbol: true, code: true } } },
@@ -54,7 +56,7 @@ export async function GET(request: NextRequest) {
     const salesData = await db.saleLine.findMany({
       where: {
         sale: {
-          branchId,
+          ...(branchId ? { branchId } : {}),
           date: { gte: startDate, lte: endDate },
           status: 'completada',
         },
@@ -69,7 +71,7 @@ export async function GET(request: NextRequest) {
     // Adjustments aggregation
     const adjustments = await db.inventoryAdjustment.findMany({
       where: {
-        branchId,
+        ...(branchId ? { branchId } : {}),
         createdAt: { gte: startDate, lte: endDate },
         type: { in: ['perdida', 'obsequio'] },
       },
@@ -113,7 +115,8 @@ export async function GET(request: NextRequest) {
       totals,
     })
 
-    const filename = `inventario_mensual_${branchName.replace(/\s+/g, '_')}_${yearMonth}.pdf`
+    const branchSlug = branchId ? branchName.replace(/\s+/g, '_') : 'todas'
+    const filename = `inventario_mensual_${branchSlug}_${yearMonth}.pdf`
 
     return new NextResponse(pdfBuffer, {
       headers: {

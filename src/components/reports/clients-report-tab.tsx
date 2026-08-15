@@ -32,6 +32,43 @@ interface ClientReport {
   hasPromotion: boolean
 }
 
+// API response shape from /api/reports/clients
+interface ClientReportAPIResponse {
+  data: ClientReportAPIItem[]
+  count: number
+  page: number
+  limit: number
+  totalPages: number
+  filtros?: Record<string, unknown>
+}
+
+interface ClientReportAPIItem {
+  id: string
+  nombre: string
+  apellido: string
+  cedula: string
+  telefono: string
+  email: string
+  origen: string
+  convenio: string
+  promocion: string
+  membresia: {
+    estado: string
+    tipoPlan: string
+    tarifa: string
+    plan: string
+    inicio: string | null
+    vencimiento: string | null
+    diasRestantes: number
+    ticketsRestantes: number
+  } | null
+  createdBy: string | null
+  totalVentas: number
+  totalDeuda: number
+  totalAsistencias: number
+}
+
+// Component-level response (after mapping)
 interface ClientReportResponse {
   clients: ClientReport[]
   total: number
@@ -93,7 +130,7 @@ export function ClientsReportTab() {
     const params = new URLSearchParams()
     params.set('page', String(targetPage))
     params.set('pageSize', String(PAGE_SIZE))
-    if (origin) params.set('origin', origin)
+    if (origin) params.set('source', origin)
     if (status) params.set('status', status)
     if (planType) params.set('planType', planType)
     if (dateFrom) params.set('dateFrom', dateFrom)
@@ -102,12 +139,28 @@ export function ClientsReportTab() {
     if (withPromotion) params.set('withPromotion', 'true')
 
     try {
-      const data = await api.get<ClientReportResponse>(
+      const raw = await api.get<ClientReportAPIResponse>(
         `/api/reports/clients?${params.toString()}`,
       )
-      setClients(data.clients)
-      setTotal(data.total)
-      setPage(data.page)
+      // Map API response to component format
+      const mapped: ClientReportResponse = {
+        clients: (raw.data || []).map((c) => ({
+          id: c.id,
+          name: [c.nombre, c.apellido].filter(Boolean).join(' '),
+          phone: c.telefono || '',
+          origin: c.origen || '',
+          membershipStatus: c.membresia?.estado || 'Sin membresía',
+          planName: c.membresia?.plan || '',
+          hasAgreement: !!c.convenio,
+          hasPromotion: !!c.promocion,
+        })),
+        total: raw.count ?? 0,
+        page: raw.page ?? 1,
+        pageSize: raw.limit ?? PAGE_SIZE,
+      }
+      setClients(mapped.clients)
+      setTotal(mapped.total)
+      setPage(mapped.page)
       setSearched(true)
     } catch {
       toast.error('Error al buscar clientes')
@@ -123,7 +176,7 @@ export function ClientsReportTab() {
 
   const handleDownloadPdf = () => {
     const params = new URLSearchParams()
-    if (origin) params.set('origin', origin)
+    if (origin) params.set('source', origin)
     if (status) params.set('status', status)
     if (planType) params.set('planType', planType)
     if (dateFrom) params.set('dateFrom', dateFrom)

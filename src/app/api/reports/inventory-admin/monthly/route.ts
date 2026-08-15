@@ -22,9 +22,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'yearMonth es requerido (formato: "2025-07")' }, { status: 400 })
     }
 
-    if (!branchId) {
-      return NextResponse.json({ error: 'branchId es requerido' }, { status: 400 })
-    }
+    // branchId is optional — when not provided, fetch all branches
 
     // Parse year and month
     const [yearStr, monthStr] = yearMonth.split('-')
@@ -35,9 +33,12 @@ export async function GET(request: NextRequest) {
     const startDate = new Date(year, month - 1, 1)
     const endDate = new Date(year, month, 0, 23, 59, 59, 999)
 
-    // Get all products with inventory in this branch
+    // Build branch filter — null means all branches
+    const branchFilter: Record<string, unknown> = branchId ? { branchId } : {}
+
+    // Get all products with inventory in this branch (or all branches)
     const inventoryItems = await db.inventory.findMany({
-      where: { branchId },
+      where: branchFilter,
       include: {
         product: {
           select: { id: true, name: true, active: true, sku: true, currency: { select: { symbol: true, code: true } } },
@@ -47,11 +48,11 @@ export async function GET(request: NextRequest) {
 
     const activeInventory = inventoryItems.filter(inv => inv.product.active)
 
-    // Get sales for this month in this branch (aggregate by productId)
+    // Get sales for this month (aggregate by productId)
     const salesData = await db.saleLine.findMany({
       where: {
         sale: {
-          branchId,
+          ...(branchId ? { branchId } : {}),
           date: { gte: startDate, lte: endDate },
           status: 'completada',
         },
@@ -68,10 +69,10 @@ export async function GET(request: NextRequest) {
       salesByProduct.set(line.productId, (salesByProduct.get(line.productId) || 0) + line.quantity)
     }
 
-    // Get inventory adjustments for this month in this branch
+    // Get inventory adjustments for this month
     const adjustments = await db.inventoryAdjustment.findMany({
       where: {
-        branchId,
+        ...(branchId ? { branchId } : {}),
         createdAt: { gte: startDate, lte: endDate },
         type: { in: ['perdida', 'obsequio'] },
       },

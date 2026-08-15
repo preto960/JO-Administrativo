@@ -77,10 +77,28 @@ export function SalesCashierTab() {
     params.set('dateFrom', dateFrom)
     params.set('dateTo', dateTo)
     try {
-      const data = await api.get<CashierSales[]>(
+      const data = await api.get<CashierSales[] | { cashiers?: CashierSales[] }>(
         `/api/reports/sales-cashier?${params.toString()}`,
       )
-      setCashiers(data)
+      // API returns { cashiers: [...results] } with additional metadata
+      if (Array.isArray(data)) {
+        setCashiers(data)
+      } else {
+        const wrapped = data as { cashiers?: CashierSales[] }
+        // Map API response fields to component interface
+        setCashiers((wrapped.cashiers || []).map((c: any) => ({
+          cashierName: c.userName || c.cashierName || '',
+          salesDay: c.dailySales ?? 0,
+          salesWeek: c.weeklySales ?? 0,
+          salesMonth: c.monthlySales ?? 0,
+          dailyTarget: c.dailyTarget ?? 0,
+          advancePercent: c.dailyPct ?? 0,
+          breakdown: (c.categories || []).map((cat: any) => ({
+            name: cat.name || '',
+            amount: cat.total ?? 0,
+          })),
+        })))
+      }
       setSearched(true)
     } catch {
       toast.error('Error al consultar ventas por cajero')
