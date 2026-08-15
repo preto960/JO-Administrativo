@@ -2162,7 +2162,7 @@ export function CashRegisterView() {
       <Dialog open={showInventoryVerify} onOpenChange={(open) => {
         if (!open) { setShowInventoryVerify(false); setInventoryAction(null) }
       }}>
-        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="w-[95vw] max-w-[95vw] max-h-[90vh] overflow-y-auto p-6">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <PackageSearch className="h-5 w-5" />
@@ -2185,7 +2185,7 @@ export function CashRegisterView() {
             </div>
           ) : (
             <div className="space-y-4">
-              <div className="max-h-[50vh] overflow-auto rounded-md border">
+              <div className="max-h-[40vh] overflow-auto rounded-md border">
                 <Table className="min-w-[700px]">
                   <TableHeader>
                     <TableRow>
