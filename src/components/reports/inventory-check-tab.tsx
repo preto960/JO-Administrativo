@@ -15,7 +15,7 @@ import { Label } from '@/components/ui/label'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/ui/dialog'
-import { Plus, Eye, Download, Loader2, ClipboardCheck, PackageSearch, Filter } from 'lucide-react'
+import { Eye, Download, Loader2, ClipboardCheck, PackageSearch, Filter } from 'lucide-react'
 import { toast } from 'sonner'
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -112,7 +112,6 @@ export function InventoryCheckTab() {
 
   const [checks, setChecks] = useState<InventoryCheck[]>([])
   const [loading, setLoading] = useState(true)
-  const [creating, setCreating] = useState(false)
   const [saving, setSaving] = useState(false)
 
   // Edit dialog state
@@ -146,23 +145,6 @@ export function InventoryCheckTab() {
   useEffect(() => {
     fetchChecks()
   }, [filterType, filterDateFrom, filterDateTo, selectedBranchId])
-
-  // ── Create new check ───────────────────────────────────────────────────
-
-  const handleCreate = async () => {
-    setCreating(true)
-    try {
-      await api.post('/api/reports/inventory-check', {
-        branchId: selectedBranchId || undefined,
-      })
-      toast.success('Verificacion de inventario creada')
-      fetchChecks()
-    } catch {
-      toast.error('Error al crear verificacion')
-    } finally {
-      setCreating(false)
-    }
-  }
 
   // ── Open edit dialog ────────────────────────────────────────────────────
 
@@ -229,21 +211,10 @@ export function InventoryCheckTab() {
         <div>
           <h3 className="text-lg font-semibold">Verificaciones de Inventario</h3>
           <p className="text-sm text-muted-foreground">
-            Revisa y verifica el stock de productos de tu sucursal
+            Verificaciones generadas al abrir y cerrar caja
           </p>
         </div>
-        <Button
-          onClick={handleCreate}
-          disabled={creating}
-          className="bg-primary hover:bg-primary/90 text-white"
-        >
-          {creating ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          ) : (
-            <Plus className="mr-2 h-4 w-4" />
-          )}
-          Nueva Verificacion
-        </Button>
+
       </div>
 
       {/* Filtros */}
