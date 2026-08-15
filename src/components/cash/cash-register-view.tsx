@@ -2162,14 +2162,14 @@ export function CashRegisterView() {
       <Dialog open={showInventoryVerify} onOpenChange={(open) => {
         if (!open) { setShowInventoryVerify(false); setInventoryAction(null) }
       }}>
-        <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <PackageSearch className="h-5 w-5" />
               Verificación de Inventario — {inventoryAction === 'open' ? 'Apertura' : 'Cierre'} de Caja
             </DialogTitle>
             <DialogDescription>
-              Verifique el stock actual de productos. Productos sin stock están resaltados en rojo.
+              Verifique el stock actual de productos. Los productos sin stock están resaltados en rojo.
             </DialogDescription>
           </DialogHeader>
 
@@ -2192,7 +2192,7 @@ export function CashRegisterView() {
                       <TableHead>Producto</TableHead>
                       <TableHead className="text-center">Stock Actual</TableHead>
                       <TableHead className="text-center">Stock Verificado</TableHead>
-                      <TableHead>Novedades</TableHead>
+                      <TableHead className="min-w-[180px]">Novedades</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -2200,7 +2200,7 @@ export function CashRegisterView() {
                       const isZeroStock = p.initialStock === 0
                       return (
                         <TableRow key={p.productId || idx} className={isZeroStock ? 'bg-red-50 dark:bg-red-950/20' : ''}>
-                          <TableCell className="font-medium max-w-[200px] truncate">
+                          <TableCell className="font-medium">
                             {p.productName}
                             {isZeroStock && (
                               <Badge variant="destructive" className="ml-2 text-[10px] px-1 py-0">
