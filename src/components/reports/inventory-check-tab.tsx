@@ -15,6 +15,9 @@ import { Label } from '@/components/ui/label'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/ui/dialog'
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select'
 import { Eye, Download, Loader2, ClipboardCheck, PackageSearch, Filter } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -226,18 +229,18 @@ export function InventoryCheckTab() {
               Filtros:
             </div>
             <div className="space-y-1">
-              <Label htmlFor="ic-type" className="text-xs">Tipo</Label>
-              <select
-                id="ic-type"
-                value={filterType}
-                onChange={(e) => setFilterType(e.target.value)}
-                className="h-9 rounded-md border bg-transparent px-3 text-sm"
-              >
-                <option value="all">Todos</option>
-                <option value="manual">Manual</option>
-                <option value="apertura">Apertura</option>
-                <option value="cierre">Cierre</option>
-              </select>
+              <Label className="text-xs">Tipo</Label>
+              <Select value={filterType} onValueChange={setFilterType}>
+                <SelectTrigger className="h-9 w-[140px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="manual">Manual</SelectItem>
+                  <SelectItem value="apertura">Apertura</SelectItem>
+                  <SelectItem value="cierre">Cierre</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-1">
               <Label htmlFor="ic-from" className="text-xs">Desde</Label>
