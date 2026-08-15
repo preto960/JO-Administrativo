@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { resolveBranchId } from '@/lib/resolve-branch'
 import { logAction } from '@/lib/audit-log'
 import { requireAuth } from '@/lib/require-auth'
+import { fetchAppTz } from '@/lib/tz-helpers'
 
 const MAX_INITIAL_AMOUNT = 500000
 
@@ -30,8 +31,9 @@ export async function POST(request: NextRequest) {
       where: { userId, status: 'abierta' },
     })
     if (existingOpen) {
+      const appTz = await fetchAppTz()
       return NextResponse.json(
-        { error: `Este cajero ya tiene una caja abierta: "${existingOpen.name || 'Sin nombre'}" (abierta el ${new Date(existingOpen.openingDate).toLocaleDateString('es-VE')})` },
+        { error: `Este cajero ya tiene una caja abierta: "${existingOpen.name || 'Sin nombre'}" (abierta el ${new Date(existingOpen.openingDate).toLocaleDateString(appTz.locale, { timeZone: appTz.timezone })})` },
         { status: 400 }
       )
     }
@@ -96,7 +98,7 @@ export async function POST(request: NextRequest) {
       action: 'open_cash',
       entity: 'cash_register',
       entityId: register.id,
-      details: { summary: `Caja abierta: $${(initialAmt || 0).toLocaleString('es-VE', { minimumFractionDigits: 2 })}`, initialAmount: initialAmt || 0, name: name?.trim() || 'Sin nombre' },
+      details: { summary: `Caja abierta: $${(initialAmt || 0).toLocaleString(settings?.country === 'CO' ? 'es-CO' : 'es-VE', { minimumFractionDigits: 2 })}`, initialAmount: initialAmt || 0, name: name?.trim() || 'Sin nombre' },
       request,
     })
 

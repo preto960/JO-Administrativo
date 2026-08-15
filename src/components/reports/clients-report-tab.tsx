@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { api } from '@/lib/api'
 import { toast } from 'sonner'
+import { useSetting } from '@/stores/use-app-store'
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
@@ -69,14 +70,24 @@ interface PlanOption {
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
-function todayISO(): string {
-  return new Date().toISOString().split('T')[0]
+function todayLocalISO(country: string): string {
+  const now = new Date()
+  const tzMap: Record<string, string> = {
+    VE: 'America/Caracas', CO: 'America/Bogota', MX: 'America/Mexico_City',
+  }
+  const tz = tzMap[country] || 'America/Bogota'
+  return now.toLocaleDateString('en-CA', { timeZone: tz })
 }
 
-function thirtyDaysAgoISO(): string {
-  const d = new Date()
+function thirtyDaysAgoLocalISO(country: string): string {
+  const now = new Date()
+  const d = new Date(now)
   d.setDate(d.getDate() - 30)
-  return d.toISOString().split('T')[0]
+  const tzMap: Record<string, string> = {
+    VE: 'America/Caracas', CO: 'America/Bogota', MX: 'America/Mexico_City',
+  }
+  const tz = tzMap[country] || 'America/Bogota'
+  return d.toLocaleDateString('en-CA', { timeZone: tz })
 }
 
 const PAGE_SIZE = 10
@@ -98,10 +109,11 @@ function membershipBadgeVariant(status: string) {
 
 export function ClientsReportTab() {
   // ── Filters ─────────────────────────────────────────────────────────────
+  const appCountry = useSetting('country') || 'CO'
   const [status, setStatus] = useState('')
   const [planType, setPlanType] = useState('')
-  const [dateFrom, setDateFrom] = useState(thirtyDaysAgoISO)
-  const [dateTo, setDateTo] = useState(todayISO)
+  const [dateFrom, setDateFrom] = useState(thirtyDaysAgoLocalISO(appCountry))
+  const [dateTo, setDateTo] = useState(todayLocalISO(appCountry))
 
   // ── Plans from API ──────────────────────────────────────────────────────
   const [plans, setPlans] = useState<PlanOption[]>([])
@@ -185,7 +197,7 @@ export function ClientsReportTab() {
       </CardHeader>
       <CardContent className="space-y-4">
         {/* ── Filters ────────────────────────────────────────────────────── */}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {/* Estado */}
           <div className="space-y-2">
             <Label>Estado Membresía</Label>
@@ -219,26 +231,26 @@ export function ClientsReportTab() {
             </Select>
           </div>
 
-          {/* dateFrom */}
-          <div className="space-y-2">
-            <Label htmlFor="cr-from">Desde</Label>
-            <Input
-              id="cr-from"
-              type="date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-            />
-          </div>
-
-          {/* dateTo */}
-          <div className="space-y-2">
-            <Label htmlFor="cr-to">Hasta</Label>
-            <Input
-              id="cr-to"
-              type="date"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-            />
+          {/* dateFrom — dateTo side by side */}
+          <div className="grid grid-cols-2 gap-4 sm:col-span-2">
+            <div className="space-y-2">
+              <Label htmlFor="cr-from">Desde</Label>
+              <Input
+                id="cr-from"
+                type="date"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="cr-to">Hasta</Label>
+              <Input
+                id="cr-to"
+                type="date"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+              />
+            </div>
           </div>
         </div>
 

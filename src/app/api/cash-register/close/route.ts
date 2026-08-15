@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { buildReportFromRegister, generateCashClosePDF } from '@/lib/cash-close-pdf'
+import { fetchNow } from '@/lib/tz-helpers'
 import { logAction } from '@/lib/audit-log'
 import { notifyUser } from '@/lib/notify'
 import { getPaymentMethodsFromDB, FALLBACK_METHODS } from '@/lib/payment-methods'
@@ -108,7 +109,7 @@ export async function POST(request: NextRequest) {
     const expected = Math.round((register.initialAmt + totalSales + totalEntries - totalExpenses - totalRetiros) * 100) / 100
     const actualAmt = actual !== undefined ? actual : expected
     const difference = Math.round((actualAmt - expected) * 100) / 100
-    const closingDate = new Date()
+    const closingDate = await fetchNow()
 
     const cut = await db.$transaction(async (tx) => {
       await tx.cashRegister.update({

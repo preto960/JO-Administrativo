@@ -6,6 +6,7 @@ import { useAuth } from '@/hooks/use-auth'
 import { useCurrency } from '@/hooks/use-currency'
 import { useAppStore, useSetting } from '@/stores/use-app-store'
 import { getCurrencyForCountry } from '@/lib/country-currency'
+import { getCountryTz } from '@/lib/country-timezone'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
@@ -788,20 +789,24 @@ export function CashRegisterView() {
     }
   }
 
+  const appTz = getCountryTz(useSetting('country'))
+
   const formatTime = (dateStr: string) => {
-    return new Date(dateStr).toLocaleString('es-VE', {
+    return new Date(dateStr).toLocaleString(appTz.locale, {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
       hour: '2-digit',
       minute: '2-digit',
+      timeZone: appTz.timezone,
     })
   }
 
   const formatTimeShort = (dateStr: string) => {
-    return new Date(dateStr).toLocaleString('es-VE', {
+    return new Date(dateStr).toLocaleString(appTz.locale, {
       hour: '2-digit',
       minute: '2-digit',
+      timeZone: appTz.timezone,
     })
   }
 

@@ -4,6 +4,7 @@ import { resolveBranchId } from '@/lib/resolve-branch'
 import { buildReportFromRegister, generateMultiCashClosePDF, type CashCloseReport } from '@/lib/cash-close-pdf'
 import { formatCurrency } from '@/lib/currency'
 import { getPaymentMethodsFromDB, FALLBACK_METHODS } from '@/lib/payment-methods'
+import { fetchNow } from '@/lib/tz-helpers'
 
 export async function POST(request: NextRequest) {
   try {
@@ -43,6 +44,8 @@ export async function POST(request: NextRequest) {
       return pm ? !pm.isCash : true
     }
 
+    const closingDate = await fetchNow()
+
     const results = await db.$transaction(async (tx) => {
       const cuts: any[] = []
       for (const register of openRegisters) {
@@ -71,7 +74,7 @@ export async function POST(request: NextRequest) {
           where: { id: register.id },
           data: {
             status: 'cerrada',
-            closingDate: new Date(),
+            closingDate,
             currentAmt: actual,
           },
         })
@@ -95,7 +98,6 @@ export async function POST(request: NextRequest) {
     })
 
     // Send email with PDF report to admin (async)
-    const closingDate = new Date()
     import('@/lib/email').then(async ({ sendCashCloseAllEmailWithPDF }) => {
       try {
         const settings = await db.settings.findFirst()
