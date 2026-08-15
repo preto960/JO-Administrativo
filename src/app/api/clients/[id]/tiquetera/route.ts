@@ -6,18 +6,8 @@ import { logAction } from '@/lib/audit-log'
 import { getPaymentMethodsFromDB, FALLBACK_METHODS } from '@/lib/payment-methods'
 import { fetchToday, fetchAppTz } from '@/lib/tz-helpers'
 
-function getPlanDays(durationType: string, durationDays: number | null): number {
-  switch (durationType) {
-    case 'dia': return 1
-    case '1_mes': return 30
-    case 'bimestral': return 60
-    case 'anual': return 365
-    case 'otro': return durationDays || 0
-    default: return 30
-  }
-}
-
-// POST /api/clients/[id]/renew — assign/renew a plan for a client
+// POST /api/clients/[id]/tiquetera — add a tiquetera (ticket plan) to a client
+// Creates a NEW ClientMembership with planType "tickets" WITHOUT affecting the existing gym membership
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -44,7 +34,7 @@ export async function POST(
     }
 
     if (!planId) {
-      return NextResponse.json({ error: 'Debes seleccionar un plan' }, { status: 400 })
+      return NextResponse.json({ error: 'Debes seleccionar un plan de tickets' }, { status: 400 })
     }
 
     const client = await db.client.findUnique({ where: { id } })
@@ -59,6 +49,9 @@ export async function POST(
     if (!plan.active) {
       return NextResponse.json({ error: 'Este plan está inactivo' }, { status: 400 })
     }
+    if (plan.planType !== 'tickets') {
+      return NextResponse.json({ error: 'Este endpoint solo acepta planes de tipo tickets (tiquetera)' }, { status: 400 })
+    }
 
     // ── Hard-block: cash register must be open ──
     const effectiveBranchId = branchId || null
@@ -71,7 +64,7 @@ export async function POST(
     })
     if (!openRegister) {
       return NextResponse.json(
-        { error: 'No hay caja abierta. Debe abrir la caja antes de renovar una suscripción.' },
+        { error: 'No hay caja abierta. Debe abrir la caja antes de agregar una tiquetera.' },
         { status: 400 }
       )
     }
@@ -81,14 +74,12 @@ export async function POST(
     let pmInfo: { code: string; isCash: boolean; isCredit: boolean; isLocalCurrency: boolean } | null = null
     const pmList = await getPaymentMethodsFromDB().catch(() => FALLBACK_METHODS)
 
-    // ── Calculate effective price (promo + discount auto-applied) ──
-    // Use date-only comparison to avoid timezone issues (server is UTC, user is local)
+    // ── Calculate effective price (promo + discount) ──
     const now = new Date()
     let effectivePrice = plan.cost
     let hasPromo = false
     let hasDiscount = false
 
-    // Get app timezone for date comparison
     const appTz = await fetchAppTz().catch(() => ({ timezone: 'America/Bogota' }))
     const toDS = (d: Date) => d.toLocaleDateString('sv-SE', { timeZone: appTz.timezone })
     const nowStr = toDS(now)
@@ -116,13 +107,11 @@ export async function POST(
           : null
 
     if (isHybrid) {
-      // Hybrid: validate all methods exist
       for (const p of hybridPayments) {
         const found = pmList.find((m: any) => m.code === p.method)
         if (!found) return NextResponse.json({ error: `Método de pago no válido: ${p.method}` }, { status: 400 })
         if (found.isCredit) return NextResponse.json({ error: 'Los pagos híbridos no permiten crédito' }, { status: 400 })
       }
-      // Validate amounts sum to effectivePrice
       const sum = hybridPayments.reduce((s, p) => s + (p.amount || 0), 0)
       if (Math.abs(sum - effectivePrice) > 0.01) {
         return NextResponse.json({ error: `Los pagos (${sum}) no coinciden con el precio del plan (${effectivePrice})` }, { status: 400 })
@@ -134,6 +123,31 @@ export async function POST(
     }
 
     const today = await fetchToday()
+    const ticketCount = plan.ticketCount
+
+    // ── Create NEW membership for tiquetera (does NOT affect existing gym membership) ──
+    const ticketEndDate = new Date(today)
+    ticketEndDate.setDate(ticketEndDate.getDate() + 90) // 90 days validity for tickets
+
+    const membership = await db.clientMembership.create({
+      data: {
+        clientId: id,
+        status: 'Activo',
+        planId: plan.id,
+        planType: 'tickets',
+        tarifa: plan.name,
+        paymentDate: new Date(),
+        ticketsRemaining: ticketCount,
+        startDate: today,
+        endDate: ticketEndDate,
+        daysRemaining: 90,
+      },
+    })
+
+    // ── Create Sale record ──
+    let saleId: string | null = null
+    let movementError: string | null = null
+    let receivableId: string | null = null
 
     // Resolve currency
     const settings = await db.settings.findFirst()
@@ -143,98 +157,14 @@ export async function POST(
       resolvedCurrencyId = refCurrency?.id || ''
     }
 
-    // ── Determine membership values based on planType ──
-    const planType = plan.planType || 'dias' // backward compat
-    const totalDays = getPlanDays(plan.durationType, plan.durationDays)
-    const ticketCount = planType === 'tickets' ? plan.ticketCount : 0
-
-    // For "horario" type, we still set a reasonable duration (30 days default)
-    // so the membership has an expiration window
-    const effectiveDays = planType === 'horario' ? 30 : (planType === 'tickets' ? 90 : totalDays)
-
-    // ── Membership: create or update ──
-    const existingMembership = await db.clientMembership.findFirst({
-      where: { clientId: id },
-      orderBy: { createdAt: 'desc' },
-    })
-
-    let membership
-
-    // Common membership data
-    const membershipData = {
-      status: 'Activo' as const,
-      planId: plan.id,
-      planType,
-      tarifa: plan.name,
-      paymentDate: new Date(),
-      // Reset tickets to 0 if changing FROM tickets TO another type
-      ticketsRemaining: planType === 'tickets' ? ticketCount : 0,
-      startTime: planType === 'horario' ? plan.startTime : null,
-      endTime: planType === 'horario' ? plan.endTime : null,
-    }
-
-    if (existingMembership && existingMembership.endDate && existingMembership.status === 'Activo') {
-      // Active membership: accumulate days
-      const existingEnd = new Date(existingMembership.endDate)
-      const newEndDate = new Date(existingEnd)
-      newEndDate.setDate(newEndDate.getDate() + effectiveDays)
-
-      membership = await db.clientMembership.update({
-        where: { id: existingMembership.id },
-        data: {
-          ...membershipData,
-          endDate: newEndDate,
-          daysRemaining: planType === 'tickets' ? effectiveDays : (existingMembership.daysRemaining + effectiveDays),
-          // If switching plan type, ensure tickets reset
-          ticketsRemaining: planType === 'tickets' ? ticketCount : 0,
-        },
-      })
-    } else if (existingMembership) {
-      // Existing but not active: update it
-      const endDate = new Date(today)
-      endDate.setDate(endDate.getDate() + effectiveDays)
-
-      membership = await db.clientMembership.update({
-        where: { id: existingMembership.id },
-        data: {
-          ...membershipData,
-          startDate: today,
-          endDate,
-          daysRemaining: effectiveDays,
-        },
-      })
-    } else {
-      // No existing membership: create new
-      const endDate = new Date(today)
-      endDate.setDate(endDate.getDate() + effectiveDays)
-
-      membership = await db.clientMembership.create({
-        data: {
-          clientId: id,
-          ...membershipData,
-          startDate: today,
-          endDate,
-          daysRemaining: effectiveDays,
-        },
-      })
-    }
-
-    // ── Create Sale record for the subscription payment ──
-    let saleId: string | null = null
-    let movementId: string | null = null
-    let movementError: string | null = null
-    let receivableId: string | null = null
-
     if ((paymentMethod || isHybrid) && resolvedCurrencyId) {
       const clientName = `${client.name}${client.lastName ? ' ' + client.lastName : ''}`
 
       try {
-        // Build payment label for concept
         const hybridLabel = isHybrid
           ? `Híbrido (${hybridPayments.map(p => p.method).join(', ')})`
           : paymentMethod || ''
 
-        // Build the "method" string for each SalePayment
         const salePayments = isHybrid
           ? hybridPayments.map(p => ({
               method: p.method,
@@ -254,18 +184,14 @@ export async function POST(
           : paymentReference?.trim() || ''
         const refDisplay = refPart ? `: ${refPart}` : ''
 
-        const previousPlan = existingMembership?.tarifa && existingMembership.tarifa !== plan.name
-          ? `${existingMembership.tarifa} -> ${plan.name}`
-          : plan.name
-        const concept = `Suscripción plan "${previousPlan}" - ${clientName}${refDisplay}`
+        const concept = `Tiquetera "${plan.name}" - ${clientName}${refDisplay}`
 
-        // Create Sale + SalePayment(s)
         const sale = await db.sale.create({
           data: {
             clientId: id,
-            cashRegId: cashRegId || null,
+            cashRegId: cashRegId || openRegister.id,
             userId: auth.userId,
-            branchId: effectiveBranchId ?? undefined,
+            branchId: effectiveBranchId || '',
             total: effectivePrice,
             originalTotal: plan.cost,
             discountAmount: discountAmount > 0 ? discountAmount : 0,
@@ -280,33 +206,28 @@ export async function POST(
         })
         saleId = sale.id
 
-        // Handle cash register: only add CASH payments to physical register balance
-        if (cashRegId && pmInfo && !pmInfo.isCredit) {
-          const register = await db.cashRegister.findUnique({ where: { id: cashRegId } })
-          if (register && register.status === 'abierta') {
-            const cashAmount = isHybrid
-              ? hybridPayments
-                  .filter(p => {
-                    const pm = pmList.find((m: any) => m.code === p.method)
-                    return pm?.isCash
-                  })
-                  .reduce((s, p) => s + (p.amount || 0), 0)
-              : pmInfo.isCash
-                ? effectivePrice
-                : 0
+        // Handle cash register: add CASH payments to balance
+        if (openRegister && pmInfo && !pmInfo.isCredit) {
+          const cashAmount = isHybrid
+            ? hybridPayments
+                .filter(p => {
+                  const pm = pmList.find((m: any) => m.code === p.method)
+                  return pm?.isCash
+                })
+                .reduce((s, p) => s + (p.amount || 0), 0)
+            : pmInfo.isCash
+              ? effectivePrice
+              : 0
 
-            if (cashAmount > 0) {
-              await db.cashRegister.update({
-                where: { id: cashRegId },
-                data: { currentAmt: Math.round((register.currentAmt + cashAmount) * 100) / 100 },
-              })
-            }
-          } else if (register && register.status !== 'abierta') {
-            movementError = `Caja está cerrada (status: ${register.status})`
+          if (cashAmount > 0) {
+            await db.cashRegister.update({
+              where: { id: openRegister.id },
+              data: { currentAmt: Math.round((openRegister.currentAmt + cashAmount) * 100) / 100 },
+            })
           }
         }
 
-        // Handle credit: create AccountReceivable (single mode only)
+        // Handle credit
         if (!isHybrid && pmInfo?.isCredit) {
           const receivable = await db.accountReceivable.create({
             data: {
@@ -332,40 +253,30 @@ export async function POST(
       entity: 'client',
       entityId: id,
       details: {
-        action: 'renew_plan',
+        action: 'add_tiquetera',
         planName: plan.name,
         planId: plan.id,
-        planType,
-        totalDays: effectiveDays,
-        ticketCount: planType === 'tickets' ? ticketCount : 0,
+        ticketCount,
         cost: effectivePrice,
         originalCost: plan.cost,
         discountAmount: discountAmount > 0 ? discountAmount : undefined,
         discountNotes: discountNotes || undefined,
         paymentMethod: isHybrid ? `Híbrido (${hybridPayments.map(p => p.method).join(', ')})` : (paymentMethod || null),
         saleId,
-        movementId,
         receivableId,
       },
       request,
     })
 
-    const detailMessage = planType === 'tickets'
-      ? `Plan "${plan.name}" asignado (${ticketCount} tickets)`
-      : planType === 'horario'
-        ? `Plan "${plan.name}" asignado (${plan.startTime} - ${plan.endTime}, ${effectiveDays} días)`
-        : `Plan "${plan.name}" asignado (+${effectiveDays} días)`
-
     return NextResponse.json({
       membership,
       saleId,
-      movementId,
       movementError,
       receivableId,
-      message: detailMessage,
+      message: `Tiquetera "${plan.name}" asignada (${ticketCount} tickets)`,
     }, { status: 201 })
   } catch (error) {
-    console.error('[Renew POST]', error instanceof Error ? error.message : error)
-    return NextResponse.json({ error: 'Error al renovar suscripción' }, { status: 500 })
+    console.error('[Tiquetera POST]', error instanceof Error ? error.message : error)
+    return NextResponse.json({ error: 'Error al agregar tiquetera' }, { status: 500 })
   }
 }

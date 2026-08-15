@@ -2169,7 +2169,7 @@ export function CashRegisterView() {
               Verificación de Inventario — {inventoryAction === 'open' ? 'Apertura' : 'Cierre'} de Caja
             </DialogTitle>
             <DialogDescription>
-              Verifique el stock actual de productos. Los productos sin stock están resaltados en rojo.
+              Verifique el stock actual de productos en inventario.
             </DialogDescription>
           </DialogHeader>
 
@@ -2197,18 +2197,12 @@ export function CashRegisterView() {
                   </TableHeader>
                   <TableBody>
                     {inventoryProducts.map((p, idx) => {
-                      const isZeroStock = p.initialStock === 0
                       return (
-                        <TableRow key={p.productId || idx} className={isZeroStock ? 'bg-red-50 dark:bg-red-950/20' : ''}>
+                        <TableRow key={p.productId || idx}>
                           <TableCell className="font-medium whitespace-normal">
                             {p.productName}
-                            {isZeroStock && (
-                              <Badge variant="destructive" className="ml-2 text-[10px] px-1 py-0">
-                                Sin stock
-                              </Badge>
-                            )}
                           </TableCell>
-                          <TableCell className={`text-center whitespace-nowrap ${isZeroStock ? 'text-red-600 font-bold' : ''}`}>
+                          <TableCell className="text-center whitespace-nowrap">
                             {p.initialStock}
                           </TableCell>
                           <TableCell className="text-center whitespace-nowrap">

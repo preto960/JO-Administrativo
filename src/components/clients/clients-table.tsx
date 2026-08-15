@@ -417,6 +417,19 @@ export function ClientsTable() {
   const [renewCurrencies, setRenewCurrencies] = useState<{ id: string; code: string; symbol: string; isBase: boolean }[]>([])
   const [renewSuccess, setRenewSuccess] = useState(false)
 
+  // ── Tiquetera state ──
+  const [tiqueteraClient, setTiqueteraClient] = useState<Client | null>(null)
+  const [showTiqueteraDialog, setShowTiqueteraDialog] = useState(false)
+  const [tiqueteraPlanId, setTiqueteraPlanId] = useState('')
+  const [tiqueteraPaymentMethod, setTiqueteraPaymentMethod] = useState('')
+  const [tiqueteraPaymentReference, setTiqueteraPaymentReference] = useState('')
+  const [tiqueteraMethods, setTiqueteraMethods] = useState<PaymentMethodOption[]>([])
+  const [tiqueteraHybridPayments, setTiqueteraHybridPayments] = useState<HybridPaymentEntry[]>([])
+  const [tiqueteraIsHybrid, setTiqueteraIsHybrid] = useState(false)
+  const [tiqueteraCurrencies, setTiqueteraCurrencies] = useState<{ id: string; code: string; symbol: string; isBase: boolean }[]>([])
+  const [tiqueteraSuccess, setTiqueteraSuccess] = useState(false)
+  const [addingTiquetera, setAddingTiquetera] = useState(false)
+
   // Expired today report
   const [showExpiredModal, setShowExpiredModal] = useState(false)
   const [loadingExpired, setLoadingExpired] = useState(false)
@@ -1082,6 +1095,109 @@ export function ClientsTable() {
     }
   }
 
+  const openTiquetera = (client: Client) => {
+    setTiqueteraClient(client)
+    setTiqueteraPlanId('')
+    setTiqueteraPaymentMethod('')
+    setTiqueteraPaymentReference('')
+    setTiqueteraHybridPayments([])
+    setTiqueteraIsHybrid(false)
+    setTiqueteraSuccess(false)
+    setShowTiqueteraDialog(true)
+    // Load only ticket plans
+    api.get<PlanOption[]>('/api/plans')
+      .then(data => setPlans(Array.isArray(data) ? data.filter(p => p.active) : []))
+      .catch(() => {})
+    // Load payment methods and open cash register
+    const countryVal = country
+    Promise.all([
+      api.get<PaymentMethodOption[]>(`/api/payment-methods?country=${countryVal}&context=subscription`),
+      api.get<Array<{ id: string; status: string }>>('/api/cash-register'),
+      api.get<{ id: string; code: string; symbol: string; isBase: boolean }[]>('/api/currencies'),
+    ]).then(([methods, registers, currencies]) => {
+      const list = Array.isArray(methods) && methods.length > 0 ? methods : FALLBACK_METHODS.filter(m => m.enabled)
+      setTiqueteraMethods(list)
+      if (list.length > 0) {
+        const efectivo = list.find((m: { code: string }) => m.code === 'efectivo')
+        setTiqueteraPaymentMethod(efectivo?.code || list[0].code)
+      }
+      const openReg = registers?.find((r: { status: string }) => r.status === 'abierta')
+      if (openReg) setOpenCashRegId(openReg.id)
+      if (Array.isArray(currencies)) setTiqueteraCurrencies(currencies)
+    }).catch(() => {
+      const fallback = FALLBACK_METHODS.filter(m => m.enabled)
+      setTiqueteraMethods(fallback)
+      if (fallback.length > 0) setTiqueteraPaymentMethod(fallback[0].code)
+    })
+  }
+
+  const handleAddTiquetera = async () => {
+    if (!tiqueteraClient || !tiqueteraPlanId) {
+      toast.error('Selecciona un plan de tickets')
+      return
+    }
+    const effectiveMethod = tiqueteraHybridPayments[0]?.method || tiqueteraPaymentMethod
+    const effectiveRef = tiqueteraHybridPayments[0]?.reference || tiqueteraPaymentReference
+
+    if (tiqueteraIsHybrid) {
+      const selectedPlan = plans.find(p => p.id === tiqueteraPlanId)
+      if (!selectedPlan) { toast.error('Plan no encontrado'); return }
+      const sum = tiqueteraHybridPayments.reduce((s, p) => s + p.amount, 0)
+      const effectivePrice = selectedPlan.effectivePrice ?? selectedPlan.cost
+      if (Math.abs(sum - effectivePrice) > 0.01) {
+        toast.error('Los pagos híbridos no cubren el total')
+        return
+      }
+      for (const p of tiqueteraHybridPayments) {
+        const m = tiqueteraMethods.find(rm => rm.code === p.method)
+        if (m?.needsReference && !p.reference) { toast.error(`Referencia obligatoria para ${m.name}`); return }
+      }
+    } else {
+      if (!effectiveMethod) {
+        toast.error('Selecciona un método de pago')
+        return
+      }
+      const selectedMethod = tiqueteraMethods.find(m => m.code === effectiveMethod)
+      if (selectedMethod?.needsReference && !effectiveRef.trim()) {
+        toast.error(`La referencia es obligatoria para ${selectedMethod.name}`)
+        return
+      }
+    }
+    setAddingTiquetera(true)
+    try {
+      const baseCurr = tiqueteraCurrencies.find(c => c.isBase)
+      const payload: Record<string, any> = {
+        planId: tiqueteraPlanId,
+        cashRegId: openCashRegId || undefined,
+        branchId: selectedBranchId || undefined,
+        currencyId: baseCurr?.id || baseCurrencyId || '',
+      }
+      if (tiqueteraIsHybrid) {
+        payload.payments = tiqueteraHybridPayments.map(p => ({
+          method: p.method,
+          amount: p.amount,
+          reference: p.reference || undefined,
+        }))
+      } else {
+        payload.paymentMethod = effectiveMethod
+        payload.paymentReference = effectiveRef.trim() || undefined
+      }
+      const res = await api.post<{ message: string }>(`/api/clients/${tiqueteraClient.id}/tiquetera`, payload)
+      setTiqueteraSuccess(true)
+      toast.success(res.message || 'Tiquetera asignada')
+      setTimeout(() => {
+        setShowTiqueteraDialog(false)
+        setTiqueteraSuccess(false)
+        fetchClients()
+      }, 1500)
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Error al agregar tiquetera'
+      toast.error(msg)
+    } finally {
+      setAddingTiquetera(false)
+    }
+  }
+
   const openAttendance = async (client: Client) => {
     setAttClient(client)
     setAttData(null)
@@ -1365,6 +1481,11 @@ export function ClientsTable() {
                           {canManage && isGym && (
                             <DropdownMenuItem onClick={() => openRenew(client)}>
                               <RefreshCw className="mr-2 h-3.5 w-3.5" /> Renovar Suscripción
+                            </DropdownMenuItem>
+                          )}
+                          {canManage && isGym && client.membership?.status === 'Activo' && client.membership.planType !== 'tickets' && (
+                            <DropdownMenuItem onClick={() => openTiquetera(client)}>
+                              <Ticket className="mr-2 h-3.5 w-3.5" /> Agregar Tiquetera
                             </DropdownMenuItem>
                           )}
                           {canManage && isGym && client.membership?.status === 'Activo' && client.membership.planType !== 'tickets' && (
@@ -2415,6 +2536,178 @@ export function ClientsTable() {
                   <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Renovando...</>
                 ) : (
                   <><RefreshCw className="mr-2 h-4 w-4" /> Renovar Suscripción</>
+                )}
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Tiquetera Dialog */}
+      <Dialog open={showTiqueteraDialog} onOpenChange={(open) => { if (!open) { setShowTiqueteraDialog(false); setTiqueteraSuccess(false) } }}>
+        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Ticket className="h-5 w-5 text-purple-600" />
+              Agregar Tiquetera
+            </DialogTitle>
+            <DialogDescription>
+              {tiqueteraClient?.name}{tiqueteraClient?.lastName ? ` ${tiqueteraClient.lastName}` : ''}
+            </DialogDescription>
+          </DialogHeader>
+
+          {tiqueteraSuccess ? (
+            <div className="flex flex-col items-center justify-center gap-4 py-8">
+              <div className="rounded-full bg-purple-100 dark:bg-purple-950/30 p-4">
+                <CheckCircle2 className="h-12 w-12 text-purple-600" />
+              </div>
+              <h3 className="text-xl font-bold text-purple-700 dark:text-purple-400">¡Tiquetera Asignada!</h3>
+              <p className="text-sm text-muted-foreground">Cerrando automáticamente...</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {/* Info box */}
+              <div className="rounded-md border border-purple-200 bg-purple-50 dark:border-purple-800 dark:bg-purple-950/30 p-3 text-sm">
+                <p className="text-purple-700 dark:text-purple-400 font-medium">
+                  La tiquetera se agregará como una membresía adicional sin afectar el plan actual del cliente.
+                </p>
+              </div>
+
+              {/* Current membership info */}
+              {tiqueteraClient?.membership && (
+                <div className="rounded-md bg-muted p-3 space-y-1 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Plan actual:</span>
+                    <span className="font-medium">{tiqueteraClient.membership.tarifa || 'Sin membresía'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Estado:</span>
+                    <Badge className={`text-[10px] ${
+                      tiqueteraClient.membership.status === 'Activo'
+                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400'
+                        : 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400'
+                    }`}>
+                      {tiqueteraClient.membership.status === 'Activo' ? 'Activo' : 'Vencido'}
+                    </Badge>
+                  </div>
+                </div>
+              )}
+
+              {/* Plan selector — only ticket plans */}
+              <div className="space-y-2">
+                <Label>Seleccionar Plan de Tickets *</Label>
+                <Select value={tiqueteraPlanId} onValueChange={setTiqueteraPlanId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Elige un plan de tickets..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {plans.filter(p => p.planType === 'tickets').map(p => (
+                      <SelectItem key={p.id} value={p.id}>
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="flex items-center gap-1.5">
+                            {p.name}
+                            {(p.effectivePrice != null && p.effectivePrice !== p.cost) && (
+                              <span className="text-[9px] font-bold px-1 py-px rounded bg-amber-500 text-white leading-tight">
+                                {p.hasActivePromo ? 'PROMO' : `-${p.discountPercentage}%`}
+                              </span>
+                            )}
+                          </span>
+                          <div className="flex items-center gap-1.5">
+                            {(p.effectivePrice != null && p.effectivePrice !== p.cost) && <span className="text-muted-foreground font-mono line-through text-xs">{fmt(p.cost)}</span>}
+                            <span className={(p.effectivePrice != null && p.effectivePrice !== p.cost) ? 'text-amber-600 dark:text-amber-400 font-mono font-semibold' : 'text-muted-foreground font-mono'}>{fmt(p.effectivePrice ?? p.cost)}</span>
+                          </div>
+                        </div>
+                      </SelectItem>
+                    ))}
+                    {plans.filter(p => p.planType === 'tickets').length === 0 && (
+                      <SelectItem value="none" disabled>No hay planes de tickets activos</SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Cost display */}
+              {tiqueteraPlanId && (() => {
+                const selectedPlan = plans.find((p: any) => p.id === tiqueteraPlanId)
+                if (!selectedPlan) return null
+                const effectivePrice = selectedPlan.effectivePrice ?? selectedPlan.cost
+                const hasDiscount = selectedPlan.hasActiveDiscount || selectedPlan.hasActivePromo
+                const savings = hasDiscount ? Math.round((selectedPlan.cost - effectivePrice) * 100) / 100 : 0
+                return (
+                  <div className={`rounded-md border p-3 ${hasDiscount ? 'bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800' : 'bg-purple-50 dark:bg-purple-950/30 border-purple-200 dark:border-purple-800'}`}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <DollarSign className={`h-4 w-4 ${hasDiscount ? 'text-amber-600' : 'text-purple-600'}`} />
+                        <span className="text-sm font-medium">
+                          {selectedPlan.hasActivePromo && selectedPlan.hasActiveDiscount
+                            ? `Promo + ${selectedPlan.discountPercentage}% desc.:`
+                            : selectedPlan.hasActivePromo
+                              ? 'Precio promocional:'
+                              : selectedPlan.hasActiveDiscount
+                                ? `Precio con ${selectedPlan.discountPercentage}% desc.:`
+                                : 'Costo del plan:'}
+                        </span>
+                      </div>
+                      <div className="text-right">
+                        {hasDiscount && (
+                          <span className="text-xs text-muted-foreground line-through block">{fmt(selectedPlan.cost)}</span>
+                        )}
+                        <span className={`text-lg font-bold ${hasDiscount ? 'text-amber-700 dark:text-amber-400' : 'text-purple-700 dark:text-purple-400'}`}>
+                          {fmt(effectivePrice)}
+                        </span>
+                      </div>
+                    </div>
+                    {hasDiscount && savings > 0 && (
+                      <div className="mt-1.5 flex items-center gap-1 text-[11px] text-amber-600 dark:text-amber-400 font-medium">
+                        <Tag className="h-3 w-3" />
+                        Ahorro del cliente: {fmt(savings)} ({selectedPlan.hasActivePromo ? 'promo' : `${selectedPlan.discountPercentage}%`})
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
+
+              <Separator />
+
+              {/* Payment method */}
+              <div className="space-y-2">
+                <Label className="flex items-center gap-1.5">
+                  <CreditCard className="h-3.5 w-3.5" />
+                  Método de Pago *
+                </Label>
+                {tiqueteraMethods.length > 0 ? (
+                  <HybridPaymentSelector
+                    methods={tiqueteraMethods as any}
+                    total={(() => { const p = plans.find(p => p.id === tiqueteraPlanId); return (p?.effectivePrice ?? p?.cost) || 0 })()}
+                    currencySymbol={fmt(0).replace(/[\d.,\s]/g, '').split('').find(c => /[^\w]/) || '$'}
+                    onChange={setTiqueteraHybridPayments}
+                    onModeChange={setTiqueteraIsHybrid}
+                  />
+                ) : (
+                  <p className="text-xs text-center text-muted-foreground py-2">
+                    No hay métodos de pago activos para suscripciones
+                  </p>
+                )}
+              </div>
+
+              {/* No cash register warning */}
+              {!openCashRegId && (
+                <div className="rounded-md border border-red-300 bg-red-50 dark:border-red-800 dark:bg-red-950/30 p-2.5 text-xs text-red-700 dark:text-red-400 flex items-start gap-2">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                  <span><strong>No hay caja abierta.</strong> Debe abrir una caja antes de agregar tiquetera.</span>
+                </div>
+              )}
+
+              <Button
+                className="w-full bg-purple-600 hover:bg-purple-700 text-white"
+                size="lg"
+                onClick={handleAddTiquetera}
+                disabled={addingTiquetera || !tiqueteraPlanId || !openCashRegId || (!tiqueteraIsHybrid && !tiqueteraHybridPayments[0]?.method && !tiqueteraPaymentMethod) || (tiqueteraIsHybrid && tiqueteraHybridPayments.length === 0)}
+              >
+                {addingTiquetera ? (
+                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Asignando Tiquetera...</>
+                ) : (
+                  <><Ticket className="mr-2 h-4 w-4" /> Agregar Tiquetera</>
                 )}
               </Button>
             </div>
