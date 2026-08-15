@@ -153,8 +153,14 @@ export async function POST(
     const effectiveDays = planType === 'horario' ? 30 : (planType === 'tickets' ? 90 : totalDays)
 
     // ── Membership: create or update ──
+    // IMPORTANT: Always look for a gym membership (not tickets) when renewing a gym plan
+    // and look for a tickets membership when renewing a tickets plan
+    // This prevents overwriting a tiquetera when renewing gym and vice versa
     const existingMembership = await db.clientMembership.findFirst({
-      where: { clientId: id },
+      where: {
+        clientId: id,
+        planType: planType === 'tickets' ? 'tickets' : { in: ['dias', 'horario'] },
+      },
       orderBy: { createdAt: 'desc' },
     })
 

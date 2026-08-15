@@ -35,7 +35,7 @@ export async function GET() {
         data: {
           status: 'Vencido',
           daysRemaining: 0,
-          ticketsRemaining: 0, // Reset tickets when changing/expiring
+          // Do NOT reset ticketsRemaining — tiquetera is independent
         },
       })
 

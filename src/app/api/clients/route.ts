@@ -58,8 +58,8 @@ export async function GET(request: NextRequest) {
           select: { id: true, amount: true, pendingBalance: true, status: true, dueDate: true, createdAt: true },
         },
         memberships: {
+          where: { status: { in: ['Activo', 'Vencido'] } },
           orderBy: { createdAt: 'desc' },
-          take: 1,
         },
       },
       orderBy: { name: 'asc' },
@@ -71,9 +71,16 @@ export async function GET(request: NextRequest) {
     // Compute pending balance and membership for each client
     const clientsWithBalance = clients.map(client => {
       const pendingBalance = client.receivables.reduce((sum, r) => sum + r.pendingBalance, 0)
-      const membership = client.memberships[0] || null
+
+      // Separate gym membership (dias/horario) from tiquetera (tickets)
+      // "membership" is ALWAYS the gym plan (dias/horario), never tickets
+      // "tiquetera" is ALWAYS the ticket plan, independent from gym
+      const gymMembership = client.memberships.find(m => m.planType !== 'tickets') || null
+      const ticketMembership = client.memberships.find(m => m.planType === 'tickets') || null
+
       return {
         ...client,
+        memberships: undefined, // Remove raw array from response
         pendingBalance: Math.round(pendingBalance * 100) / 100,
         receivables: client.receivables.map(r => ({
           id: r.id,
@@ -83,18 +90,29 @@ export async function GET(request: NextRequest) {
           dueDate: r.dueDate,
           createdAt: r.createdAt,
         })),
-        membership: membership ? {
-          id: membership.id,
-          status: membership.status,
-          planType: membership.planType || 'dias',
-          tarifa: membership.tarifa,
-          endDate: membership.endDate,
-          daysRemaining: membership.endDate
-            ? calcDaysRemaining(membership.endDate, today)
-            : membership.daysRemaining,
-          ticketsRemaining: membership.ticketsRemaining,
-          startTime: membership.startTime,
-          endTime: membership.endTime,
+        membership: gymMembership ? {
+          id: gymMembership.id,
+          status: gymMembership.status,
+          planType: gymMembership.planType || 'dias',
+          tarifa: gymMembership.tarifa,
+          endDate: gymMembership.endDate,
+          daysRemaining: gymMembership.endDate
+            ? calcDaysRemaining(gymMembership.endDate, today)
+            : gymMembership.daysRemaining,
+          ticketsRemaining: gymMembership.ticketsRemaining,
+          startTime: gymMembership.startTime,
+          endTime: gymMembership.endTime,
+        } : null,
+        tiquetera: ticketMembership ? {
+          id: ticketMembership.id,
+          status: ticketMembership.status,
+          planType: ticketMembership.planType,
+          tarifa: ticketMembership.tarifa,
+          endDate: ticketMembership.endDate,
+          ticketsRemaining: ticketMembership.ticketsRemaining,
+          daysRemaining: ticketMembership.endDate
+            ? calcDaysRemaining(ticketMembership.endDate, today)
+            : ticketMembership.daysRemaining,
         } : null,
       }
     })

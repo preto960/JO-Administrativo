@@ -108,6 +108,15 @@ interface Client {
     startTime: string | null
     endTime: string | null
   } | null
+  tiquetera: {
+    id: string
+    status: string
+    planType: string
+    tarifa: string | null
+    endDate: string | null
+    ticketsRemaining: number
+    daysRemaining: number
+  } | null
   receivables: Array<{ id: string; amount: number; pendingBalance: number; status: string; dueDate: string | null; createdAt: string }>
   _count: { sales: number }
 }
@@ -1340,8 +1349,8 @@ export function ClientsTable() {
               {/* Top color bar */}
               <div className={`h-1 ${
                 client.deletedAt ? 'bg-gray-400' :
-                isGym && memStatus === 'Activo' ? 'bg-emerald-500' :
-                isGym && memStatus === 'Vencido' ? 'bg-red-500' :
+                isGym && (memStatus === 'Activo' || client.tiquetera?.status === 'Activo') ? 'bg-emerald-500' :
+                isGym && (memStatus === 'Vencido' || client.tiquetera?.status === 'Vencido') ? 'bg-red-500' :
                 'bg-gray-300 dark:bg-gray-600'
               }`} />
               <CardContent className="p-4 space-y-3">
@@ -1393,47 +1402,77 @@ export function ClientsTable() {
 
                 {/* Membership info below contact (gym only) */}
                 {isGym && (
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <Badge
-                    className={`text-[10px] px-1.5 py-0 ${
-                      memStatus === 'Activo'
-                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400'
-                        : memStatus === 'Vencido'
-                        ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400'
-                        : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
-                    }`}
-                  >
-                    {memStatus === 'Activo' ? 'Activo' : memStatus === 'Vencido' ? 'Vencido' : 'Sin membresia'}
-                  </Badge>
-                  {hasMembership && client.membership?.tarifa && (
-                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-muted-foreground">
-                      {cap(client.membership.tarifa)}
+                <div className="space-y-1.5">
+                  {/* Gym membership row */}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <Badge
+                      className={`text-[10px] px-1.5 py-0 ${
+                        memStatus === 'Activo'
+                          ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400'
+                          : memStatus === 'Vencido'
+                          ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400'
+                          : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
+                      }`}
+                    >
+                      {memStatus === 'Activo' ? 'Activo' : memStatus === 'Vencido' ? 'Vencido' : 'Sin membresia'}
                     </Badge>
-                  )}
-                  {hasMembership && client.membership!.endDate && (
-                    <span className="text-[10px] text-muted-foreground">
-                      Vence: {new Date(client.membership!.endDate).toLocaleDateString('es-VE')}
-                    </span>
-                  )}
-                  {memStatus === 'Activo' && hasMembership && client.membership!.daysRemaining > 0 && client.membership!.planType !== 'tickets' && (
-                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
-                      {client.membership!.daysRemaining}d restantes
-                    </span>
-                  )}
-                  {/* Círculo de tickets para planes tipo tickets */}
-                  {memStatus === 'Activo' && hasMembership && client.membership!.planType === 'tickets' && (
+                    {hasMembership && client.membership?.tarifa && (
+                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-muted-foreground">
+                        {cap(client.membership.tarifa)}
+                      </Badge>
+                    )}
+                    {hasMembership && client.membership!.endDate && (
+                      <span className="text-[10px] text-muted-foreground">
+                        Vence: {new Date(client.membership!.endDate).toLocaleDateString('es-VE')}
+                      </span>
+                    )}
+                    {memStatus === 'Activo' && hasMembership && client.membership!.daysRemaining > 0 && (
+                      <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
+                        {client.membership!.daysRemaining}d restantes
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Tiquetera row (independent) */}
+                  {client.tiquetera && (
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <Badge
+                      className={`text-[10px] px-1.5 py-0 ${
+                        client.tiquetera.status === 'Activo'
+                          ? 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-400'
+                          : 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400'
+                      }`}
+                    >
+                      Tiquetera
+                    </Badge>
+                    {client.tiquetera.tarifa && (
+                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-purple-600 dark:text-purple-400 border-purple-300 dark:border-purple-700">
+                        {cap(client.tiquetera.tarifa)}
+                      </Badge>
+                    )}
                     <div
                       className={`
-                        inline-flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold
-                        ${client.membership!.ticketsRemaining > 0
-                          ? 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300 ring-2 ring-purple-300 dark:ring-purple-700'
-                          : 'bg-red-100 text-red-600 dark:bg-red-950 dark:text-red-400 ring-2 ring-red-300 dark:ring-red-700'
+                        inline-flex items-center justify-center w-6 h-6 rounded-full text-[10px] font-bold
+                        ${client.tiquetera.ticketsRemaining > 0
+                          ? 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300 ring-1 ring-purple-300 dark:ring-purple-700'
+                          : 'bg-red-100 text-red-600 dark:bg-red-950 dark:text-red-400 ring-1 ring-red-300 dark:ring-red-700'
                         }
                       `}
-                      title={`${client.membership!.ticketsRemaining} tickets restantes`}
+                      title={`${client.tiquetera.ticketsRemaining} tickets restantes`}
                     >
-                      {client.membership!.ticketsRemaining}
+                      {client.tiquetera.ticketsRemaining}
                     </div>
+                    {client.tiquetera.endDate && (
+                      <span className={`text-[10px] ${client.tiquetera.status === 'Activo' ? 'text-muted-foreground' : 'text-red-500'}`}>
+                        Vence: {new Date(client.tiquetera.endDate).toLocaleDateString('es-VE')}
+                      </span>
+                    )}
+                    {client.tiquetera.status === 'Activo' && client.tiquetera.daysRemaining > 0 && (
+                      <span className="text-[10px] text-purple-600 dark:text-purple-400 font-medium">
+                        {client.tiquetera.daysRemaining}d
+                      </span>
+                    )}
+                  </div>
                   )}
                 </div>
                 )}
@@ -1483,9 +1522,9 @@ export function ClientsTable() {
                               <RefreshCw className="mr-2 h-3.5 w-3.5" /> Renovar Suscripción
                             </DropdownMenuItem>
                           )}
-                          {canManage && isGym && client.membership?.status === 'Activo' && client.membership.planType !== 'tickets' && (
+                          {canManage && isGym && client.membership?.status === 'Activo' && (
                             <DropdownMenuItem onClick={() => openTiquetera(client)}>
-                              <Ticket className="mr-2 h-3.5 w-3.5" /> Agregar Tiquetera
+                              <Ticket className="mr-2 h-3.5 w-3.5" /> {client.tiquetera ? 'Renovar Tiquetera' : 'Agregar Tiquetera'}
                             </DropdownMenuItem>
                           )}
                           {canManage && isGym && client.membership?.status === 'Activo' && client.membership.planType !== 'tickets' && (
@@ -2386,30 +2425,33 @@ export function ClientsTable() {
                     <span className="text-muted-foreground">Días restantes:</span>
                     <span className="font-medium">{renewClient.membership.daysRemaining}</span>
                   </div>
-                  {renewClient.membership.planType === 'tickets' && (
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Tickets restantes:</span>
-                      <div className="flex items-center gap-2">
-                        <div
-                          className={`
-                            inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold
-                            ${renewClient.membership.ticketsRemaining > 0
-                              ? 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300'
-                              : 'bg-red-100 text-red-600 dark:bg-red-950 dark:text-red-400'
-                            }
-                          `}
-                        >
-                          {renewClient.membership.ticketsRemaining}
-                        </div>
-                      </div>
-                    </div>
-                  )}
                   {renewClient.membership.planType === 'horario' && renewClient.membership.startTime && renewClient.membership.endTime && (
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Horario:</span>
                       <span className="font-medium">{renewClient.membership.startTime} - {renewClient.membership.endTime}</span>
                     </div>
                   )}
+                </div>
+              )}
+              {/* Current tiquetera info (if any) */}
+              {renewClient?.tiquetera && (
+                <div className="rounded-md bg-purple-50 dark:bg-purple-950/30 p-3 space-y-1 text-sm border border-purple-200 dark:border-purple-800">
+                  <div className="flex justify-between">
+                    <span className="text-purple-600 dark:text-purple-400">Tiquetera:</span>
+                    <Badge className="text-[10px] bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300">
+                      {renewClient.tiquetera.status === 'Activo' ? 'Activa' : 'Vencida'}
+                    </Badge>
+                  </div>
+                  {renewClient.tiquetera.tarifa && (
+                    <div className="flex justify-between">
+                      <span className="text-purple-600 dark:text-purple-400">Plan:</span>
+                      <span className="font-medium">{renewClient.tiquetera.tarifa}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between">
+                    <span className="text-purple-600 dark:text-purple-400">Tickets restantes:</span>
+                    <span className="font-medium">{renewClient.tiquetera.ticketsRemaining}</span>
+                  </div>
                 </div>
               )}
 

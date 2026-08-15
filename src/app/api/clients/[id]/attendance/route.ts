@@ -52,8 +52,8 @@ export async function GET(
       where: { id },
       include: {
         memberships: {
+          where: { status: { in: ['Activo', 'Vencido'] } },
           orderBy: { createdAt: 'desc' },
-          take: 1,
           include: { plan: true },
         },
       },
@@ -62,7 +62,11 @@ export async function GET(
       return NextResponse.json({ error: 'Cliente no encontrado' }, { status: 404 })
     }
 
-    const membership = client.memberships[0] || null
+    // Separate gym membership from tiquetera
+    const gymMembership = client.memberships.find(m => m.planType !== 'tickets') || null
+    const ticketMembership = client.memberships.find(m => m.planType === 'tickets') || null
+    // Primary membership for backward compat: gym if exists, else tiquetera
+    const membership = gymMembership || ticketMembership
     const appTz = await fetchAppTz()
 
     const attendances = await db.attendance.findMany({
@@ -121,8 +125,8 @@ export async function GET(
         totalPlanDays,
         planName,
         daysRemaining,
-        ticketsRemaining: membership?.ticketsRemaining || 0,
-        ticketTotal: (planType === 'tickets' && membership?.plan) ? membership.plan.ticketCount : 0,
+        ticketsRemaining: ticketMembership?.ticketsRemaining || 0,
+        ticketTotal: (ticketMembership?.plan) ? ticketMembership.plan.ticketCount : 0,
         startTime: membership?.startTime || membership?.plan?.startTime || null,
         endTime: membership?.endTime || membership?.plan?.endTime || null,
         totalAttendances,
@@ -131,6 +135,11 @@ export async function GET(
         attendanceMarkedToday: !!todayAttendance,
         gymMarkedToday,
         tiqueteraMarkedToday,
+        // Tiquetera info (independent from gym membership)
+        tiqueteraActive: ticketMembership?.status === 'Activo',
+        tiqueteraTicketsRemaining: ticketMembership?.ticketsRemaining || 0,
+        tiqueteraDaysRemaining: ticketMembership?.endDate ? calcDaysRemaining(ticketMembership.endDate, todayDate) : 0,
+        tiqueteraPlanName: ticketMembership?.tarifa || ticketMembership?.plan?.name || null,
       },
     })
   } catch (error) {
@@ -160,8 +169,8 @@ export async function POST(
       where: { id },
       include: {
         memberships: {
+          where: { status: { in: ['Activo', 'Vencido'] } },
           orderBy: { createdAt: 'desc' },
-          take: 1,
           include: { plan: true },
         },
       },
@@ -170,7 +179,12 @@ export async function POST(
       return NextResponse.json({ error: 'Cliente no encontrado' }, { status: 404 })
     }
 
-    const membership = client.memberships[0]
+    // Separate gym membership from tiquetera
+    const gymMembership = client.memberships.find(m => m.planType !== 'tickets') || null
+    const ticketMembership = client.memberships.find(m => m.planType === 'tickets') || null
+
+    // For attendance: gym uses gym membership, tiquetera uses ticket membership
+    const membership = source === 'tiquetera' ? ticketMembership : (gymMembership || ticketMembership)
 
     // ── Validar estado de membresía ──
     if (!membership || membership.status !== 'Activo') {
@@ -181,56 +195,47 @@ export async function POST(
     const appTz = await fetchAppTz()
     const today = await fetchToday()
 
-    // ── POR DÍAS ──
-    if (planType === 'dias') {
-      const existing = await db.attendance.findUnique({
-        where: { clientId_date: { clientId: id, date: today } },
+    // ── POR DÍAS / HORARIO (gym membership) ──
+    if (planType === 'dias' || planType === 'horario') {
+      // Check schedule for horario plans
+      if (planType === 'horario') {
+        const startTime = membership.startTime || membership.plan?.startTime
+        const endTime = membership.endTime || membership.plan?.endTime
+
+        if (!startTime || !endTime) {
+          return NextResponse.json({ error: 'El plan horario no tiene horas configuradas' }, { status: 400 })
+        }
+
+        if (!isWithinSchedule(startTime, endTime, appTz.timezone)) {
+          const now = new Date()
+          const currentTime = now.toLocaleTimeString('en-GB', { timeZone: appTz.timezone, hour12: false })
+          return NextResponse.json({
+            error: `Fuera del horario permitido. Hora actual: ${currentTime}. Horario del plan: ${startTime} - ${endTime}`,
+          }, { status: 400 })
+        }
+      }
+
+      // Check if gym already marked today
+      const existingGym = await db.attendance.findFirst({
+        where: {
+          clientId: id,
+          date: today,
+          source: { in: ['gym', ''] },
+        },
       })
-      if (existing) {
-        return NextResponse.json({ error: 'Ya se marcó la asistencia de hoy para este cliente' }, { status: 409 })
+      if (existingGym) {
+        return NextResponse.json({ error: 'Ya se marcó la asistencia de gym hoy para este cliente' }, { status: 409 })
       }
 
       await db.$transaction([
-        db.attendance.create({ data: { clientId: id, date: today } }),
+        db.attendance.create({ data: { clientId: id, date: today, source: 'gym' } }),
         db.client.update({ where: { id }, data: { lastAttendance: new Date() } }),
       ])
 
-      return NextResponse.json({ message: 'Asistencia marcada (plan por días)' }, { status: 201 })
+      return NextResponse.json({ message: `Asistencia marcada (plan por ${planType})`, source: 'gym' }, { status: 201 })
     }
 
-    // ── POR HORARIO ──
-    if (planType === 'horario') {
-      const startTime = membership.startTime || membership.plan?.startTime
-      const endTime = membership.endTime || membership.plan?.endTime
-
-      if (!startTime || !endTime) {
-        return NextResponse.json({ error: 'El plan horario no tiene horas configuradas' }, { status: 400 })
-      }
-
-      if (!isWithinSchedule(startTime, endTime, appTz.timezone)) {
-        const now = new Date()
-        const currentTime = now.toLocaleTimeString('en-GB', { timeZone: appTz.timezone, hour12: false })
-        return NextResponse.json({
-          error: `Fuera del horario permitido. Hora actual: ${currentTime}. Horario del plan: ${startTime} - ${endTime}`,
-        }, { status: 400 })
-      }
-
-      const existing = await db.attendance.findUnique({
-        where: { clientId_date: { clientId: id, date: today } },
-      })
-      if (existing) {
-        return NextResponse.json({ error: 'Ya se marcó la asistencia de hoy para este cliente' }, { status: 409 })
-      }
-
-      await db.$transaction([
-        db.attendance.create({ data: { clientId: id, date: today } }),
-        db.client.update({ where: { id }, data: { lastAttendance: new Date() } }),
-      ])
-
-      return NextResponse.json({ message: 'Asistencia marcada (plan por horario)' }, { status: 201 })
-    }
-
-    // ── POR TICKETS ──
+    // ── POR TICKETS (tiquetera) ──
     if (planType === 'tickets') {
       if (source === 'tiquetera') {
         // Asistencia por tiquetera: verificar que gym ya fue marcado hoy
@@ -238,7 +243,7 @@ export async function POST(
           where: {
             clientId: id,
             date: today,
-            source: { in: ['gym', ''] }, // registros sin source cuentan como gym
+            source: { in: ['gym', ''] },
           },
         })
         if (!existingGym) {
@@ -275,7 +280,7 @@ export async function POST(
             data: { status: 'Vencido', ticketsRemaining: 0 },
           })
           return NextResponse.json({
-            message: 'Asistencia por tiquetera marcada. Último ticket utilizado. Membresía vencida.',
+            message: 'Asistencia por tiquetera marcada. Último ticket utilizado. Tiquetera vencida.',
             source: 'tiquetera',
             ticketsRemaining: 0,
           }, { status: 201 })
@@ -289,15 +294,19 @@ export async function POST(
 
       } else if (source === 'gym') {
         // Asistencia gym normal: SOLO marcar asistencia, NO descontar ticket
-        const existing = await db.attendance.findUnique({
-          where: { clientId_date: { clientId: id, date: today } },
+        const existingGym = await db.attendance.findFirst({
+          where: {
+            clientId: id,
+            date: today,
+            source: { in: ['gym', ''] },
+          },
         })
-        if (existing) {
-          return NextResponse.json({ error: 'Ya se marcó la asistencia de hoy para este cliente' }, { status: 409 })
+        if (existingGym) {
+          return NextResponse.json({ error: 'Ya se marcó la asistencia de gym hoy para este cliente' }, { status: 409 })
         }
 
         await db.$transaction([
-          db.attendance.create({ data: { clientId: id, date: today } }),
+          db.attendance.create({ data: { clientId: id, date: today, source: 'gym' } }),
           db.client.update({ where: { id }, data: { lastAttendance: new Date() } }),
         ])
 

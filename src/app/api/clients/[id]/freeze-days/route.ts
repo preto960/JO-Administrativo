@@ -37,9 +37,9 @@ export async function POST(
       return NextResponse.json({ error: 'Máximo 365 días por congelación' }, { status: 400 })
     }
 
-    // Find active membership
+    // Find active gym membership (not tiquetera) — freeze only applies to gym plans
     const membership = await db.clientMembership.findFirst({
-      where: { clientId: id },
+      where: { clientId: id, planType: { in: ['dias', 'horario'] } },
       orderBy: { createdAt: 'desc' },
     })
 

@@ -197,9 +197,9 @@ export function ClientsReportTab() {
       </CardHeader>
       <CardContent className="space-y-4">
         {/* ── Filters ────────────────────────────────────────────────────── */}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           {/* Estado */}
-          <div className="space-y-2">
+          <div className="space-y-2 col-span-2 sm:col-span-1">
             <Label>Estado Membresía</Label>
             <Select value={status} onValueChange={setStatus}>
               <SelectTrigger>
@@ -215,7 +215,7 @@ export function ClientsReportTab() {
           </div>
 
           {/* Plan Type — loaded from API */}
-          <div className="space-y-2">
+          <div className="space-y-2 col-span-2 sm:col-span-1">
             <Label>Tipo de Plan</Label>
             <Select value={planType} onValueChange={setPlanType}>
               <SelectTrigger>
@@ -231,26 +231,28 @@ export function ClientsReportTab() {
             </Select>
           </div>
 
-          {/* dateFrom — dateTo side by side */}
-          <div className="grid grid-cols-2 gap-4 sm:col-span-2">
-            <div className="space-y-2">
-              <Label htmlFor="cr-from">Desde</Label>
-              <Input
-                id="cr-from"
-                type="date"
-                value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="cr-to">Hasta</Label>
-              <Input
-                id="cr-to"
-                type="date"
-                value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
-              />
-            </div>
+          {/* dateFrom */}
+          <div className="space-y-2">
+            <Label htmlFor="cr-from">Desde</Label>
+            <Input
+              id="cr-from"
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="bg-background"
+            />
+          </div>
+
+          {/* dateTo */}
+          <div className="space-y-2">
+            <Label htmlFor="cr-to">Hasta</Label>
+            <Input
+              id="cr-to"
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="bg-background"
+            />
           </div>
         </div>
 

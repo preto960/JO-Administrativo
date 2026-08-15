@@ -151,8 +151,8 @@ async function buildClientReportData(filters: {
           tarifa: true,
           plan: { select: { name: true } },
         },
+        where: { status: { in: ['Activo', 'Vencido'] } },
         orderBy: { createdAt: 'desc' },
-        take: 1,
       },
       _count: {
         select: {
@@ -171,8 +171,10 @@ async function buildClientReportData(filters: {
   const porTipoPlan: Record<string, number> = {}
 
   const rows: ClientReportRow[] = clients.map((c) => {
-    const m = c.memberships[0] || null
-    const isActive = m?.status === 'Activo'
+    const gymM = c.memberships.find(m => m.planType !== 'tickets') || null
+    const ticketM = c.memberships.find(m => m.planType === 'tickets') || null
+    const m = gymM || ticketM // primary for display
+    const isActive = gymM?.status === 'Activo' || ticketM?.status === 'Activo'
 
     if (isActive) conMembresiaActiva++
     if (c._count.receivables > 0) conDeuda++

@@ -139,8 +139,8 @@ export async function GET(request: NextRequest) {
               ticketsRemaining: true,
               plan: { select: { name: true } },
             },
+            where: { status: { in: ['Activo', 'Vencido'] } },
             orderBy: { createdAt: 'desc' },
-            take: 1,
           },
           _count: {
             select: {
@@ -194,7 +194,9 @@ export async function GET(request: NextRequest) {
 
     // ── Build response data ──
     const data = clients.map(c => {
-      const membership = c.memberships[0] || null
+      // Separate gym membership from tiquetera
+      const gymMembership = c.memberships.find(m => m.planType !== 'tickets') || null
+      const ticketMembership = c.memberships.find(m => m.planType === 'tickets') || null
       return {
         id: c.id,
         nombre: c.name,
@@ -207,15 +209,24 @@ export async function GET(request: NextRequest) {
         promocion: c.promotionName || '',
         registradoEl: c.createdAt,
         ultimaAsistencia: c.lastAttendance,
-        membresia: membership ? {
-          estado: membership.status,
-          tipoPlan: membership.planType,
-          tarifa: membership.tarifa || '',
-          plan: membership.plan?.name || '',
-          inicio: membership.startDate,
-          vencimiento: membership.endDate,
-          diasRestantes: membership.daysRemaining,
-          ticketsRestantes: membership.ticketsRemaining,
+        membresia: gymMembership ? {
+          estado: gymMembership.status,
+          tipoPlan: gymMembership.planType,
+          tarifa: gymMembership.tarifa || '',
+          plan: gymMembership.plan?.name || '',
+          inicio: gymMembership.startDate,
+          vencimiento: gymMembership.endDate,
+          diasRestantes: gymMembership.daysRemaining,
+          ticketsRestantes: 0,
+        } : null,
+        tiquetera: ticketMembership ? {
+          estado: ticketMembership.status,
+          tipoPlan: ticketMembership.planType,
+          tarifa: ticketMembership.tarifa || '',
+          plan: ticketMembership.plan?.name || '',
+          vencimiento: ticketMembership.endDate,
+          ticketsRestantes: ticketMembership.ticketsRemaining,
+          diasRestantes: ticketMembership.daysRemaining,
         } : null,
         createdBy: createdByMap.get(c.id) || null,
         totalVentas: c._count.sales,
