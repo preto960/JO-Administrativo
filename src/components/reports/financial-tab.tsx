@@ -175,14 +175,27 @@ export function FinancialTab({ userRole }: FinancialTabProps) {
     params.set('dateFrom', costDateFrom)
     params.set('dateTo', costDateTo)
     api
-      .get<CostEntry[]>(`/api/reports/financial/cost-entries?${params.toString()}`)
+      .get<unknown>(`/api/reports/financial/cost-entries?${params.toString()}`)
       .then((data) => {
-        // API returns { entries, totalsByCenter, grandTotal }
+        // API returns { entries: [{ ...entry, costCenter, currency, user }], totalsByCenter, grandTotal }
         const wrapped = data as Record<string, unknown>
         if (wrapped && Array.isArray(wrapped.entries)) {
-          setCostEntries(wrapped.entries as CostEntry[])
+          // Mapear entries al formato CostEntry que espera el componente
+          const mapped = (wrapped.entries as Record<string, unknown>[]).map((e) => {
+            const costCenter = e.costCenter as { name: string } | undefined
+            const currency = e.currency as { symbol: string } | undefined
+            return {
+              id: (e.id as string) || '',
+              date: (e.date as string) || '',
+              costCenterName: costCenter?.name || '',
+              concept: (e.concept as string) || '',
+              amount: (e.amount as number) ?? 0,
+              currencySymbol: currency?.symbol || '',
+            }
+          })
+          setCostEntries(mapped)
         } else {
-          setCostEntries(Array.isArray(data) ? data : [])
+          setCostEntries(Array.isArray(data) ? (data as CostEntry[]) : [])
         }
       })
       .catch(() => toast.error('Error al cargar registro de costos'))
@@ -234,10 +247,23 @@ export function FinancialTab({ userRole }: FinancialTabProps) {
     const params = new URLSearchParams()
     params.set('yearMonth', budgetYearMonth)
     api
-      .get<Budget[]>(`/api/reports/financial/budgets?${params.toString()}`)
+      .get<unknown[]>(`/api/reports/financial/budgets?${params.toString()}`)
       .then((data) => {
-        // API returns array directly, ensure it's always an array
-        setBudgets(Array.isArray(data) ? data : [])
+        // API returns [{ ...budget, costCenter, actualSpend, variance, percentUsed }]
+        // Mapear a la interfaz Budget que espera el frontend
+        const mapped = (Array.isArray(data) ? data : []).map((item: Record<string, unknown>) => {
+          const b = item as Record<string, unknown>
+          const costCenter = b.costCenter as { name: string } | undefined
+          return {
+            id: (b.id as string) || '',
+            costCenterName: costCenter?.name || '',
+            budgetAmount: (b.budgetAmount as number) ?? 0,
+            actualExpense: (b.actualSpend as number) ?? 0,
+            variation: (b.variance as number) ?? 0,
+            utilizationPercent: (b.percentUsed as number) ?? 0,
+          }
+        })
+        setBudgets(mapped)
       })
       .catch(() => toast.error('Error al cargar presupuestos'))
       .finally(() => setLoadingBudgets(false))
@@ -638,8 +664,8 @@ export function FinancialTab({ userRole }: FinancialTabProps) {
                         </span>
                       </TableCell>
                       <TableCell className="text-center">
-                        <Badge variant={utilizationBadgeColor(b.utilizationPercent)}>
-                          {b.utilizationPercent.toFixed(1)}%
+                        <Badge variant={utilizationBadgeColor(b.utilizationPercent ?? 0)}>
+                          {(b.utilizationPercent ?? 0).toFixed(1)}%
                         </Badge>
                       </TableCell>
                     </TableRow>
@@ -804,8 +830,8 @@ export function FinancialTab({ userRole }: FinancialTabProps) {
                         </span>
                       </TableCell>
                       <TableCell className="text-center">
-                        <Badge variant={utilizationBadgeColor(item.porcentajeUtilizado)}>
-                          {item.porcentajeUtilizado.toFixed(1)}%
+                        <Badge variant={utilizationBadgeColor(item.porcentajeUtilizado ?? 0)}>
+                          {(item.porcentajeUtilizado ?? 0).toFixed(1)}%
                         </Badge>
                       </TableCell>
                     </TableRow>
