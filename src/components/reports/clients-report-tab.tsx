@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { api } from '@/lib/api'
 import { toast } from 'sonner'
 import {
@@ -11,7 +11,6 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Checkbox } from '@/components/ui/checkbox'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
@@ -25,14 +24,10 @@ interface ClientReport {
   id: string
   name: string
   phone: string
-  origin: string
   membershipStatus: string
   planName: string
-  hasAgreement: boolean
-  hasPromotion: boolean
 }
 
-// API response shape from /api/reports/clients
 interface ClientReportAPIResponse {
   data: ClientReportAPIItem[]
   count: number
@@ -49,9 +44,6 @@ interface ClientReportAPIItem {
   cedula: string
   telefono: string
   email: string
-  origen: string
-  convenio: string
-  promocion: string
   membresia: {
     estado: string
     tipoPlan: string
@@ -68,12 +60,11 @@ interface ClientReportAPIItem {
   totalAsistencias: number
 }
 
-// Component-level response (after mapping)
-interface ClientReportResponse {
-  clients: ClientReport[]
-  total: number
-  page: number
-  pageSize: number
+interface PlanOption {
+  id: string
+  name: string
+  active: boolean
+  planType: string
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────
@@ -107,13 +98,19 @@ function membershipBadgeVariant(status: string) {
 
 export function ClientsReportTab() {
   // ── Filters ─────────────────────────────────────────────────────────────
-  const [origin, setOrigin] = useState('')
   const [status, setStatus] = useState('')
   const [planType, setPlanType] = useState('')
   const [dateFrom, setDateFrom] = useState(thirtyDaysAgoISO)
   const [dateTo, setDateTo] = useState(todayISO)
-  const [withAgreement, setWithAgreement] = useState(false)
-  const [withPromotion, setWithPromotion] = useState(false)
+
+  // ── Plans from API ──────────────────────────────────────────────────────
+  const [plans, setPlans] = useState<PlanOption[]>([])
+
+  useEffect(() => {
+    api.get<PlanOption[]>('/api/plans')
+      .then(data => setPlans(Array.isArray(data) ? data.filter(p => p.active) : []))
+      .catch(() => {})
+  }, [])
 
   // ── Data ─────────────────────────────────────────────────────────────────
   const [clients, setClients] = useState<ClientReport[]>([])
@@ -130,29 +127,22 @@ export function ClientsReportTab() {
     const params = new URLSearchParams()
     params.set('page', String(targetPage))
     params.set('pageSize', String(PAGE_SIZE))
-    if (origin) params.set('source', origin)
     if (status) params.set('status', status)
     if (planType) params.set('planType', planType)
     if (dateFrom) params.set('dateFrom', dateFrom)
     if (dateTo) params.set('dateTo', dateTo)
-    if (withAgreement) params.set('withAgreement', 'true')
-    if (withPromotion) params.set('withPromotion', 'true')
 
     try {
       const raw = await api.get<ClientReportAPIResponse>(
         `/api/reports/clients?${params.toString()}`,
       )
-      // Map API response to component format
-      const mapped: ClientReportResponse = {
+      const mapped = {
         clients: (raw.data || []).map((c) => ({
           id: c.id,
           name: [c.nombre, c.apellido].filter(Boolean).join(' '),
           phone: c.telefono || '',
-          origin: c.origen || '',
           membershipStatus: c.membresia?.estado || 'Sin membresía',
           planName: c.membresia?.plan || '',
-          hasAgreement: !!c.convenio,
-          hasPromotion: !!c.promocion,
         })),
         total: raw.count ?? 0,
         page: raw.page ?? 1,
@@ -176,13 +166,10 @@ export function ClientsReportTab() {
 
   const handleDownloadPdf = () => {
     const params = new URLSearchParams()
-    if (origin) params.set('source', origin)
     if (status) params.set('status', status)
     if (planType) params.set('planType', planType)
     if (dateFrom) params.set('dateFrom', dateFrom)
     if (dateTo) params.set('dateTo', dateTo)
-    if (withAgreement) params.set('withAgreement', 'true')
-    if (withPromotion) params.set('withPromotion', 'true')
     window.open(`/api/reports/clients/pdf?${params.toString()}`, '_blank')
   }
 
@@ -199,25 +186,6 @@ export function ClientsReportTab() {
       <CardContent className="space-y-4">
         {/* ── Filters ────────────────────────────────────────────────────── */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {/* Origen */}
-          <div className="space-y-2">
-            <Label>Origen</Label>
-            <Select value={origin} onValueChange={setOrigin}>
-              <SelectTrigger>
-                <SelectValue placeholder="Todos los orígenes" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="instagram">Instagram</SelectItem>
-                <SelectItem value="facebook">Facebook</SelectItem>
-                <SelectItem value="whatsapp">WhatsApp</SelectItem>
-                <SelectItem value="referido">Referido</SelectItem>
-                <SelectItem value="walk-in">Walk-in</SelectItem>
-                <SelectItem value="web">Web</SelectItem>
-                <SelectItem value="otro">Otro</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
           {/* Estado */}
           <div className="space-y-2">
             <Label>Estado Membresía</Label>
@@ -234,7 +202,7 @@ export function ClientsReportTab() {
             </Select>
           </div>
 
-          {/* Plan Type */}
+          {/* Plan Type — loaded from API */}
           <div className="space-y-2">
             <Label>Tipo de Plan</Label>
             <Select value={planType} onValueChange={setPlanType}>
@@ -242,12 +210,11 @@ export function ClientsReportTab() {
                 <SelectValue placeholder="Todos los planes" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="mensual">Mensual</SelectItem>
-                <SelectItem value="trimestral">Trimestral</SelectItem>
-                <SelectItem value="semestral">Semestral</SelectItem>
-                <SelectItem value="anual">Anual</SelectItem>
-                <SelectItem value="diario">Diario</SelectItem>
-                <SelectItem value="visita">Por Visita</SelectItem>
+                {plans.map(p => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.name}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -272,30 +239,6 @@ export function ClientsReportTab() {
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
             />
-          </div>
-
-          {/* Checkboxes */}
-          <div className="flex items-end gap-6">
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id="with-agreement"
-                checked={withAgreement}
-                onCheckedChange={(checked) => setWithAgreement(checked === true)}
-              />
-              <Label htmlFor="with-agreement" className="cursor-pointer">
-                Con convenio
-              </Label>
-            </div>
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id="with-promotion"
-                checked={withPromotion}
-                onCheckedChange={(checked) => setWithPromotion(checked === true)}
-              />
-              <Label htmlFor="with-promotion" className="cursor-pointer">
-                Con promoción
-              </Label>
-            </div>
           </div>
         </div>
 
@@ -340,11 +283,8 @@ export function ClientsReportTab() {
                     <TableRow>
                       <TableHead>Nombre</TableHead>
                       <TableHead>Teléfono</TableHead>
-                      <TableHead>Origen</TableHead>
                       <TableHead>Estado Membresía</TableHead>
                       <TableHead>Plan</TableHead>
-                      <TableHead className="text-center">Convenio</TableHead>
-                      <TableHead className="text-center">Promoción</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -353,24 +293,11 @@ export function ClientsReportTab() {
                         <TableCell className="font-medium">{c.name}</TableCell>
                         <TableCell>{c.phone || '—'}</TableCell>
                         <TableCell>
-                          <Badge variant="outline">{c.origin || '—'}</Badge>
-                        </TableCell>
-                        <TableCell>
                           <Badge variant={membershipBadgeVariant(c.membershipStatus)}>
                             {c.membershipStatus || '—'}
                           </Badge>
                         </TableCell>
                         <TableCell>{c.planName || '—'}</TableCell>
-                        <TableCell className="text-center">
-                          <Badge variant={c.hasAgreement ? 'default' : 'secondary'}>
-                            {c.hasAgreement ? 'Sí' : 'No'}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <Badge variant={c.hasPromotion ? 'default' : 'secondary'}>
-                            {c.hasPromotion ? 'Sí' : 'No'}
-                          </Badge>
-                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>

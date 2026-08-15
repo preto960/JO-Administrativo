@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '@/lib/api'
 import { toast } from 'sonner'
+import { useAppStore } from '@/stores/use-app-store'
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
@@ -125,6 +126,7 @@ interface FinancialTabProps {
 
 export function FinancialTab({ userRole }: FinancialTabProps) {
   const canEdit = userRole === 'admin' || userRole === 'gerente'
+  const selectedBranchId = useAppStore((s) => s.selectedBranchId)
 
   // ─────────────────────────────────────────────────────────────────────
   // Shared: Currencies
@@ -410,7 +412,48 @@ export function FinancialTab({ userRole }: FinancialTabProps) {
     )
   }
 
-  // ── Render ─────────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────
+  // E) Ingresos por Suscripciones
+  // ─────────────────────────────────────────────────────────────────────
+  const [subDateFrom, setSubDateFrom] = useState(thirtyDaysAgoISO)
+  const [subDateTo, setSubDateTo] = useState(todayISO)
+  const [subPlans, setSubPlans] = useState<Array<{
+    planId: string; planName: string; planType: string; planCost: number;
+    totalQty: number; totalRevenue: number; avgRevenue: number;
+  }>>([])
+  const [subSummary, setSubSummary] = useState<{ totalQty: number; totalRevenue: number; topPlan: string | null; topPlanQty: number } | null>(null)
+  const [subDetails, setSubDetails] = useState<Array<{
+    id: string; date: string; clientName: string; planName: string; planType: string; revenue: number; userName: string;
+  }>>([])
+  const [loadingSub, setLoadingSub] = useState(false)
+  const [subGenerated, setSubGenerated] = useState(false)
+  const [showSubDetails, setShowSubDetails] = useState(false)
+
+  const handleGenerateSubRevenue = async () => {
+    if (!subDateFrom || !subDateTo) {
+      toast.error('Selecciona las fechas')
+      return
+    }
+    setLoadingSub(true)
+    const params = new URLSearchParams()
+    params.set('dateFrom', subDateFrom)
+    params.set('dateTo', subDateTo)
+    try {
+      const data = await api.get<{
+        plans: typeof subPlans;
+        summary: typeof subSummary;
+        details: typeof subDetails;
+      }>(`/api/reports/financial/subscription-revenue?${params.toString()}`)
+      setSubPlans(data.plans || [])
+      setSubSummary(data.summary || null)
+      setSubDetails(data.details || [])
+      setSubGenerated(true)
+    } catch {
+      toast.error('Error al generar reporte de suscripciones')
+    } finally {
+      setLoadingSub(false)
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -962,6 +1005,22 @@ export function FinancialTab({ userRole }: FinancialTabProps) {
               )}
               Generar
             </Button>
+            {catItems && catItems.length > 0 && (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  const params = new URLSearchParams({
+                    dateFrom: catDateFrom,
+                    dateTo: catDateTo,
+                  })
+                  if (selectedBranchId) params.set('branchId', selectedBranchId)
+                  window.open(`/api/reports/financial/category-revenue/pdf?${params.toString()}`, '_blank')
+                }}
+              >
+                <Download className="mr-2 h-4 w-4" />
+                Descargar PDF
+              </Button>
+            )}
           </div>
 
           {/* Resultados */}
@@ -1035,6 +1094,151 @@ export function FinancialTab({ userRole }: FinancialTabProps) {
               )}
             </>
           ) : null}
+        </CardContent>
+      </Card>
+
+      {/* ═══════════════════════════════════════════════════════════════════
+          E) Ingresos por Suscripciones
+          ═══════════════════════════════════════════════════════════════════ */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Receipt className="h-5 w-5" />
+            Ingresos por Suscripciones
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
+            <div className="space-y-2">
+              <Label htmlFor="sub-from">Desde</Label>
+              <Input
+                id="sub-from"
+                type="date"
+                value={subDateFrom}
+                onChange={(e) => setSubDateFrom(e.target.value)}
+                className="w-full sm:w-44"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="sub-to">Hasta</Label>
+              <Input
+                id="sub-to"
+                type="date"
+                value={subDateTo}
+                onChange={(e) => setSubDateTo(e.target.value)}
+                className="w-full sm:w-44"
+              />
+            </div>
+            <Button onClick={handleGenerateSubRevenue} disabled={loadingSub}>
+              {loadingSub ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Search className="mr-2 h-4 w-4" />
+              )}
+              Generar
+            </Button>
+          </div>
+
+          {/* Resumen */}
+          {subGenerated && subSummary && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="rounded-md border p-3 text-center">
+                <p className="text-xs text-muted-foreground">Total Suscripciones</p>
+                <p className="text-lg font-bold">{subSummary.totalQty}</p>
+              </div>
+              <div className="rounded-md border p-3 text-center">
+                <p className="text-xs text-muted-foreground">Ingresos Totales</p>
+                <p className="text-lg font-bold text-green-600">{fmtMoney(subSummary.totalRevenue)}</p>
+              </div>
+              <div className="rounded-md border p-3 text-center">
+                <p className="text-xs text-muted-foreground">Plan Más Vendido</p>
+                <p className="text-lg font-bold">{subSummary.topPlan || '—'}</p>
+              </div>
+              <div className="rounded-md border p-3 text-center">
+                <p className="text-xs text-muted-foreground">Ventas del Top</p>
+                <p className="text-lg font-bold">{subSummary.topPlanQty}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Tabla por plan */}
+          {loadingSub ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : subPlans.length > 0 ? (
+            <div className="overflow-x-auto rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Plan</TableHead>
+                    <TableHead className="text-center">Tipo</TableHead>
+                    <TableHead className="text-center">Ventas</TableHead>
+                    <TableHead className="text-right">Ingresos</TableHead>
+                    <TableHead className="text-right">Promedio</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {subPlans.map((plan) => (
+                    <TableRow key={plan.planId}>
+                      <TableCell className="font-medium">{plan.planName}</TableCell>
+                      <TableCell className="text-center">
+                        <Badge variant="outline" className="text-xs">
+                          {plan.planType === 'dias' ? 'Por Días' : plan.planType === 'horario' ? 'Por Horario' : 'Por Tickets'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-center font-semibold">{plan.totalQty}</TableCell>
+                      <TableCell className="text-right font-semibold text-green-600">{fmtMoney(plan.totalRevenue)}</TableCell>
+                      <TableCell className="text-right">{fmtMoney(plan.avgRevenue)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          ) : subGenerated ? (
+            <p className="text-center py-8 text-muted-foreground">No hay suscripciones en el período seleccionado</p>
+          ) : null}
+
+          {/* Toggle detalle */}
+          {subGenerated && subDetails.length > 0 && (
+            <Button variant="outline" onClick={() => setShowSubDetails(!showSubDetails)}>
+              {showSubDetails ? 'Ocultar' : 'Ver'} detalle de ventas ({subDetails.length})
+            </Button>
+          )}
+
+          {/* Tabla detalle */}
+          {showSubDetails && subDetails.length > 0 && (
+            <div className="overflow-x-auto rounded-md border max-h-96 overflow-y-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Fecha</TableHead>
+                    <TableHead>Cliente</TableHead>
+                    <TableHead>Plan</TableHead>
+                    <TableHead>Tipo</TableHead>
+                    <TableHead className="text-right">Monto</TableHead>
+                    <TableHead>Cajero</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {subDetails.map((d) => (
+                    <TableRow key={d.id}>
+                      <TableCell className="whitespace-nowrap text-sm">{fmtDate(d.date)}</TableCell>
+                      <TableCell className="font-medium">{d.clientName}</TableCell>
+                      <TableCell>{d.planName}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="text-xs">
+                          {d.planType === 'dias' ? 'Días' : d.planType === 'horario' ? 'Horario' : 'Tickets'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right font-semibold">{fmtMoney(d.revenue)}</TableCell>
+                      <TableCell>{d.userName}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

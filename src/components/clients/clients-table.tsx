@@ -445,6 +445,8 @@ export function ClientsTable() {
       monthAttendanceCount: number;
       monthName: string;
       attendanceMarkedToday: boolean;
+      gymMarkedToday: boolean;
+      tiqueteraMarkedToday: boolean;
     };
   } | null>(null)
 
@@ -1671,10 +1673,10 @@ export function ClientsTable() {
             )}
 
             {/* No cash register warning */}
-            {!openCashRegId && createPaymentMethods.find(m => m.code === createPaymentMethod)?.isCash && (
-              <div className="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-2.5 text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2">
+            {!openCashRegId && (
+              <div className="rounded-md border border-red-300 bg-red-50 dark:border-red-800 dark:bg-red-950/30 p-2.5 text-xs text-red-700 dark:text-red-400 flex items-start gap-2">
                 <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                <span>No hay caja abierta. El pago en efectivo no se registrará en caja.</span>
+                <span><strong>No hay caja abierta.</strong> Debe abrir una caja antes de registrar la suscripción.</span>
               </div>
             )}
 
@@ -1699,7 +1701,7 @@ export function ClientsTable() {
               <Button
                 className="flex-1 bg-primary hover:bg-primary/90 text-white"
                 onClick={handleCreateWithPayment}
-                disabled={creatingAndPaying || !createPaymentMethod}
+                disabled={creatingAndPaying || !createPaymentMethod || !openCashRegId}
               >
                 {creatingAndPaying ? (
                   <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Procesando...</>
@@ -2388,10 +2390,10 @@ export function ClientsTable() {
               </div>
 
               {/* No cash register warning (single mode only) */}
-              {!renewIsHybrid && !openCashRegId && renewMethods.find(m => m.code === (renewHybridPayments[0]?.method || renewPaymentMethod))?.isCash && (
-                <div className="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-2.5 text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2">
+              {!openCashRegId && (
+                <div className="rounded-md border border-red-300 bg-red-50 dark:border-red-800 dark:bg-red-950/30 p-2.5 text-xs text-red-700 dark:text-red-400 flex items-start gap-2">
                   <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                  <span>No hay caja abierta. El pago en efectivo no se registrará en caja.</span>
+                  <span><strong>No hay caja abierta.</strong> Debe abrir una caja antes de renovar suscripciones para registrar correctamente la venta.</span>
                 </div>
               )}
 
@@ -2407,7 +2409,7 @@ export function ClientsTable() {
                 className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
                 size="lg"
                 onClick={handleRenew}
-                disabled={renewing || !renewPlanId || (!renewIsHybrid && !renewHybridPayments[0]?.method && !renewPaymentMethod) || (renewIsHybrid && renewHybridPayments.length === 0)}
+                disabled={renewing || !renewPlanId || !openCashRegId || (!renewIsHybrid && !renewHybridPayments[0]?.method && !renewPaymentMethod) || (renewIsHybrid && renewHybridPayments.length === 0)}
               >
                 {renewing ? (
                   <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Renovando...</>
@@ -2558,16 +2560,33 @@ export function ClientsTable() {
                       <Button
                         className="bg-purple-600 hover:bg-purple-700 text-white"
                         onClick={() => markAttendance('tiquetera')}
-                        disabled={markingAtt || attData.stats.ticketsRemaining <= 0}
-                        title={attData.stats.ticketsRemaining <= 0 ? 'Sin tickets disponibles' : `Usar ticket (${attData.stats.ticketsRemaining} restantes)`}
+                        disabled={markingAtt || !attData.stats.gymMarkedToday || attData.stats.ticketsRemaining <= 0 || attData.stats.tiqueteraMarkedToday}
+                        title={!attData.stats.gymMarkedToday ? 'Primero marque asistencia de gym' : attData.stats.ticketsRemaining <= 0 ? 'Sin tickets disponibles' : attData.stats.tiqueteraMarkedToday ? 'Tiquetera ya usada hoy' : `Usar ticket (${attData.stats.ticketsRemaining} restantes)`}
                       >
                         {markingAtt ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Ticket className="mr-2 h-4 w-4" />}
                         Tiquetera
                       </Button>
                     </div>
                   )}
-                  {/* Plan por tickets con asistencia ya marcada */}
-                  {attData.stats.planType === 'tickets' && attData.stats.attendanceMarkedToday && (
+                  {/* Plan por tickets con gym marcado pero tiquetera no */}
+                  {attData.stats.planType === 'tickets' && attData.stats.gymMarkedToday && !attData.stats.tiqueteraMarkedToday && (
+                    <div className="space-y-2">
+                      <div className="rounded-md bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 p-2 text-center">
+                        <p className="text-xs text-green-700 dark:text-green-400 font-medium">✓ Asistencia gym marcada</p>
+                      </div>
+                      <Button
+                        className="w-full bg-purple-600 hover:bg-purple-700 text-white"
+                        onClick={() => markAttendance('tiquetera')}
+                        disabled={markingAtt || attData.stats.ticketsRemaining <= 0}
+                        title={attData.stats.ticketsRemaining <= 0 ? 'Sin tickets disponibles' : `Usar ticket (${attData.stats.ticketsRemaining} restantes)`}
+                      >
+                        {markingAtt ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Ticket className="mr-2 h-4 w-4" />}
+                        Usar Tiquetera ({attData.stats.ticketsRemaining} restantes)
+                      </Button>
+                    </div>
+                  )}
+                  {/* Plan por tickets con ambas asistencias marcadas */}
+                  {attData.stats.planType === 'tickets' && attData.stats.gymMarkedToday && attData.stats.tiqueteraMarkedToday && (
                     <div className="rounded-md bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 p-3 text-center">
                       <p className="text-sm text-green-700 dark:text-green-400 font-medium">✓ Asistencia ya marcada hoy</p>
                     </div>

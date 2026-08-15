@@ -502,7 +502,7 @@ export function CashRegisterView() {
           branchId: targetBranch,
           inventoryType: 'apertura',
         })
-        const products = (check.items || []).map((item: any) => ({
+        const products = (check.items || []).filter((item: any) => item.initialStock > 0).map((item: any) => ({
           productId: item.productId,
           productName: item.productName,
           initialStock: item.initialStock,
@@ -652,7 +652,7 @@ export function CashRegisterView() {
         branchId: filterBranchId || selectedBranchId,
         inventoryType: 'cierre',
       })
-      const products = (check.items || []).map((item: any) => ({
+      const products = (check.items || []).filter((item: any) => item.initialStock > 0).map((item: any) => ({
         productId: item.productId,
         productName: item.productName,
         initialStock: item.initialStock,

@@ -32,6 +32,7 @@ interface CheckItem {
   notes: string
   discrepancyQty?: number
   discrepancyAmt?: number
+  product?: { id: string; name: string; sku: string } | null
 }
 
 interface InventoryCheck {
@@ -56,18 +57,14 @@ function fmtDate(d: string) {
   })
 }
 
-function StatusBadge({ status }: { status: string }) {
-  if (status === 'verificado')
-    return (
-      <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-        Verificado
-      </Badge>
-    )
-  return (
-    <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
-      Pendiente
-    </Badge>
-  )
+function fmtDateTime(d: string) {
+  return new Date(d).toLocaleDateString('es-VE', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
 }
 
 function InventoryTypeBadge({ type }: { type: string }) {
@@ -115,11 +112,9 @@ export function InventoryCheckTab() {
 
   const [checks, setChecks] = useState<InventoryCheck[]>([])
   const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
 
-  // Edit dialog state
-  const [editCheck, setEditCheck] = useState<InventoryCheck | null>(null)
-  const [editItems, setEditItems] = useState<CheckItem[]>([])
+  // View dialog state
+  const [viewCheck, setViewCheck] = useState<InventoryCheck | null>(null)
 
   // Filtros
   const [filterType, setFilterType] = useState<string>('all')
@@ -149,56 +144,37 @@ export function InventoryCheckTab() {
     fetchChecks()
   }, [filterType, filterDateFrom, filterDateTo, selectedBranchId])
 
-  // ── Open edit dialog ────────────────────────────────────────────────────
+  // ── Open view dialog ────────────────────────────────────────────────────
 
-  const handleOpenEdit = (check: InventoryCheck) => {
-    setEditCheck(check)
-    setEditItems(check.items.map((p) => ({ ...p })))
-  }
-
-  // ── Edit handlers ───────────────────────────────────────────────────────
-
-  const handleStockChange = (productId: string, value: string) => {
-    const num = value === '' ? null : parseInt(value, 10)
-    setEditItems((prev) =>
-      prev.map((p) => (p.productId === productId ? { ...p, verifiedStock: num } : p)),
-    )
-  }
-
-  const handleNotesChange = (productId: string, value: string) => {
-    setEditItems((prev) =>
-      prev.map((p) => (p.productId === productId ? { ...p, notes: value } : p)),
-    )
-  }
-
-  // ── Save / Verify ──────────────────────────────────────────────────────
-
-  const handleSaveAndVerify = async () => {
-    if (!editCheck) return
-    setSaving(true)
-    try {
-      await api.put(`/api/reports/inventory-check/${editCheck.id}`, {
-        items: editItems.map((p) => ({
-          productId: p.productId,
-          verifiedStock: p.verifiedStock,
-          notes: p.notes,
-        })),
-        status: 'verificado',
-      })
-      toast.success('Inventario verificado correctamente')
-      setEditCheck(null)
-      fetchChecks()
-    } catch {
-      toast.error('Error al guardar verificacion')
-    } finally {
-      setSaving(false)
-    }
+  const handleOpenView = (check: InventoryCheck) => {
+    setViewCheck(check)
   }
 
   // ── PDF download ───────────────────────────────────────────────────────
 
   const handleDownloadPdf = (id: string) => {
     window.open(`/api/reports/inventory-check/${id}/pdf`, '_blank')
+  }
+
+  // ── Calculations for view ───────────────────────────────────────────────
+
+  const getCalculations = (items: CheckItem[]) => {
+    const itemsWithStock = items.filter(i => i.initialStock > 0)
+    let totalDiscrepancyQty = 0
+    let totalDiscrepancyAmt = 0
+    let sobrantes = 0
+    let faltantes = 0
+
+    itemsWithStock.forEach(item => {
+      const diffQty = (item.verifiedStock ?? 0) - item.initialStock
+      const diffAmt = diffQty * item.unitPrice
+      totalDiscrepancyQty += diffQty
+      totalDiscrepancyAmt += diffAmt
+      if (diffQty > 0) sobrantes += diffQty
+      if (diffQty < 0) faltantes += Math.abs(diffQty)
+    })
+
+    return { totalDiscrepancyQty, totalDiscrepancyAmt, sobrantes, faltantes, totalItems: itemsWithStock.length }
   }
 
   // ── Render ─────────────────────────────────────────────────────────────
@@ -212,12 +188,11 @@ export function InventoryCheckTab() {
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h3 className="text-lg font-semibold">Verificaciones de Inventario</h3>
+          <h3 className="text-lg font-semibold">Inventario de Cajero</h3>
           <p className="text-sm text-muted-foreground">
             Verificaciones generadas al abrir y cerrar caja
           </p>
         </div>
-
       </div>
 
       {/* Filtros */}
@@ -236,7 +211,6 @@ export function InventoryCheckTab() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos</SelectItem>
-                  <SelectItem value="manual">Manual</SelectItem>
                   <SelectItem value="apertura">Apertura</SelectItem>
                   <SelectItem value="cierre">Cierre</SelectItem>
                 </SelectContent>
@@ -277,7 +251,6 @@ export function InventoryCheckTab() {
                   <TableHead>Tipo</TableHead>
                   <TableHead>Sucursal</TableHead>
                   <TableHead>Cajero</TableHead>
-                  <TableHead>Estado</TableHead>
                   <TableHead className="text-right">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
@@ -285,23 +258,20 @@ export function InventoryCheckTab() {
                 {checks.map((check) => (
                   <TableRow key={check.id}>
                     <TableCell className="whitespace-nowrap text-sm">
-                      {fmtDate(check.checkDate)}
+                      {fmtDateTime(check.checkDate)}
                     </TableCell>
                     <TableCell>
                       <InventoryTypeBadge type={check.inventoryType} />
                     </TableCell>
                     <TableCell>{check.branch?.name || '—'}</TableCell>
                     <TableCell>{check.user?.name || '—'}</TableCell>
-                    <TableCell>
-                      <StatusBadge status={check.status} />
-                    </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1">
                         <Button
                           size="sm"
                           variant="ghost"
-                          onClick={() => handleOpenEdit(check)}
-                          title="Ver/Editar"
+                          onClick={() => handleOpenView(check)}
+                          title="Ver detalle"
                         >
                           <Eye className="h-4 w-4" />
                         </Button>
@@ -319,7 +289,7 @@ export function InventoryCheckTab() {
                 ))}
                 {checks.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
                       <PackageSearch className="mx-auto mb-2 h-8 w-8 opacity-50" />
                       No hay verificaciones de inventario
                     </TableCell>
@@ -331,78 +301,84 @@ export function InventoryCheckTab() {
         </CardContent>
       </Card>
 
-      {/* Edit / View Dialog */}
+      {/* View Dialog (read-only) */}
       <Dialog
-        open={!!editCheck}
+        open={!!viewCheck}
         onOpenChange={(open) => {
-          if (!open) setEditCheck(null)
+          if (!open) setViewCheck(null)
         }}
       >
-        <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="!w-[85vw] !max-w-[85vw] max-h-[90vh] overflow-y-auto p-6">
           <DialogHeader>
             <DialogTitle>
               <div className="flex items-center gap-2">
                 <ClipboardCheck className="h-5 w-5" />
-                Verificacion de Inventario
-                {editCheck && <InventoryTypeBadge type={editCheck.inventoryType} />}
+                Inventario de Cajero
+                {viewCheck && <InventoryTypeBadge type={viewCheck.inventoryType} />}
               </div>
             </DialogTitle>
             <DialogDescription>
-              Fecha: {editCheck ? fmtDate(editCheck.checkDate) : ''} — {editCheck?.branch?.name}
-              {editCheck?.notes && ` — ${editCheck.notes}`}
+              Fecha: {viewCheck ? fmtDateTime(viewCheck.checkDate) : ''} — {viewCheck?.branch?.name} — Cajero: {viewCheck?.user?.name}
             </DialogDescription>
           </DialogHeader>
 
-          {editCheck && (
-            <div className="space-y-4">
-              {/* Items table */}
-              <div className="max-h-96 overflow-y-auto rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Producto</TableHead>
-                      <TableHead className="text-center">Stock Inicial</TableHead>
-                      <TableHead className="text-center">Stock Verificado</TableHead>
-                      <TableHead className="text-center">Diferencia Qty</TableHead>
-                      <TableHead className="text-center">Diferencia $</TableHead>
-                      <TableHead>Novedades</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {editItems.map((item) => {
-                      const diffQty =
-                        item.verifiedStock !== null
-                          ? item.verifiedStock - item.initialStock
-                          : null
-                      const diffMoney = diffQty !== null ? diffQty * item.unitPrice : null
-                      const isVerified = editCheck.status === 'verificado'
-                      const isZeroStock = item.initialStock === 0
+          {viewCheck && (() => {
+            const calc = getCalculations(viewCheck.items)
+            const itemsWithStock = viewCheck.items.filter(i => i.initialStock > 0)
+            return (
+              <div className="space-y-4">
+                {/* Resumen */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="rounded-md border p-3 text-center">
+                    <p className="text-xs text-muted-foreground">Productos verificados</p>
+                    <p className="text-lg font-bold">{calc.totalItems}</p>
+                  </div>
+                  <div className="rounded-md border p-3 text-center">
+                    <p className="text-xs text-muted-foreground">Sobrantes</p>
+                    <p className="text-lg font-bold text-green-600">+{calc.sobrantes}</p>
+                  </div>
+                  <div className="rounded-md border p-3 text-center">
+                    <p className="text-xs text-muted-foreground">Faltantes</p>
+                    <p className="text-lg font-bold text-red-600">-{calc.faltantes}</p>
+                  </div>
+                  <div className="rounded-md border p-3 text-center">
+                    <p className="text-xs text-muted-foreground">Diferencia $</p>
+                    <p className={`text-lg font-bold ${calc.totalDiscrepancyAmt < 0 ? 'text-red-600' : calc.totalDiscrepancyAmt > 0 ? 'text-green-600' : ''}`}>
+                      {calc.totalDiscrepancyAmt > 0 ? '+' : ''}{fmtMoney(calc.totalDiscrepancyAmt)}
+                    </p>
+                  </div>
+                </div>
 
-                      return (
-                        <TableRow key={item.productId} className={isZeroStock ? 'bg-red-50 dark:bg-red-950/20' : ''}>
-                          <TableCell className="font-medium max-w-[180px] truncate">
-                            {item.productName}
-                            {isZeroStock && (
-                              <Badge variant="destructive" className="ml-2 text-[10px] px-1 py-0">
-                                Sin stock
-                              </Badge>
-                            )}
-                          </TableCell>
-                          <TableCell className={`text-center ${isZeroStock ? 'text-red-600 font-semibold' : ''}`}>
-                            {item.initialStock}
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <Input
-                              type="number"
-                              min="0"
-                              value={item.verifiedStock ?? ''}
-                              onChange={(e) => handleStockChange(item.productId, e.target.value)}
-                              className="w-24 mx-auto text-center"
-                              disabled={isVerified}
-                            />
-                          </TableCell>
-                          <TableCell className="text-center">
-                            {diffQty !== null && (
+                {/* Items table — only products with stock > 0 */}
+                <div className="max-h-[50vh] overflow-auto rounded-md border">
+                  <Table className="min-w-[750px]">
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="min-w-[200px]">Producto</TableHead>
+                        <TableHead className="text-center min-w-[100px]">Stock Inicial</TableHead>
+                        <TableHead className="text-center min-w-[120px]">Stock Verificado</TableHead>
+                        <TableHead className="text-center min-w-[100px]">Diferencia Qty</TableHead>
+                        <TableHead className="text-center min-w-[100px]">Diferencia $</TableHead>
+                        <TableHead className="min-w-[180px]">Novedades</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {itemsWithStock.map((item) => {
+                        const diffQty = (item.verifiedStock ?? 0) - item.initialStock
+                        const diffMoney = diffQty * item.unitPrice
+
+                        return (
+                          <TableRow key={item.productId}>
+                            <TableCell className="font-medium whitespace-normal">
+                              {item.productName}
+                            </TableCell>
+                            <TableCell className="text-center whitespace-nowrap">
+                              {item.initialStock}
+                            </TableCell>
+                            <TableCell className="text-center whitespace-nowrap font-semibold">
+                              {item.verifiedStock ?? 0}
+                            </TableCell>
+                            <TableCell className="text-center whitespace-nowrap">
                               <span
                                 className={
                                   diffQty < 0
@@ -414,10 +390,8 @@ export function InventoryCheckTab() {
                               >
                                 {diffQty > 0 ? `+${diffQty}` : diffQty}
                               </span>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-center whitespace-nowrap">
-                            {diffMoney !== null && (
+                            </TableCell>
+                            <TableCell className="text-center whitespace-nowrap">
                               <span
                                 className={
                                   diffMoney < 0
@@ -430,50 +404,45 @@ export function InventoryCheckTab() {
                                 {diffMoney > 0 ? '+' : ''}
                                 {fmtMoney(diffMoney)}
                               </span>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              value={item.notes}
-                              onChange={(e) => handleNotesChange(item.productId, e.target.value)}
-                              placeholder="Novedades..."
-                              className="min-w-[140px]"
-                              disabled={isVerified}
-                            />
+                            </TableCell>
+                            <TableCell className="whitespace-nowrap">
+                              {item.notes || '—'}
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })}
+                      {itemsWithStock.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={6} className="text-center py-6 text-muted-foreground">
+                            No hay productos con stock para verificar
                           </TableCell>
                         </TableRow>
-                      )
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
 
-              {/* Footer actions */}
-              <DialogFooter className="gap-2">
-                <Button
-                  variant="outline"
-                  onClick={() => handleDownloadPdf(editCheck.id)}
-                >
-                  <Download className="mr-2 h-4 w-4" />
-                  Descargar PDF
-                </Button>
-                {editCheck.status !== 'verificado' && (
-                  <Button
-                    onClick={handleSaveAndVerify}
-                    disabled={saving}
-                    className="bg-primary hover:bg-primary/90 text-white"
-                  >
-                    {saving ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <ClipboardCheck className="mr-2 h-4 w-4" />
-                    )}
-                    Guardar y Verificar
-                  </Button>
+                {/* Novedades generales */}
+                {viewCheck.notes && (
+                  <div className="rounded-md border p-3">
+                    <p className="text-sm font-medium mb-1">Novedades generales:</p>
+                    <p className="text-sm text-muted-foreground">{viewCheck.notes}</p>
+                  </div>
                 )}
-              </DialogFooter>
-            </div>
-          )}
+
+                {/* Footer */}
+                <DialogFooter className="gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => handleDownloadPdf(viewCheck.id)}
+                  >
+                    <Download className="mr-2 h-4 w-4" />
+                    Descargar PDF
+                  </Button>
+                </DialogFooter>
+              </div>
+            )
+          })()}
         </DialogContent>
       </Dialog>
     </div>

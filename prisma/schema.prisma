@@ -682,13 +682,15 @@ model Attendance {
   id        String   @id @default(cuid())
   clientId  String
   date      DateTime @default(now())
+  source    String   @default("gym") // "gym" | "tiquetera"
   createdAt DateTime @default(now())
 
   client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
-  @@unique([clientId, date])
+  @@unique([clientId, date, source])
   @@index([clientId])
   @@index([date])
+  @@index([source])
 
   @@map("Attendance")
 }

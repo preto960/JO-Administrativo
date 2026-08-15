@@ -102,6 +102,18 @@ export async function GET(
       return attStr === todayDate.toISOString().split('T')[0]
     })
 
+    // Verificar si gym ya fue marcado hoy (independiente de tiquetera)
+    const gymMarkedToday = attendances.some(a => {
+      const attStr = a.date.toISOString().split('T')[0]
+      return attStr === todayDate.toISOString().split('T')[0] && (a.source === 'gym' || !a.source)
+    })
+
+    // Verificar si tiquetera ya fue marcada hoy
+    const tiqueteraMarkedToday = attendances.some(a => {
+      const attStr = a.date.toISOString().split('T')[0]
+      return attStr === todayDate.toISOString().split('T')[0] && a.source === 'tiquetera'
+    })
+
     return NextResponse.json({
       attendances,
       stats: {
@@ -117,6 +129,8 @@ export async function GET(
         monthAttendanceCount,
         monthName: appNow.toLocaleDateString(appTz.locale, { timeZone: appTz.timezone, month: 'long', year: 'numeric' }),
         attendanceMarkedToday: !!todayAttendance,
+        gymMarkedToday,
+        tiqueteraMarkedToday,
       },
     })
   } catch (error) {
@@ -219,22 +233,34 @@ export async function POST(
     // ── POR TICKETS ──
     if (planType === 'tickets') {
       if (source === 'tiquetera') {
-        // Asistencia por tiquetera: descontar ticket Y marcar asistencia gym
-        if (membership.ticketsRemaining <= 0) {
-          return NextResponse.json({ error: 'No hay tickets disponibles' }, { status: 400 })
+        // Asistencia por tiquetera: verificar que gym ya fue marcado hoy
+        const existingGym = await db.attendance.findFirst({
+          where: {
+            clientId: id,
+            date: today,
+            source: { in: ['gym', ''] }, // registros sin source cuentan como gym
+          },
+        })
+        if (!existingGym) {
+          return NextResponse.json({ error: 'Debe marcar la asistencia de gym antes de usar tiquetera' }, { status: 400 })
         }
 
-        const existing = await db.attendance.findUnique({
-          where: { clientId_date: { clientId: id, date: today } },
+        // Verificar si tiquetera ya fue marcada hoy
+        const existingTiquetera = await db.attendance.findFirst({
+          where: { clientId: id, date: today, source: 'tiquetera' },
         })
-        if (existing) {
-          return NextResponse.json({ error: 'Ya se marcó la asistencia de hoy para este cliente' }, { status: 409 })
+        if (existingTiquetera) {
+          return NextResponse.json({ error: 'Ya se usó tiquetera hoy para este cliente' }, { status: 409 })
+        }
+
+        if (membership.ticketsRemaining <= 0) {
+          return NextResponse.json({ error: 'No hay tickets disponibles' }, { status: 400 })
         }
 
         const remaining = membership.ticketsRemaining - 1
 
         await db.$transaction([
-          db.attendance.create({ data: { clientId: id, date: today } }),
+          db.attendance.create({ data: { clientId: id, date: today, source: 'tiquetera' } }),
           db.client.update({ where: { id }, data: { lastAttendance: new Date() } }),
           db.clientMembership.update({
             where: { id: membership.id },
