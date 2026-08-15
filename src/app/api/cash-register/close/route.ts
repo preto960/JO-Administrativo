@@ -43,11 +43,15 @@ export async function POST(request: NextRequest) {
     // Crear inventario de cierre si se envían items verificados
     if (inventoryItems && Array.isArray(inventoryItems) && inventoryItems.length > 0) {
       try {
+        // Use timezone-aware date for checkDate
+        const invCheckDate = await fetchNow()
+
         await db.$transaction(async (tx) => {
           const invCheck = await tx.inventoryCheck.create({
             data: {
               branchId: register.branchId,
               userId: register.userId,
+              checkDate: invCheckDate,
               status: 'verificado',
               notes: inventoryNotes || 'Inventario de cierre de caja',
               inventoryType: 'cierre',

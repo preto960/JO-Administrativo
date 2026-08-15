@@ -58,12 +58,14 @@ function fmtDate(d: string) {
 }
 
 function fmtDateTime(d: string) {
+  const tz = (typeof window !== 'undefined' && (window as any).__APP_TZ__) || 'America/Bogota'
   return new Date(d).toLocaleDateString('es-VE', {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
+    timeZone: tz,
   })
 }
 
@@ -95,13 +97,18 @@ function fmtMoney(value: number) {
 }
 
 function todayISO(): string {
-  return new Date().toISOString().split('T')[0]
+  // Use the app's timezone instead of UTC
+  const tz = (typeof window !== 'undefined' && (window as any).__APP_TZ__) || 'America/Bogota'
+  return new Date().toLocaleDateString('en-CA', { timeZone: tz })
 }
 
 function thirtyDaysAgoISO(): string {
-  const d = new Date()
-  d.setDate(d.getDate() - 30)
-  return d.toISOString().split('T')[0]
+  const tz = (typeof window !== 'undefined' && (window as any).__APP_TZ__) || 'America/Bogota'
+  const now = new Date()
+  const localStr = now.toLocaleString('en-US', { timeZone: tz })
+  const localNow = new Date(localStr)
+  localNow.setDate(localNow.getDate() - 30)
+  return localNow.toLocaleDateString('en-CA', { timeZone: tz })
 }
 
 // ── Component ──────────────────────────────────────────────────────────────

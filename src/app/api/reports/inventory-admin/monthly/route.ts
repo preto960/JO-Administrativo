@@ -2,6 +2,7 @@ import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/require-auth'
 import { getPermissions } from '@/lib/permissions'
+import { fetchAppTz } from '@/lib/tz-helpers'
 
 // GET /api/reports/inventory-admin/monthly — Monthly inventory report for admin
 export async function GET(request: NextRequest) {
@@ -22,16 +23,19 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'yearMonth es requerido (formato: "2025-07")' }, { status: 400 })
     }
 
-    // branchId is optional — when not provided, fetch all branches
-
     // Parse year and month
-    const [yearStr, monthStr] = yearMonth.split('-')
-    const year = parseInt(yearStr, 10)
-    const month = parseInt(monthStr, 10)
+    const [year, mon] = yearMonth.split('-').map(Number)
 
-    // Date range for the month
-    const startDate = new Date(year, month - 1, 1)
-    const endDate = new Date(year, month, 0, 23, 59, 59, 999)
+    // Build timezone-aware date range for the month
+    const appTz = await fetchAppTz()
+    const firstDayStr = `${year}-${String(mon).padStart(2, '0')}-01`
+    const refDate = new Date(firstDayStr + 'T12:00:00')
+    const localDate = new Date(refDate.toLocaleString('en-US', { timeZone: appTz.timezone }))
+    const offsetMs = localDate.getTime() - refDate.getTime()
+    const offsetHours = offsetMs / 3600000
+
+    const startDate = new Date(Date.UTC(year, mon - 1, 1, -offsetHours, 0, 0, 0))
+    const endDate = new Date(Date.UTC(year, mon, 0, 24 - offsetHours, 59, 59, 999))
 
     // Build branch filter — null means all branches
     const branchFilter: Record<string, unknown> = branchId ? { branchId } : {}

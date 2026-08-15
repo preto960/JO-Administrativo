@@ -2,6 +2,7 @@ import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/require-auth'
 import { getPermissions } from '@/lib/permissions'
+import { fetchAppTz } from '@/lib/tz-helpers'
 
 // GET /api/reports/inventory-check — List inventory checks with filters
 export async function GET(request: NextRequest) {
@@ -26,12 +27,33 @@ export async function GET(request: NextRequest) {
     if (inventoryType) where.inventoryType = inventoryType
 
     if (dateFrom || dateTo) {
+      const appTz = await fetchAppTz()
+
       where.checkDate = {}
       if (dateFrom) {
-        (where.checkDate as Record<string, unknown>).gte = new Date(dateFrom)
+        // dateFrom is a local date string (YYYY-MM-DD) in the app's timezone
+        // We need to convert it to UTC for the DB query
+        const fromDate = new Date(`${dateFrom}T00:00:00`)
+        const localDate = new Date(fromDate.toLocaleString('en-US', { timeZone: appTz.timezone }))
+        const offsetMs = localDate.getTime() - fromDate.getTime()
+        const offsetHours = offsetMs / 3600000
+        const utcStart = new Date(Date.UTC(
+          fromDate.getFullYear(), fromDate.getMonth(), fromDate.getDate(),
+          -offsetHours, 0, 0, 0
+        ))
+        ;(where.checkDate as Record<string, unknown>).gte = utcStart
       }
       if (dateTo) {
-        (where.checkDate as Record<string, unknown>).lte = new Date(dateTo)
+        // dateTo is a local date string — end of that day in app timezone
+        const toDate = new Date(`${dateTo}T23:59:59.999`)
+        const localDate = new Date(toDate.toLocaleString('en-US', { timeZone: appTz.timezone }))
+        const offsetMs = localDate.getTime() - toDate.getTime()
+        const offsetHours = offsetMs / 3600000
+        const utcEnd = new Date(Date.UTC(
+          toDate.getFullYear(), toDate.getMonth(), toDate.getDate(),
+          24 - offsetHours, 59, 59, 999
+        ))
+        ;(where.checkDate as Record<string, unknown>).lte = utcEnd
       }
     }
 
@@ -79,6 +101,10 @@ export async function POST(request: NextRequest) {
     const validTypes = ['manual', 'apertura', 'cierre']
     const type = validTypes.includes(inventoryType) ? inventoryType : 'manual'
 
+    // Use timezone-aware now for checkDate
+    const { fetchNow } = await import('@/lib/tz-helpers')
+    const checkDate = await fetchNow()
+
     // Get all inventory items for the branch
     const inventory = await db.inventory.findMany({
       where: { branchId },
@@ -97,6 +123,7 @@ export async function POST(request: NextRequest) {
         data: {
           branchId,
           userId: auth.userId,
+          checkDate, // timezone-aware date
           status: 'pendiente',
           notes: notes || null,
           inventoryType: type,

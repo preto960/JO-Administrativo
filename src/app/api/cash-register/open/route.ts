@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { resolveBranchId } from '@/lib/resolve-branch'
 import { logAction } from '@/lib/audit-log'
 import { requireAuth } from '@/lib/require-auth'
-import { fetchAppTz } from '@/lib/tz-helpers'
+import { fetchAppTz, fetchNow } from '@/lib/tz-helpers'
 
 const MAX_INITIAL_AMOUNT = 500000
 
@@ -64,10 +64,14 @@ export async function POST(request: NextRequest) {
         })
         const activeItems = inventory.filter(inv => inv.product.active)
 
+        // Use timezone-aware date for checkDate
+        const checkDate = await fetchNow()
+
         const invCheck = await tx.inventoryCheck.create({
           data: {
             branchId: effectiveBranchId,
             userId,
+            checkDate,
             status: 'verificado', // se crea ya verificado
             notes: inventoryNotes || 'Inventario de apertura de caja',
             inventoryType: 'apertura',

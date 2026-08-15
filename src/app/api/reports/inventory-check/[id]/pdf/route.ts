@@ -2,6 +2,7 @@ import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/require-auth'
 import { getPermissions } from '@/lib/permissions'
+import { fetchAppTz } from '@/lib/tz-helpers'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 
@@ -41,10 +42,11 @@ export async function GET(
 
     const settings = await db.settings.findFirst()
     const businessName = settings?.businessName || 'JO-Administrativo'
+    const appTz = await fetchAppTz()
 
-    const pdfBuffer = generateInventoryCheckPDF(check, businessName)
+    const pdfBuffer = generateInventoryCheckPDF(check, businessName, appTz.timezone)
 
-    const filename = `conteo_inventario_${check.branch.name}_${check.checkDate.toISOString().slice(0, 10)}.pdf`
+    const filename = `conteo_inventario_${check.branch.name}_${check.checkDate.toLocaleDateString('en-CA', { timeZone: appTz.timezone })}.pdf`
 
     return new NextResponse(pdfBuffer, {
       headers: {
@@ -79,7 +81,8 @@ function generateInventoryCheckPDF(
       product: { sku: string | null } | null
     }[]
   },
-  businessName: string
+  businessName: string,
+  timezone: string = 'America/Bogota'
 ): Uint8Array {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' })
 
@@ -111,6 +114,7 @@ function generateInventoryCheckPDF(
     year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
+    timeZone: timezone,
   })
   doc.text(`Fecha: ${dateStr}`, margin, y)
   doc.text(`Sucursal: ${check.branch.name}`, pageW - margin, y, { align: 'right' })
