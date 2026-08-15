@@ -137,6 +137,9 @@ export function ProductsTable() {
   const [formImageUrl, setFormImageUrl] = useState('')
   const [uploadingImage, setUploadingImage] = useState(false)
   const [saving, setSaving] = useState(false)
+  // Feature #8: Additional stock tracking
+  const [formStockAdd, setFormStockAdd] = useState('')
+  const [formStockReason, setFormStockReason] = useState('')
 
   // ── Data fetching ────────────────────────────────────────────────────────
 
@@ -219,6 +222,8 @@ export function ProductsTable() {
     setFormCurrency('')
     setFormActive(true)
     setFormImageUrl('')
+    setFormStockAdd('')
+    setFormStockReason('')
     setEditProduct(null)
   }, [])
 
@@ -252,6 +257,8 @@ export function ProductsTable() {
         setFormMinStock(product.inventories[0]?.minStock?.toString() || '')
         setFormBranchPrice('')
       }
+      setFormStockAdd('')
+      setFormStockReason('')
       setDialogOpen(true)
     },
     [selectedBranchId]
@@ -299,6 +306,9 @@ export function ProductsTable() {
             active: formActive,
             initialStock: formStock !== '' ? parseInt(formStock) : undefined,
             minStock: formMinStock !== '' ? parseInt(formMinStock) : undefined,
+            // Feature #8: Additional stock with reason
+            stockAdd: formStockAdd !== '' ? parseInt(formStockAdd) : undefined,
+            stockReason: formStockAdd !== '' ? (formStockReason.trim() || 'Sin motivo especificado') : undefined,
           }),
         })
         const data = await res.json()
@@ -804,12 +814,13 @@ export function ProductsTable() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="psku">SKU</Label>
+                <Label htmlFor="psku">SKU {editProduct && formSku ? <span className="text-xs text-muted-foreground font-normal">(bloqueado)</span> : null}</Label>
                 <Input
                   id="psku"
                   value={formSku}
                   onChange={(e) => setFormSku(e.target.value)}
                   placeholder="EMP-001"
+                  disabled={!!editProduct && !!formSku}
                 />
               </div>
               <div className="space-y-2">
@@ -874,7 +885,7 @@ export function ProductsTable() {
             )}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="pstock">Stock Inicial</Label>
+                <Label htmlFor="pstock">Stock Inicial {editProduct ? <span className="text-xs text-muted-foreground font-normal">(solo lectura)</span> : null}</Label>
                 <Input
                   id="pstock"
                   type="number"
@@ -883,6 +894,8 @@ export function ProductsTable() {
                   value={formStock}
                   onChange={(e) => setFormStock(e.target.value)}
                   placeholder="0"
+                  disabled={!!editProduct}
+                  className={editProduct ? 'bg-muted' : ''}
                 />
               </div>
               <div className="space-y-2">
@@ -898,6 +911,32 @@ export function ProductsTable() {
                 />
               </div>
             </div>
+            {/* Feature #8: Additional stock for existing products */}
+            {editProduct && (
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="pstockadd">Agregar al Stock</Label>
+                  <Input
+                    id="pstockadd"
+                    type="number"
+                    step="1"
+                    min="0"
+                    value={formStockAdd}
+                    onChange={(e) => setFormStockAdd(e.target.value)}
+                    placeholder="0"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="pstockreason">Motivo / Nota</Label>
+                  <Input
+                    id="pstockreason"
+                    value={formStockReason}
+                    onChange={(e) => setFormStockReason(e.target.value)}
+                    placeholder="Ej: Llegada de nuevo pedido"
+                  />
+                </div>
+              </div>
+            )}
             {multiEnabled && (
               <div className="space-y-2">
                 <Label htmlFor="pcurrency">Moneda</Label>

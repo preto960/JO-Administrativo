@@ -173,6 +173,32 @@ export async function PUT(
       }
     }
 
+    // Feature #8: Handle additional stock with audit trail
+    if (body.stockAdd !== undefined && body.stockAdd > 0) {
+      const branchId = body.branchId || await resolveBranchId()
+      const inventory = await db.inventory.findFirst({
+        where: { productId: id, branchId },
+      })
+      if (inventory) {
+        const newStock = inventory.stock + body.stockAdd
+        await db.inventory.update({
+          where: { id: inventory.id },
+          data: { stock: newStock },
+        })
+        // Create an inventory adjustment record for tracking
+        await db.inventoryAdjustment.create({
+          data: {
+            productId: id,
+            branchId,
+            type: 'aumento',
+            quantity: body.stockAdd,
+            reason: body.stockReason || 'Agregado desde edición de producto',
+            userId: auth.userId,
+          },
+        })
+      }
+    }
+
     return NextResponse.json(product)
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
