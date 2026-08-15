@@ -14,6 +14,7 @@ export async function GET(request: NextRequest) {
     const dateFrom = searchParams.get('dateFrom')
     const dateTo = searchParams.get('dateTo')
     const status = searchParams.get('status') || undefined
+    const inventoryType = searchParams.get('inventoryType') || undefined
 
     // Cajero solo ve sus propios conteos; admin/gerente ven todos
     const isCajero = auth.role === 'cajero'
@@ -22,6 +23,7 @@ export async function GET(request: NextRequest) {
     if (branchId) where.branchId = branchId
     if (isCajero) where.userId = auth.userId
     if (status) where.status = status
+    if (inventoryType) where.inventoryType = inventoryType
 
     if (dateFrom || dateTo) {
       where.checkDate = {}
@@ -67,11 +69,15 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { branchId, notes } = body
+    const { branchId, notes, inventoryType, cashRegId } = body
 
     if (!branchId) {
       return NextResponse.json({ error: 'branchId es requerido' }, { status: 400 })
     }
+
+    // Validar inventoryType si se proporciona
+    const validTypes = ['manual', 'apertura', 'cierre']
+    const type = validTypes.includes(inventoryType) ? inventoryType : 'manual'
 
     // Get all inventory items for the branch
     const inventory = await db.inventory.findMany({
@@ -93,6 +99,8 @@ export async function POST(request: NextRequest) {
           userId: auth.userId,
           status: 'pendiente',
           notes: notes || null,
+          inventoryType: type,
+          cashRegId: cashRegId || null,
         },
       })
 

@@ -95,6 +95,13 @@ export async function GET(
     const totalAttendances = attendances.length
     const monthAttendanceCount = monthAttendances.length
 
+    // Verificar si ya se marcó asistencia hoy
+    const todayDate = await fetchToday(appTz.timezone)
+    const todayAttendance = attendances.find(a => {
+      const attStr = a.date.toISOString().split('T')[0]
+      return attStr === todayDate.toISOString().split('T')[0]
+    })
+
     return NextResponse.json({
       attendances,
       stats: {
@@ -109,6 +116,7 @@ export async function GET(
         totalAttendances,
         monthAttendanceCount,
         monthName: appNow.toLocaleDateString(appTz.locale, { timeZone: appTz.timezone, month: 'long', year: 'numeric' }),
+        attendanceMarkedToday: !!todayAttendance,
       },
     })
   } catch (error) {
@@ -131,6 +139,9 @@ export async function POST(
   const { id } = await params
 
   try {
+    const body = await request.json()
+    const source = body.source || 'gym' // 'gym' | 'tiquetera'
+
     const client = await db.client.findUnique({
       where: { id },
       include: {
@@ -147,19 +158,17 @@ export async function POST(
 
     const membership = client.memberships[0]
 
-    // ── Validate membership status ──
+    // ── Validar estado de membresía ──
     if (!membership || membership.status !== 'Activo') {
       return NextResponse.json({ error: 'El cliente no tiene una membresía activa' }, { status: 400 })
     }
 
     const planType = membership.planType || membership.plan?.planType || 'dias'
     const appTz = await fetchAppTz()
+    const today = await fetchToday()
 
-    // ── POR DÍAS: standard behavior (existing) ──
+    // ── POR DÍAS ──
     if (planType === 'dias') {
-      const today = await fetchToday()
-
-      // Check if already marked today
       const existing = await db.attendance.findUnique({
         where: { clientId_date: { clientId: id, date: today } },
       })
@@ -175,7 +184,7 @@ export async function POST(
       return NextResponse.json({ message: 'Asistencia marcada (plan por días)' }, { status: 201 })
     }
 
-    // ── POR HORARIO: only allow within schedule ──
+    // ── POR HORARIO ──
     if (planType === 'horario') {
       const startTime = membership.startTime || membership.plan?.startTime
       const endTime = membership.endTime || membership.plan?.endTime
@@ -192,9 +201,6 @@ export async function POST(
         }, { status: 400 })
       }
 
-      const today = await fetchToday()
-
-      // Check if already marked today
       const existing = await db.attendance.findUnique({
         where: { clientId_date: { clientId: id, date: today } },
       })
@@ -210,57 +216,74 @@ export async function POST(
       return NextResponse.json({ message: 'Asistencia marcada (plan por horario)' }, { status: 201 })
     }
 
-    // ── POR TICKETS: decrement ticket count ──
+    // ── POR TICKETS ──
     if (planType === 'tickets') {
-      if (membership.ticketsRemaining <= 0) {
-        return NextResponse.json({ error: 'El cliente no tiene tickets disponibles' }, { status: 400 })
-      }
+      if (source === 'tiquetera') {
+        // Asistencia por tiquetera: descontar ticket Y marcar asistencia gym
+        if (membership.ticketsRemaining <= 0) {
+          return NextResponse.json({ error: 'No hay tickets disponibles' }, { status: 400 })
+        }
 
-      const today = await fetchToday()
-
-      // Check if already marked today (prevent double attendance per day even with tickets)
-      const existing = await db.attendance.findUnique({
-        where: { clientId_date: { clientId: id, date: today } },
-      })
-      if (existing) {
-        return NextResponse.json({ error: 'Ya se marcó la asistencia de hoy para este cliente' }, { status: 409 })
-      }
-
-      await db.$transaction([
-        db.attendance.create({ data: { clientId: id, date: today } }),
-        db.client.update({ where: { id }, data: { lastAttendance: new Date() } }),
-        db.clientMembership.update({
-          where: { id: membership.id },
-          data: {
-            ticketsRemaining: { decrement: 1 },
-          },
-        }),
-      ])
-
-      const remaining = membership.ticketsRemaining - 1
-
-      // If no tickets left, expire the membership
-      if (remaining <= 0) {
-        await db.clientMembership.update({
-          where: { id: membership.id },
-          data: {
-            status: 'Vencido',
-            ticketsRemaining: 0,
-          },
+        const existing = await db.attendance.findUnique({
+          where: { clientId_date: { clientId: id, date: today } },
         })
+        if (existing) {
+          return NextResponse.json({ error: 'Ya se marcó la asistencia de hoy para este cliente' }, { status: 409 })
+        }
+
+        const remaining = membership.ticketsRemaining - 1
+
+        await db.$transaction([
+          db.attendance.create({ data: { clientId: id, date: today } }),
+          db.client.update({ where: { id }, data: { lastAttendance: new Date() } }),
+          db.clientMembership.update({
+            where: { id: membership.id },
+            data: { ticketsRemaining: { decrement: 1 } },
+          }),
+        ])
+
+        // Si no quedan tickets, vencer la membresía
+        if (remaining <= 0) {
+          await db.clientMembership.update({
+            where: { id: membership.id },
+            data: { status: 'Vencido', ticketsRemaining: 0 },
+          })
+          return NextResponse.json({
+            message: 'Asistencia por tiquetera marcada. Último ticket utilizado. Membresía vencida.',
+            source: 'tiquetera',
+            ticketsRemaining: 0,
+          }, { status: 201 })
+        }
+
         return NextResponse.json({
-          message: 'Asistencia marcada. Último ticket utilizado. Membresía vencida.',
-          ticketsRemaining: 0,
+          message: `Asistencia por tiquetera marcada. Tickets restantes: ${remaining}`,
+          source: 'tiquetera',
+          ticketsRemaining: remaining,
+        }, { status: 201 })
+
+      } else if (source === 'gym') {
+        // Asistencia gym normal: SOLO marcar asistencia, NO descontar ticket
+        const existing = await db.attendance.findUnique({
+          where: { clientId_date: { clientId: id, date: today } },
+        })
+        if (existing) {
+          return NextResponse.json({ error: 'Ya se marcó la asistencia de hoy para este cliente' }, { status: 409 })
+        }
+
+        await db.$transaction([
+          db.attendance.create({ data: { clientId: id, date: today } }),
+          db.client.update({ where: { id }, data: { lastAttendance: new Date() } }),
+        ])
+
+        return NextResponse.json({
+          message: 'Asistencia gym marcada (ticket NO consumido)',
+          source: 'gym',
+          ticketsRemaining: membership.ticketsRemaining,
         }, { status: 201 })
       }
-
-      return NextResponse.json({
-        message: `Asistencia marcada (ticket consumido). Tickets restantes: ${remaining}`,
-        ticketsRemaining: remaining,
-      }, { status: 201 })
     }
 
-    // Fallback (shouldn't reach here)
+    // Fallback
     return NextResponse.json({ error: 'Tipo de plan no reconocido' }, { status: 400 })
   } catch (error) {
     console.error('[Attendance POST]', error)

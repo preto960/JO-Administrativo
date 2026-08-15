@@ -444,6 +444,7 @@ export function ClientsTable() {
       totalAttendances: number;
       monthAttendanceCount: number;
       monthName: string;
+      attendanceMarkedToday: boolean;
     };
   } | null>(null)
 
@@ -1094,12 +1095,13 @@ export function ClientsTable() {
     }
   }
 
-  const markAttendance = async () => {
+  const markAttendance = async (source: 'gym' | 'tiquetera' = 'gym') => {
     if (!attClient) return
     setMarkingAtt(true)
     try {
-      await api.post(`/api/clients/${attClient.id}/attendance`, {})
-      toast.success('Asistencia marcada correctamente')
+      await api.post(`/api/clients/${attClient.id}/attendance`, { source })
+      const label = source === 'tiquetera' ? 'Asistencia por tiquetera marcada' : 'Asistencia gym marcada'
+      toast.success(label)
       // Refresh attendance data
       openAttendance(attClient)
       fetchClients()
@@ -2539,16 +2541,54 @@ export function ClientsTable() {
                 </div>
               )}
 
-              {/* Mark attendance button */}
-              {(canManage || canMarkAtt) && (
-                <Button
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white"
-                  onClick={markAttendance}
-                  disabled={markingAtt}
-                >
-                  {markingAtt ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
-                  {markingAtt ? 'Marcando...' : 'Marcar Asistencia de Hoy'}
-                </Button>
+              {/* Botones de asistencia */}
+              {(canManage || canMarkAtt) && attData && (
+                <div className="space-y-2">
+                  {/* Plan por tickets: mostrar ambos botones */}
+                  {attData.stats.planType === 'tickets' && !attData.stats.attendanceMarkedToday && (
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button
+                        className="bg-blue-600 hover:bg-blue-700 text-white"
+                        onClick={() => markAttendance('gym')}
+                        disabled={markingAtt}
+                      >
+                        {markingAtt ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
+                        Asistencia Gym
+                      </Button>
+                      <Button
+                        className="bg-purple-600 hover:bg-purple-700 text-white"
+                        onClick={() => markAttendance('tiquetera')}
+                        disabled={markingAtt || attData.stats.ticketsRemaining <= 0}
+                        title={attData.stats.ticketsRemaining <= 0 ? 'Sin tickets disponibles' : `Usar ticket (${attData.stats.ticketsRemaining} restantes)`}
+                      >
+                        {markingAtt ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Ticket className="mr-2 h-4 w-4" />}
+                        Tiquetera
+                      </Button>
+                    </div>
+                  )}
+                  {/* Plan por tickets con asistencia ya marcada */}
+                  {attData.stats.planType === 'tickets' && attData.stats.attendanceMarkedToday && (
+                    <div className="rounded-md bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 p-3 text-center">
+                      <p className="text-sm text-green-700 dark:text-green-400 font-medium">✓ Asistencia ya marcada hoy</p>
+                    </div>
+                  )}
+                  {/* Plan por días/horario: botón simple */}
+                  {attData.stats.planType !== 'tickets' && !attData.stats.attendanceMarkedToday && (
+                    <Button
+                      className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                      onClick={() => markAttendance('gym')}
+                      disabled={markingAtt}
+                    >
+                      {markingAtt ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
+                      {markingAtt ? 'Marcando...' : 'Marcar Asistencia de Hoy'}
+                    </Button>
+                  )}
+                  {attData.stats.planType !== 'tickets' && attData.stats.attendanceMarkedToday && (
+                    <div className="rounded-md bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 p-3 text-center">
+                      <p className="text-sm text-green-700 dark:text-green-400 font-medium">✓ Asistencia ya marcada hoy</p>
+                    </div>
+                  )}
+                </div>
               )}
 
               {!canManage && !canMarkAtt && (

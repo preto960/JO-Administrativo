@@ -714,14 +714,16 @@ model SalesTarget {
 // ── Reportes: Inventario ──
 
 model InventoryCheck {
-  id        String   @id @default(cuid())
-  branchId  String
-  userId    String
-  checkDate DateTime @default(now())
-  status    String   @default("pendiente") // "pendiente" | "verificado"
-  notes     String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id            String   @id @default(cuid())
+  branchId      String
+  userId        String
+  checkDate     DateTime @default(now())
+  status        String   @default("pendiente") // "pendiente" | "verificado"
+  inventoryType String   @default("manual") // "manual" | "apertura" | "cierre"
+  cashRegId     String?
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   user   User     @relation(fields: [userId], references: [id])
   branch Branch   @relation(fields: [branchId], references: [id])
@@ -729,6 +731,7 @@ model InventoryCheck {
 
   @@index([branchId])
   @@index([checkDate])
+  @@index([inventoryType])
 
   @@map("InventoryCheck")
 }

@@ -19,6 +19,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
+  DialogFooter,
 } from '@/components/ui/dialog'
 import {
   Select,
@@ -61,7 +62,7 @@ import {
   Wallet, Plus, ArrowUpCircle, ArrowDownCircle, Lock, Eye, Loader2,
   UserCircle, AlertTriangle, Banknote, ClipboardCheck, CheckCircle2,
   Clock, ShoppingCart, Building2, TrendingUp, CircleDollarSign,
-  ChevronDown, ChevronRight, Printer,
+  ChevronDown, ChevronRight, Printer, PackageSearch,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -324,6 +325,16 @@ export function CashRegisterView() {
   const [showClosedAlert, setShowClosedAlert] = useState(false)
   const [closedInfo, setClosedInfo] = useState<{ name: string | null; branchName: string; actual: number; cutDate: string } | null>(null)
 
+  // Inventario de apertura/cierre
+  const [showInventoryVerify, setShowInventoryVerify] = useState(false)
+  const [inventoryAction, setInventoryAction] = useState<'open' | 'close' | null>(null)
+  const [inventoryProducts, setInventoryProducts] = useState<Array<{
+    productId: string; productName: string; initialStock: number; verifiedStock: number; unitPrice: number; notes: string
+  }>>([])
+  const [inventoryNotes, setInventoryNotes] = useState('')
+  const [loadingInventory, setLoadingInventory] = useState(false)
+  const [inventoryCheckId, setInventoryCheckId] = useState<string | null>(null)
+
   const fetchData = async (branchOverride?: string) => {
     try {
       const branchParam = branchOverride || filterBranchId || selectedBranchId || ''
@@ -483,20 +494,100 @@ export function CashRegisterView() {
         setSaving(false)
         return
       }
-      await api.post('/api/cash-register/open', {
-        userId: effectiveUserId,
-        initialAmt: amt,
-        name: registerName.trim() || undefined,
-        branchId: targetBranch,
-      })
-      toast.success('Caja abierta exitosamente')
-      setShowOpen(false)
-      setRegisterName('')
-      setSelectedUserId('')
-      setInitialAmt('') // Fix 5: Reset initial amount after success
-      fetchData(targetBranch)
+
+      // Cargar inventario para verificación
+      try {
+        setLoadingInventory(true)
+        const check = await api.post<any>('/api/reports/inventory-check', {
+          branchId: targetBranch,
+          inventoryType: 'apertura',
+        })
+        const products = (check.items || []).map((item: any) => ({
+          productId: item.productId,
+          productName: item.productName,
+          initialStock: item.initialStock,
+          verifiedStock: item.initialStock,
+          unitPrice: item.unitPrice,
+          notes: '',
+        }))
+        setInventoryProducts(products)
+        setInventoryNotes('')
+        setInventoryAction('open')
+        setShowInventoryVerify(true)
+        // Guardar el ID del check para pasar al abrir
+        setInventoryCheckId(check.id)
+      } catch (invErr) {
+        // Si falla el inventario, abrir caja sin verificación
+        console.warn('No se pudo crear inventario de apertura, abriendo caja directamente')
+        await api.post('/api/cash-register/open', {
+          userId: effectiveUserId,
+          initialAmt: amt,
+          name: registerName.trim() || undefined,
+          branchId: targetBranch,
+          skipInventory: true,
+        })
+        toast.success('Caja abierta exitosamente')
+        setShowOpen(false)
+        setRegisterName('')
+        setSelectedUserId('')
+        setInitialAmt('')
+        fetchData(targetBranch)
+      } finally {
+        setLoadingInventory(false)
+      }
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Error al abrir caja'
+      toast.error(msg)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const confirmInventoryAndProceed = async () => {
+    setSaving(true)
+    try {
+      if (inventoryAction === 'open') {
+        const effectiveUserId = selectedUserId || user?.id || ''
+        const targetBranch = filterBranchId || selectedBranchId || ''
+        const amt = parseFloat(initialAmt) || 0
+
+        await api.post('/api/cash-register/open', {
+          userId: effectiveUserId,
+          initialAmt: amt,
+          name: registerName.trim() || undefined,
+          branchId: targetBranch,
+          skipInventory: true, // ya se creó el inventario por separado
+        })
+        toast.success('Caja abierta con inventario verificado')
+        setShowOpen(false)
+        setRegisterName('')
+        setSelectedUserId('')
+        setInitialAmt('')
+        fetchData(targetBranch)
+      } else if (inventoryAction === 'close' && closeRegId) {
+        await api.post('/api/cash-register/close', {
+          cashRegId: closeRegId,
+          actual: parseFloat(closeActual),
+          inventoryNotes: inventoryNotes.trim() || undefined,
+          inventoryItems: inventoryProducts.map(p => ({
+            productId: p.productId,
+            productName: p.productName,
+            initialStock: p.initialStock,
+            verifiedStock: p.verifiedStock,
+            unitPrice: p.unitPrice,
+            notes: p.notes || undefined,
+          })),
+        })
+        toast.success('Caja cerrada con inventario verificado')
+        setShowClose(false)
+        setCloseRegId(null)
+        setCloseActual('')
+        fetchData(filterBranchId)
+      }
+      setShowInventoryVerify(false)
+      setInventoryAction(null)
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Error al procesar'
       toast.error(msg)
     } finally {
       setSaving(false)
@@ -553,21 +644,48 @@ export function CashRegisterView() {
       toast.error('Debe ingresar el monto real en caja')
       return
     }
-    setSaving(true)
+
+    // Cargar inventario para verificación de cierre
     try {
-      await api.post('/api/cash-register/close', {
-        cashRegId: closeRegId,
-        actual: parseFloat(closeActual),
+      setLoadingInventory(true)
+      const check = await api.post<any>('/api/reports/inventory-check', {
+        branchId: filterBranchId || selectedBranchId,
+        inventoryType: 'cierre',
       })
-      toast.success('Caja cerrada exitosamente')
-      setShowClose(false)
-      setCloseRegId(null)
-      setCloseActual('')
-      fetchData(filterBranchId)
-    } catch {
-      toast.error('Error al cerrar caja')
+      const products = (check.items || []).map((item: any) => ({
+        productId: item.productId,
+        productName: item.productName,
+        initialStock: item.initialStock,
+        verifiedStock: item.initialStock,
+        unitPrice: item.unitPrice,
+        notes: '',
+      }))
+      setInventoryProducts(products)
+      setInventoryNotes('')
+      setInventoryAction('close')
+      setShowInventoryVerify(true)
+      setInventoryCheckId(check.id)
+    } catch (invErr) {
+      // Si falla el inventario, cerrar caja directamente
+      console.warn('No se pudo crear inventario de cierre, cerrando caja directamente')
+      setSaving(true)
+      try {
+        await api.post('/api/cash-register/close', {
+          cashRegId: closeRegId,
+          actual: parseFloat(closeActual),
+        })
+        toast.success('Caja cerrada exitosamente')
+        setShowClose(false)
+        setCloseRegId(null)
+        setCloseActual('')
+        fetchData(filterBranchId)
+      } catch {
+        toast.error('Error al cerrar caja')
+      } finally {
+        setSaving(false)
+      }
     } finally {
-      setSaving(false)
+      setLoadingInventory(false)
     }
   }
 
@@ -2039,6 +2157,112 @@ export function CashRegisterView() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Diálogo de Verificación de Inventario */}
+      <Dialog open={showInventoryVerify} onOpenChange={(open) => {
+        if (!open) { setShowInventoryVerify(false); setInventoryAction(null) }
+      }}>
+        <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <PackageSearch className="h-5 w-5" />
+              Verificación de Inventario — {inventoryAction === 'open' ? 'Apertura' : 'Cierre'} de Caja
+            </DialogTitle>
+            <DialogDescription>
+              Verifique el stock actual de productos. Productos sin stock están resaltados en rojo.
+            </DialogDescription>
+          </DialogHeader>
+
+          {loadingInventory ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              <span className="ml-3 text-muted-foreground">Cargando inventario...</span>
+            </div>
+          ) : inventoryProducts.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              <PackageSearch className="mx-auto mb-2 h-8 w-8 opacity-50" />
+              <p>No hay productos activos en el inventario</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="max-h-96 overflow-y-auto rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Producto</TableHead>
+                      <TableHead className="text-center">Stock Actual</TableHead>
+                      <TableHead className="text-center">Stock Verificado</TableHead>
+                      <TableHead>Novedades</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {inventoryProducts.map((p, idx) => {
+                      const isZeroStock = p.initialStock === 0
+                      return (
+                        <TableRow key={p.productId || idx} className={isZeroStock ? 'bg-red-50 dark:bg-red-950/20' : ''}>
+                          <TableCell className="font-medium max-w-[200px] truncate">
+                            {p.productName}
+                            {isZeroStock && (
+                              <Badge variant="destructive" className="ml-2 text-[10px] px-1 py-0">
+                                Sin stock
+                              </Badge>
+                            )}
+                          </TableCell>
+                          <TableCell className={`text-center ${isZeroStock ? 'text-red-600 font-bold' : ''}`}>
+                            {p.initialStock}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Input
+                              type="number"
+                              min="0"
+                              value={p.verifiedStock}
+                              onChange={(e) => {
+                                const val = parseFloat(e.target.value) || 0
+                                setInventoryProducts(prev => prev.map((item, i) => i === idx ? { ...item, verifiedStock: val } : item))
+                              }}
+                              className="w-24 mx-auto text-center"
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Input
+                              value={p.notes}
+                              onChange={(e) => {
+                                setInventoryProducts(prev => prev.map((item, i) => i === idx ? { ...item, notes: e.target.value } : item))
+                              }}
+                              placeholder="Novedades..."
+                              className="min-w-[120px]"
+                            />
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Novedades generales */}
+              <div className="space-y-2">
+                <Label>Novedades generales</Label>
+                <Textarea
+                  value={inventoryNotes}
+                  onChange={(e) => setInventoryNotes(e.target.value)}
+                  placeholder="Observaciones generales sobre el inventario..."
+                  rows={2}
+                />
+              </div>
+
+              <DialogFooter className="gap-2">
+                <Button variant="outline" onClick={() => { setShowInventoryVerify(false); setInventoryAction(null) }}>
+                  Cancelar
+                </Button>
+                <Button onClick={confirmInventoryAndProceed} disabled={saving} className="bg-primary hover:bg-primary/90 text-white">
+                  {saving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Procesando...</> : <><ClipboardCheck className="mr-2 h-4 w-4" /> Confirmar y {inventoryAction === 'open' ? 'Abrir Caja' : 'Cerrar Caja'}</>}
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
     </div>
     </TooltipProvider>

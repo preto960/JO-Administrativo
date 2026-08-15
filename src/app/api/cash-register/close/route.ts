@@ -8,7 +8,7 @@ import { getPaymentMethodsFromDB, FALLBACK_METHODS } from '@/lib/payment-methods
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { cashRegId, actual } = body
+    const { cashRegId, actual, inventoryNotes, inventoryItems } = body
 
     if (!cashRegId) {
       return NextResponse.json({ error: 'cashRegId es requerido' }, { status: 400 })
@@ -37,6 +37,41 @@ export async function POST(request: NextRequest) {
 
     if (register.status === 'cerrada') {
       return NextResponse.json({ error: 'La caja ya está cerrada' }, { status: 400 })
+    }
+
+    // Crear inventario de cierre si se envían items verificados
+    if (inventoryItems && Array.isArray(inventoryItems) && inventoryItems.length > 0) {
+      try {
+        await db.$transaction(async (tx) => {
+          const invCheck = await tx.inventoryCheck.create({
+            data: {
+              branchId: register.branchId,
+              userId: register.userId,
+              status: 'verificado',
+              notes: inventoryNotes || 'Inventario de cierre de caja',
+              inventoryType: 'cierre',
+              cashRegId: register.id,
+            },
+          })
+
+          await tx.inventoryCheckItem.createMany({
+            data: inventoryItems.map((item: { productId: string; productName: string; initialStock: number; verifiedStock: number; unitPrice: number; notes?: string }) => ({
+              checkId: invCheck.id,
+              productId: item.productId,
+              productName: item.productName,
+              initialStock: item.initialStock,
+              verifiedStock: item.verifiedStock,
+              unitPrice: item.unitPrice,
+              discrepancyQty: Math.round((item.verifiedStock - item.initialStock) * 100) / 100,
+              discrepancyAmt: Math.round((item.verifiedStock - item.initialStock) * item.unitPrice * 100) / 100,
+              notes: item.notes || null,
+            })),
+          })
+        })
+      } catch (invErr) {
+        console.error('[Close] Error al crear inventario de cierre:', invErr)
+        // No bloquear el cierre de caja por un error de inventario
+      }
     }
 
     // Calculate totals from sales (cash payments only)

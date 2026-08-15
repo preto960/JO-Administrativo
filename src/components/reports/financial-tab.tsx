@@ -18,7 +18,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog'
 import {
-  Building2, Receipt, Wallet, FileSpreadsheet,
+  Building2, Receipt, Wallet, FileSpreadsheet, TrendingUp,
   Plus, Download, Loader2, Search,
 } from 'lucide-react'
 
@@ -99,6 +99,16 @@ function fmtMoney(value: number) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })
+}
+
+interface CategoryRevenueItem {
+  id: string
+  categoryName: string
+  totalQty: number
+  totalRevenue: number
+  totalCost: number
+  totalProfit: number
+  profitMargin: number
 }
 
 function utilizationBadgeColor(pct: number) {
@@ -354,6 +364,39 @@ export function FinancialTab({ userRole }: FinancialTabProps) {
       toast.error('Error al generar informe ERI')
     } finally {
       setLoadingEri(false)
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────
+  // D-bis) Ingresos por Categoría
+  // ─────────────────────────────────────────────────────────────────────
+  const [catDateFrom, setCatDateFrom] = useState(thirtyDaysAgoISO)
+  const [catDateTo, setCatDateTo] = useState(todayISO)
+  const [catItems, setCatItems] = useState<CategoryRevenueItem[]>([])
+  const [catSummary, setCatSummary] = useState<{ totalQty: number; totalRevenue: number; totalCost: number; totalProfit: number; profitMargin: number } | null>(null)
+  const [loadingCat, setLoadingCat] = useState(false)
+  const [catGenerated, setCatGenerated] = useState(false)
+
+  const handleGenerateCatRevenue = async () => {
+    if (!catDateFrom || !catDateTo) {
+      toast.error('Selecciona las fechas')
+      return
+    }
+    setLoadingCat(true)
+    const params = new URLSearchParams()
+    params.set('dateFrom', catDateFrom)
+    params.set('dateTo', catDateTo)
+    try {
+      const data = await api.get<{ categories: CategoryRevenueItem[]; summary: typeof catSummary }>(
+        `/api/reports/financial/category-revenue?${params.toString()}`,
+      )
+      setCatItems(data.categories || [])
+      setCatSummary(data.summary || null)
+      setCatGenerated(true)
+    } catch {
+      toast.error('Error al generar reporte por categoría')
+    } finally {
+      setLoadingCat(false)
     }
   }
 
@@ -874,6 +917,123 @@ export function FinancialTab({ userRole }: FinancialTabProps) {
                 </TableBody>
               </Table>
             </div>
+          ) : null}
+        </CardContent>
+      </Card>
+
+      {/* ═══════════════════════════════════════════════════════════════════
+          D-bis) Ingresos por Categoría (cycling/hyrox)
+          ═══════════════════════════════════════════════════════════════════ */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <TrendingUp className="h-5 w-5" />
+            Ingresos por Categoría
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Filtros */}
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
+            <div className="space-y-2">
+              <Label htmlFor="cat-from">Desde</Label>
+              <Input
+                id="cat-from"
+                type="date"
+                value={catDateFrom}
+                onChange={(e) => setCatDateFrom(e.target.value)}
+                className="w-full sm:w-44"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="cat-to">Hasta</Label>
+              <Input
+                id="cat-to"
+                type="date"
+                value={catDateTo}
+                onChange={(e) => setCatDateTo(e.target.value)}
+                className="w-full sm:w-44"
+              />
+            </div>
+            <Button onClick={handleGenerateCatRevenue} disabled={loadingCat}>
+              {loadingCat ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Search className="mr-2 h-4 w-4" />
+              )}
+              Generar
+            </Button>
+          </div>
+
+          {/* Resultados */}
+          {loadingCat ? (
+            <div className="h-32 rounded-lg bg-muted animate-pulse" />
+          ) : catGenerated ? (
+            <>
+              <div className="overflow-x-auto rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Categoría</TableHead>
+                      <TableHead className="text-right">Cantidad</TableHead>
+                      <TableHead className="text-right">Ingresos (Venta)</TableHead>
+                      <TableHead className="text-right">Costo</TableHead>
+                      <TableHead className="text-right">Ganancia</TableHead>
+                      <TableHead className="text-center">Margen %</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {catItems.map((cat) => (
+                      <TableRow key={cat.id}>
+                        <TableCell className="font-medium">{cat.categoryName}</TableCell>
+                        <TableCell className="text-right">{cat.totalQty}</TableCell>
+                        <TableCell className="text-right">{fmtMoney(cat.totalRevenue)}</TableCell>
+                        <TableCell className="text-right text-red-600">{fmtMoney(cat.totalCost)}</TableCell>
+                        <TableCell className={`text-right font-semibold ${cat.totalProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                          {cat.totalProfit >= 0 ? '+' : '-'}{fmtMoney(cat.totalProfit)}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Badge variant={cat.profitMargin >= 50 ? 'default' : cat.profitMargin >= 20 ? 'secondary' : 'destructive'}>
+                            {cat.profitMargin.toFixed(1)}%
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {catItems.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                          No se encontraron datos para el periodo seleccionado
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+              {/* Resumen */}
+              {catSummary && (
+                <div className="rounded-md border p-4 bg-muted/30">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+                    <div>
+                      <p className="text-muted-foreground">Total Ingresos</p>
+                      <p className="text-lg font-bold">{fmtMoney(catSummary.totalRevenue)}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Total Costo</p>
+                      <p className="text-lg font-bold text-red-600">{fmtMoney(catSummary.totalCost)}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Ganancia Total</p>
+                      <p className={`text-lg font-bold ${catSummary.totalProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {catSummary.totalProfit >= 0 ? '+' : '-'}{fmtMoney(catSummary.totalProfit)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Margen Global</p>
+                      <p className="text-lg font-bold">{catSummary.profitMargin.toFixed(1)}%</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
           ) : null}
         </CardContent>
       </Card>

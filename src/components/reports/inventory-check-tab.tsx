@@ -11,10 +11,11 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/ui/dialog'
-import { Plus, Eye, Download, Loader2, ClipboardCheck, PackageSearch } from 'lucide-react'
+import { Plus, Eye, Download, Loader2, ClipboardCheck, PackageSearch, Filter } from 'lucide-react'
 import { toast } from 'sonner'
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -26,14 +27,19 @@ interface CheckItem {
   verifiedStock: number | null
   unitPrice: number
   notes: string
+  discrepancyQty?: number
+  discrepancyAmt?: number
 }
 
 interface InventoryCheck {
   id: string
-  date: string
+  checkDate: string
   branch: { id: string; name: string } | null
   user: { id: string; name: string } | null
   status: 'pendiente' | 'verificado'
+  inventoryType: string
+  cashRegId?: string
+  notes?: string
   items: CheckItem[]
 }
 
@@ -61,8 +67,41 @@ function StatusBadge({ status }: { status: string }) {
   )
 }
 
+function InventoryTypeBadge({ type }: { type: string }) {
+  switch (type) {
+    case 'apertura':
+      return (
+        <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+          Apertura
+        </Badge>
+      )
+    case 'cierre':
+      return (
+        <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200">
+          Cierre
+        </Badge>
+      )
+    default:
+      return (
+        <Badge variant="outline" className="bg-gray-50 text-gray-700 border-gray-200">
+          Manual
+        </Badge>
+      )
+  }
+}
+
 function fmtMoney(value: number) {
   return value.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+function todayISO(): string {
+  return new Date().toISOString().split('T')[0]
+}
+
+function thirtyDaysAgoISO(): string {
+  const d = new Date()
+  d.setDate(d.getDate() - 30)
+  return d.toISOString().split('T')[0]
 }
 
 // ── Component ──────────────────────────────────────────────────────────────
@@ -80,11 +119,22 @@ export function InventoryCheckTab() {
   const [editCheck, setEditCheck] = useState<InventoryCheck | null>(null)
   const [editItems, setEditItems] = useState<CheckItem[]>([])
 
+  // Filtros
+  const [filterType, setFilterType] = useState<string>('all')
+  const [filterDateFrom, setFilterDateFrom] = useState(thirtyDaysAgoISO)
+  const [filterDateTo, setFilterDateTo] = useState(todayISO)
+
   // ── Fetch checks ────────────────────────────────────────────────────────
 
   const fetchChecks = async () => {
     try {
-      const data = await api.get<InventoryCheck[]>('/api/reports/inventory-check')
+      const params = new URLSearchParams()
+      if (selectedBranchId) params.set('branchId', selectedBranchId)
+      if (filterType !== 'all') params.set('inventoryType', filterType)
+      params.set('dateFrom', filterDateFrom)
+      params.set('dateTo', filterDateTo)
+
+      const data = await api.get<InventoryCheck[]>(`/api/reports/inventory-check?${params.toString()}`)
       setChecks(data)
     } catch {
       toast.error('Error al cargar verificaciones')
@@ -95,7 +145,7 @@ export function InventoryCheckTab() {
 
   useEffect(() => {
     fetchChecks()
-  }, [])
+  }, [filterType, filterDateFrom, filterDateTo, selectedBranchId])
 
   // ── Create new check ───────────────────────────────────────────────────
 
@@ -192,9 +242,55 @@ export function InventoryCheckTab() {
           ) : (
             <Plus className="mr-2 h-4 w-4" />
           )}
-          Nueva Verificacion de Inventario
+          Nueva Verificacion
         </Button>
       </div>
+
+      {/* Filtros */}
+      <Card>
+        <CardContent className="p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+              <Filter className="h-4 w-4" />
+              Filtros:
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="ic-type" className="text-xs">Tipo</Label>
+              <select
+                id="ic-type"
+                value={filterType}
+                onChange={(e) => setFilterType(e.target.value)}
+                className="h-9 rounded-md border bg-transparent px-3 text-sm"
+              >
+                <option value="all">Todos</option>
+                <option value="manual">Manual</option>
+                <option value="apertura">Apertura</option>
+                <option value="cierre">Cierre</option>
+              </select>
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="ic-from" className="text-xs">Desde</Label>
+              <Input
+                id="ic-from"
+                type="date"
+                value={filterDateFrom}
+                onChange={(e) => setFilterDateFrom(e.target.value)}
+                className="h-9 w-40"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="ic-to" className="text-xs">Hasta</Label>
+              <Input
+                id="ic-to"
+                type="date"
+                value={filterDateTo}
+                onChange={(e) => setFilterDateTo(e.target.value)}
+                className="h-9 w-40"
+              />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Checks Table */}
       <Card>
@@ -204,6 +300,7 @@ export function InventoryCheckTab() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Fecha</TableHead>
+                  <TableHead>Tipo</TableHead>
                   <TableHead>Sucursal</TableHead>
                   <TableHead>Cajero</TableHead>
                   <TableHead>Estado</TableHead>
@@ -214,7 +311,10 @@ export function InventoryCheckTab() {
                 {checks.map((check) => (
                   <TableRow key={check.id}>
                     <TableCell className="whitespace-nowrap text-sm">
-                      {fmtDate(check.date)}
+                      {fmtDate(check.checkDate)}
+                    </TableCell>
+                    <TableCell>
+                      <InventoryTypeBadge type={check.inventoryType} />
                     </TableCell>
                     <TableCell>{check.branch?.name || '—'}</TableCell>
                     <TableCell>{check.user?.name || '—'}</TableCell>
@@ -245,7 +345,7 @@ export function InventoryCheckTab() {
                 ))}
                 {checks.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                       <PackageSearch className="mx-auto mb-2 h-8 w-8 opacity-50" />
                       No hay verificaciones de inventario
                     </TableCell>
@@ -270,10 +370,12 @@ export function InventoryCheckTab() {
               <div className="flex items-center gap-2">
                 <ClipboardCheck className="h-5 w-5" />
                 Verificacion de Inventario
+                {editCheck && <InventoryTypeBadge type={editCheck.inventoryType} />}
               </div>
             </DialogTitle>
             <DialogDescription>
-              Fecha: {editCheck ? fmtDate(editCheck.date) : ''} — {editCheck?.branch?.name}
+              Fecha: {editCheck ? fmtDate(editCheck.checkDate) : ''} — {editCheck?.branch?.name}
+              {editCheck?.notes && ` — ${editCheck.notes}`}
             </DialogDescription>
           </DialogHeader>
 
@@ -300,13 +402,21 @@ export function InventoryCheckTab() {
                           : null
                       const diffMoney = diffQty !== null ? diffQty * item.unitPrice : null
                       const isVerified = editCheck.status === 'verificado'
+                      const isZeroStock = item.initialStock === 0
 
                       return (
-                        <TableRow key={item.productId}>
+                        <TableRow key={item.productId} className={isZeroStock ? 'bg-red-50 dark:bg-red-950/20' : ''}>
                           <TableCell className="font-medium max-w-[180px] truncate">
                             {item.productName}
+                            {isZeroStock && (
+                              <Badge variant="destructive" className="ml-2 text-[10px] px-1 py-0">
+                                Sin stock
+                              </Badge>
+                            )}
                           </TableCell>
-                          <TableCell className="text-center">{item.initialStock}</TableCell>
+                          <TableCell className={`text-center ${isZeroStock ? 'text-red-600 font-semibold' : ''}`}>
+                            {item.initialStock}
+                          </TableCell>
                           <TableCell className="text-center">
                             <Input
                               type="number"
