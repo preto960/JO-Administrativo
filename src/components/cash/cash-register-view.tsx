@@ -2185,14 +2185,14 @@ export function CashRegisterView() {
             </div>
           ) : (
             <div className="space-y-4">
-              <div className="max-h-96 overflow-y-auto rounded-md border">
-                <Table>
+              <div className="max-h-[50vh] overflow-auto rounded-md border">
+                <Table className="min-w-[700px]">
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Producto</TableHead>
-                      <TableHead className="text-center">Stock Actual</TableHead>
-                      <TableHead className="text-center">Stock Verificado</TableHead>
-                      <TableHead className="min-w-[180px]">Novedades</TableHead>
+                      <TableHead className="min-w-[200px]">Producto</TableHead>
+                      <TableHead className="text-center min-w-[100px]">Stock Actual</TableHead>
+                      <TableHead className="text-center min-w-[120px]">Stock Verificado</TableHead>
+                      <TableHead className="min-w-[200px]">Novedades</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -2200,7 +2200,7 @@ export function CashRegisterView() {
                       const isZeroStock = p.initialStock === 0
                       return (
                         <TableRow key={p.productId || idx} className={isZeroStock ? 'bg-red-50 dark:bg-red-950/20' : ''}>
-                          <TableCell className="font-medium">
+                          <TableCell className="font-medium whitespace-normal">
                             {p.productName}
                             {isZeroStock && (
                               <Badge variant="destructive" className="ml-2 text-[10px] px-1 py-0">
@@ -2208,10 +2208,10 @@ export function CashRegisterView() {
                               </Badge>
                             )}
                           </TableCell>
-                          <TableCell className={`text-center ${isZeroStock ? 'text-red-600 font-bold' : ''}`}>
+                          <TableCell className={`text-center whitespace-nowrap ${isZeroStock ? 'text-red-600 font-bold' : ''}`}>
                             {p.initialStock}
                           </TableCell>
-                          <TableCell className="text-center">
+                          <TableCell className="text-center whitespace-nowrap">
                             <Input
                               type="number"
                               min="0"
@@ -2223,14 +2223,14 @@ export function CashRegisterView() {
                               className="w-24 mx-auto text-center"
                             />
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="whitespace-nowrap">
                             <Input
                               value={p.notes}
                               onChange={(e) => {
                                 setInventoryProducts(prev => prev.map((item, i) => i === idx ? { ...item, notes: e.target.value } : item))
                               }}
                               placeholder="Novedades..."
-                              className="min-w-[120px]"
+                              className="w-full"
                             />
                           </TableCell>
                         </TableRow>
