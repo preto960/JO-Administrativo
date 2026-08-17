@@ -1,0 +1,2002 @@
+     1→'use client'
+     2→
+     3→import { useEffect, useState } from 'react'
+     4→import { api } from '@/lib/api'
+     5→import { useAuth } from '@/hooks/use-auth'
+     6→import { useAppStore } from '@/stores/use-app-store'
+     7→import {
+     8→  Table,
+     9→  TableBody,
+    10→  TableCell,
+    11→  TableHead,
+    12→  TableHeader,
+    13→  TableRow,
+    14→} from '@/components/ui/table'
+    15→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    16→import { Badge } from '@/components/ui/badge'
+    17→import { Input } from '@/components/ui/input'
+    18→import { Textarea } from '@/components/ui/textarea'
+    19→import { Button } from '@/components/ui/button'
+    20→import { Label } from '@/components/ui/label'
+    21→import {
+    22→  Dialog,
+    23→  DialogContent,
+    24→  DialogHeader,
+    25→  DialogTitle,
+    26→  DialogDescription,
+    27→} from '@/components/ui/dialog'
+    28→import {
+    29→  AlertDialog,
+    30→  AlertDialogContent,
+    31→  AlertDialogHeader,
+    32→  AlertDialogFooter,
+    33→  AlertDialogTitle,
+    34→  AlertDialogDescription,
+    35→  AlertDialogAction,
+    36→  AlertDialogCancel,
+    37→} from '@/components/ui/alert-dialog'
+    38→import {
+    39→  Select,
+    40→  SelectContent,
+    41→  SelectItem,
+    42→  SelectTrigger,
+    43→  SelectValue,
+    44→} from '@/components/ui/select'
+    45→import { Switch } from '@/components/ui/switch'
+    46→import {
+    47→  DropdownMenu,
+    48→  DropdownMenuContent,
+    49→  DropdownMenuItem,
+    50→  DropdownMenuSeparator,
+    51→  DropdownMenuTrigger,
+    52→} from '@/components/ui/dropdown-menu'
+    53→import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+    54→import { HybridPaymentSelector, type HybridPaymentEntry } from '@/components/shared/hybrid-payment-selector'
+    55→import { Separator } from '@/components/ui/separator'
+    56→import { ScrollArea } from '@/components/ui/scroll-area'
+    57→import { Plus, Search, Users, DollarSign, Loader2, Receipt, Truck, X, Trash2, Printer, FileText, Mail, Pencil, Phone, MapPin, ShoppingCart, Eye, EyeOff, AlertTriangle, Upload, ChevronLeft, ChevronRight, Filter, UserCheck, UserX, UsersRound, RefreshCw, CalendarCheck, CalendarDays, CheckCircle2, CreditCard, Banknote, ArrowLeftRight, Clock, Smartphone, CircleDollarSign, Ban, MoreHorizontal, AlertCircle, Ticket, Snowflake, Tag, type LucideIcon } from 'lucide-react'
+    58→import { ClientBulkImport } from './client-bulk-import'
+    59→import { FALLBACK_METHODS } from '@/lib/payment-methods'
+    60→import { toast } from 'sonner'
+    61→import { useSetting } from '@/stores/use-app-store'
+    62→import { useCurrency } from '@/hooks/use-currency'
+    63→
+    64→interface PaymentMethodOption {
+    65→  code: string
+    66→  name: string
+    67→  icon: string
+    68→  enabled: boolean
+    69→  needsReference: boolean
+    70→  isLocalCurrency: boolean
+    71→  isCash: boolean
+    72→  isCredit: boolean
+    73→}
+    74→
+    75→const RENEW_ICON_MAP: Record<string, LucideIcon> = {
+    76→  Banknote,
+    77→  CreditCard,
+    78→  ArrowLeftRight,
+    79→  Clock,
+    80→  Smartphone,
+    81→  CircleDollarSign,
+    82→}
+    83→
+    84→function getRenewIcon(iconName: string): LucideIcon {
+    85→  return RENEW_ICON_MAP[iconName] || CircleDollarSign
+    86→}
+    87→
+    88→interface Client {
+    89→  id: string
+    90→  name: string
+    91→  cedula: string | null
+    92→  lastName: string | null
+    93→  gender: string | null
+    94→  phone: string | null
+    95→  email: string | null
+    96→  address: string | null
+    97→  note: string | null
+    98→  deletedAt: string | null
+    99→  pendingBalance: number
+   100→  membership: {
+   101→    id: string
+   102→    status: string | null
+   103→    planType: string
+   104→    tarifa: string | null
+   105→    endDate: string | null
+   106→    daysRemaining: number
+   107→    ticketsRemaining: number
+   108→    startTime: string | null
+   109→    endTime: string | null
+   110→  } | null
+   111→  tiquetera: {
+   112→    id: string
+   113→    status: string
+   114→    planType: string
+   115→    tarifa: string | null
+   116→    endDate: string | null
+   117→    ticketsRemaining: number
+   118→    daysRemaining: number
+   119→  } | null
+   120→  receivables: Array<{ id: string; amount: number; pendingBalance: number; status: string; dueDate: string | null; createdAt: string }>
+   121→  _count: { sales: number }
+   122→}
+   123→
+   124→interface PlanOption {
+   125→  id: string
+   126→  name: string
+   127→  planType: string
+   128→  durationType: string
+   129→  durationDays: number | null
+   130→  ticketCount: number
+   131→  startTime: string | null
+   132→  endTime: string | null
+   133→  cost: number
+   134→  active: boolean
+   135→  effectivePrice?: number
+   136→  hasActivePromo?: boolean
+   137→  hasActiveDiscount?: boolean
+   138→  discountPercentage?: number
+   139→}
+   140→
+   141→interface SaleRecord {
+   142→  id: string
+   143→  date: string
+   144→  total: number
+   145→  status: string
+   146→  user: { name: string }
+   147→  branch: { name: string }
+   148→  payments: Array<{ method: string; amount: number; currency: { symbol: string } }>
+   149→  lines: Array<{ product: { name: string }; quantity: number; unitPrice: number; lineTotal: number }>
+   150→  receivables: Array<{ pendingBalance: number; status: string; dueDate: string | null }>
+   151→}
+   152→
+   153→interface ClientPaymentRecord {
+   154→  id: string
+   155→  amount: number
+   156→  method: string
+   157→  reference: string | null
+   158→  createdAt: string
+   159→  user: { name: string }
+   160→  receivable: {
+   161→    id: string
+   162→    saleId: string
+   163→    amount: number
+   164→    pendingBalance: number
+   165→    status: string
+   166→    sale: {
+   167→      date: string
+   168→      lines: Array<{ product: { name: string }; quantity: number; lineTotal: number }>
+   169→    }
+   170→  }
+   171→}
+   172→
+   173→interface ReceivableRecord {
+   174→  id: string
+   175→  amount: number
+   176→  pendingBalance: number
+   177→  status: string
+   178→  dueDate: string | null
+   179→  createdAt: string
+   180→}
+   181→
+   182→interface ProductOption {
+   183→  id: string
+   184→  name: string
+   185→  price: number
+   186→  currency: { symbol: string }
+   187→  inventories: Array<{ stock: number; branchId: string }>
+   188→}
+   189→
+   190→interface DispatchLine {
+   191→  productId: string
+   192→  productName: string
+   193→  quantity: number
+   194→  unitPrice: number
+   195→  stock: number
+   196→}
+   197→
+   198→export function ClientsTable() {
+   199→  const { user, permissions } = useAuth()
+   200→  const canManage = permissions.canManageClients
+   201→  const canMarkAtt = permissions.canMarkAttendance
+   202→  const selectedBranchId = useAppStore((s) => s.selectedBranchId)
+   203→  const isGym = useSetting('businessType') === 'gym'
+   204→  const [clients, setClients] = useState<Client[]>([])
+   205→  const [search, setSearch] = useState('')
+   206→  const [loading, setLoading] = useState(true)
+   207→  const [dialogOpen, setDialogOpen] = useState(false)
+   208→  const [bulkImportOpen, setBulkImportOpen] = useState(false)
+   209→  const [saving, setSaving] = useState(false)
+   210→
+   211→  const [formName, setFormName] = useState('')
+   212→  const [formLastName, setFormLastName] = useState('')
+   213→  const [formCedula, setFormCedula] = useState('')
+   214→  const [formPhone, setFormPhone] = useState('')
+   215→  const [formEmail, setFormEmail] = useState('')
+   216→  const [formAddress, setFormAddress] = useState('')
+   217→  const [formNote, setFormNote] = useState('')
+   218→
+   219→  // Sales/dispatch history dialog
+   220→  const [historyClient, setHistoryClient] = useState<Client | null>(null)
+   221→  const [sales, setSales] = useState<SaleRecord[]>([])
+   222→  const [loadingHistory, setLoadingHistory] = useState(false)
+   223→  const [showHistoryDialog, setShowHistoryDialog] = useState(false)
+   224→
+   225→  // Client payments (pagos realizados) in history
+   226→  const [clientPayments, setClientPayments] = useState<ClientPaymentRecord[]>([])
+   227→  const [loadingPayments, setLoadingPayments] = useState(false)
+   228→  const [deletingPaymentId, setDeletingPaymentId] = useState<string | null>(null)
+   229→
+   230→  // Remove debt: open dialog to select which debt
+   231→  const [removeDebtClient, setRemoveDebtClient] = useState<Client | null>(null)
+   232→  const [removeDebtTarget, setRemoveDebtTarget] = useState<{ client: Client; receivable: ReceivableRecord } | null>(null)
+   233→  const [removingDebt, setRemovingDebt] = useState(false)
+   234→
+   235→  // Sale lines detail modal
+   236→  const [detailSale, setDetailSale] = useState<SaleRecord | null>(null)
+   237→
+   238→  // Statement email
+   239→  const [sendingStatement, setSendingStatement] = useState<string | null>(null)
+   240→
+   241→  // Payment dialog
+   242→  const [paymentClient, setPaymentClient] = useState<Client | null>(null)
+   243→  const [paymentAmount, setPaymentAmount] = useState('')
+   244→  const [paymentMethod, setPaymentMethod] = useState('')
+   245→  const [paymentReference, setPaymentReference] = useState('')
+   246→  const [showPaymentDialog, setShowPaymentDialog] = useState(false)
+   247→  const [paying, setPaying] = useState(false)
+   248→  const [paymentSuccess, setPaymentSuccess] = useState(false)
+   249→  const [openCashRegId, setOpenCashRegId] = useState<string | null>(null)
+   250→  const baseCurrencyId = useSetting('baseCurrencyId') || ''
+   251→  const country = useSetting('country') || 'VE'
+   252→  const multiCurrencyEnabled = useSetting('multiCurrencyEnabled')
+   253→  const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>([])
+   254→
+   255→  const referenceCurrency = useSetting('referenceCurrency')
+   256→  const { sym: currencySymbol, baseSym, refCode, rate: exchangeRate, fmt } = useCurrency()
+   257→  const selectedPm = paymentMethods.find(m => m.code === paymentMethod)
+   258→  const isLocalMethod = selectedPm?.isLocalCurrency ?? false
+   259→
+   260→  // Delete confirmation dialog
+   261→  const [deleteTarget, setDeleteTarget] = useState<Client | null>(null)
+   262→  const [deleting, setDeleting] = useState(false)
+   263→
+   264→  const handleConfirmDelete = async () => {
+   265→    if (!deleteTarget) return
+   266→    setDeleting(true)
+   267→    try {
+   268→      await api.del(`/api/clients?id=${deleteTarget.id}`)
+   269→      toast.success('Cliente inactivado')
+   270→      fetchClients()
+   271→    } catch {
+   272→      toast.error('Error al eliminar cliente')
+   273→    } finally {
+   274→      setDeleting(false)
+   275→      setDeleteTarget(null)
+   276→    }
+   277→  }
+   278→
+   279→  // Edit client
+   280→  const [editingClient, setEditingClient] = useState<Client | null>(null)
+   281→
+   282→  // Dispatch dialog
+   283→  const [dispatchClient, setDispatchClient] = useState<Client | null>(null)
+   284→  const [showDispatchDialog, setShowDispatchDialog] = useState(false)
+   285→  const [products, setProducts] = useState<ProductOption[]>([])
+   286→  const [loadingProducts, setLoadingProducts] = useState(false)
+   287→  const [dispatchLines, setDispatchLines] = useState<DispatchLine[]>([])
+   288→  const [savingDispatch, setSavingDispatch] = useState(false)
+   289→
+   290→  // Show deleted clients toggle
+   291→  const [showInactive, setShowInactive] = useState(false)
+   292→  const [membershipFilter, setMembershipFilter] = useState<'todos' | 'activo' | 'vencido' | 'sin' | 'deudas'>('activo')
+   293→  const [currentPage, setCurrentPage] = useState(1)
+   294→  const PAGE_SIZE = 20
+   295→
+   296→  // Attendance today count
+   297→  const [attendanceToday, setAttendanceToday] = useState<number | null>(null)
+   298→
+   299→  const fetchAttendanceToday = () => {
+   300→    if (!isGym) return
+   301→    api.get<{ count: number }>('/api/attendance/today-count')
+   302→      .then(r => setAttendanceToday(r.count))
+   303→      .catch(() => setAttendanceToday(null))
+   304→  }
+   305→
+   306→  useEffect(() => { fetchAttendanceToday() }, [isGym])
+   307→
+   308→  const fetchClients = async () => {
+   309→    try {
+   310→      // Check expirations in background (gym only)
+   311→      if (isGym) api.get('/api/clients/check-expirations').catch(() => {})
+   312→
+   313→      const params = showInactive ? '?includeDeleted=true' : ''
+   314→      const data = await api.get<Client[]>(`/api/clients${params}`)
+   315→      setClients(data)
+   316→    } catch {
+   317→      toast.error('Error al cargar clientes')
+   318→    } finally {
+   319→      setLoading(false)
+   320→    }
+   321→  }
+   322→
+   323→  useEffect(() => { fetchClients() }, [showInactive])
+   324→
+   325→  // React to pendingClientId from navigation (e.g. from notification click)
+   326→  const pendingClientId = useAppStore((s) => s.pendingClientId)
+   327→  const clearPendingClient = useAppStore((s) => s.clearPendingClient)
+   328→
+   329→  useEffect(() => {
+   330→    if (!pendingClientId || clients.length === 0) return
+   331→    const client = clients.find(c => c.id === pendingClientId)
+   332→    if (client) {
+   333→      openHistory(client)
+   334→      clearPendingClient()
+   335→    }
+   336→  }, [pendingClientId, clients.length])
+   337→
+   338→  // Fetch open cash register and payment methods
+   339→  useEffect(() => {
+   340→    api.get<Array<{ id: string; status: string }>>('/api/cash-register')
+   341→      .then(regs => {
+   342→        const openReg = regs?.find(r => r.status === 'abierta')
+   343→        if (openReg) setOpenCashRegId(openReg.id)
+   344→      })
+   345→      .catch(() => {})
+   346→    api.get<PaymentMethodOption[]>(`/api/payment-methods?country=${country}`)
+   347→      .then(methods => {
+   348→        if (Array.isArray(methods) && methods.length > 0) {
+   349→          setPaymentMethods(methods.filter(m => m.enabled && !m.isCredit))
+   350→        } else {
+   351→          setPaymentMethods(FALLBACK_METHODS.filter(m => m.enabled && !m.isCredit))
+   352→        }
+   353→      })
+   354→      .catch(() => {
+   355→        setPaymentMethods(FALLBACK_METHODS.filter(m => m.enabled && !m.isCredit))
+   356→      })
+   357→  }, [country])
+   358→
+   359→  // Capitalize helper: "jUAN pEREZ" → "Juan Perez"
+   360→  const cap = (str: string | null | undefined): string => {
+   361→    if (!str) return ''
+   362→    return str
+   363→      .toLowerCase()
+   364→      .replace(/\b\w/g, (c) => c.toUpperCase())
+   365→  }
+   366→
+   367→  const inactiveCount = clients.filter((c) => c.deletedAt !== null).length
+   368→  const activeCount = clients.filter((c) => !c.deletedAt && c.membership?.status === 'Activo').length
+   369→  const expiredCount = clients.filter((c) => !c.deletedAt && c.membership?.status === 'Vencido').length
+   370→  const noMembershipCount = clients.filter((c) => !c.deletedAt && (!c.membership?.status || c.membership?.status === 'Sin membresia')).length
+   371→  const debtCount = clients.filter((c) => !c.deletedAt && c.receivables?.some((r: { pendingBalance: number; status: string }) => r.pendingBalance > 0 && (r.status === 'pendiente' || r.status === 'parcial'))).length
+   372→
+   373→  const searchLower = search.toLowerCase().trim()
+   374→  const filtered = clients.filter((c) => {
+   375→    // Inactive toggle: when ON, show ONLY inactive clients
+   376→    if (showInactive && !c.deletedAt) return false
+   377→
+   378→    // Membership filter (gym only)
+   379→    if (isGym) {
+   380→      if (membershipFilter === 'activo' && c.membership?.status !== 'Activo') return false
+   381→      if (membershipFilter === 'vencido' && c.membership?.status !== 'Vencido') return false
+   382→      if (membershipFilter === 'sin' && c.membership?.status && c.membership?.status !== 'Sin membresia') return false
+   383→      if (membershipFilter === 'deudas' && !c.receivables?.some((r: { pendingBalance: number; status: string }) => r.pendingBalance > 0 && (r.status === 'pendiente' || r.status === 'parcial'))) return false
+   384→    }
+   385→
+   386→    // Search filter
+   387→    if (!searchLower) return true
+   388→    const fullName = `${c.name} ${c.lastName || ''}`.toLowerCase()
+   389→    if (fullName.includes(searchLower)) return true
+   390→    if (isGym && c.cedula && c.cedula.includes(search)) return true
+   391→    if (c.phone && c.phone.includes(search)) return true
+   392→    if (c.email && c.email.toLowerCase().includes(searchLower)) return true
+   393→    return false
+   394→  })
+   395→
+   396→  // Pagination
+   397→  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+   398→  const paginatedClients = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
+   399→  useEffect(() => { setCurrentPage(1) }, [search, membershipFilter, showInactive])
+   400→  // Reset filter to 'activo' when switching away from gym or when deudas filter is selected but not gym
+   401→  useEffect(() => {
+   402→    if (!isGym) setMembershipFilter('todos')
+   403→  }, [isGym])
+   404→
+   405→  // Plans state
+   406→  const [plans, setPlans] = useState<PlanOption[]>([])
+   407→  const [formPlanId, setFormPlanId] = useState('')
+   408→
+   409→  // Payment-on-create modal (when creating client with plan)
+   410→  const [showCreatePayment, setShowCreatePayment] = useState(false)
+   411→  const [createPaymentMethod, setCreatePaymentMethod] = useState('')
+   412→  const [createPaymentReference, setCreatePaymentReference] = useState('')
+   413→  const [createPaymentMethods, setCreatePaymentMethods] = useState<PaymentMethodOption[]>([])
+   414→  const [creatingAndPaying, setCreatingAndPaying] = useState(false)
+   415→
+   416→  // Renew dialog
+   417→  const [renewClient, setRenewClient] = useState<Client | null>(null)
+   418→  const [renewPlanId, setRenewPlanId] = useState('')
+   419→  const [showRenewDialog, setShowRenewDialog] = useState(false)
+   420→  const [renewing, setRenewing] = useState(false)
+   421→  const [renewPaymentMethod, setRenewPaymentMethod] = useState('')
+   422→  const [renewPaymentReference, setRenewPaymentReference] = useState('')
+   423→  const [renewMethods, setRenewMethods] = useState<PaymentMethodOption[]>([])
+   424→  const [renewHybridPayments, setRenewHybridPayments] = useState<HybridPaymentEntry[]>([])
+   425→  const [renewIsHybrid, setRenewIsHybrid] = useState(false)
+   426→  const [renewCurrencies, setRenewCurrencies] = useState<{ id: string; code: string; symbol: string; isBase: boolean }[]>([])
+   427→  const [renewSuccess, setRenewSuccess] = useState(false)
+   428→
+   429→  // ── Tiquetera state ──
+   430→  const [tiqueteraClient, setTiqueteraClient] = useState<Client | null>(null)
+   431→  const [showTiqueteraDialog, setShowTiqueteraDialog] = useState(false)
+   432→  const [tiqueteraPlanId, setTiqueteraPlanId] = useState('')
+   433→  const [tiqueteraPaymentMethod, setTiqueteraPaymentMethod] = useState('')
+   434→  const [tiqueteraPaymentReference, setTiqueteraPaymentReference] = useState('')
+   435→  const [tiqueteraMethods, setTiqueteraMethods] = useState<PaymentMethodOption[]>([])
+   436→  const [tiqueteraHybridPayments, setTiqueteraHybridPayments] = useState<HybridPaymentEntry[]>([])
+   437→  const [tiqueteraIsHybrid, setTiqueteraIsHybrid] = useState(false)
+   438→  const [tiqueteraCurrencies, setTiqueteraCurrencies] = useState<{ id: string; code: string; symbol: string; isBase: boolean }[]>([])
+   439→  const [tiqueteraSuccess, setTiqueteraSuccess] = useState(false)
+   440→  const [addingTiquetera, setAddingTiquetera] = useState(false)
+   441→
+   442→  // Expired today report
+   443→  const [showExpiredModal, setShowExpiredModal] = useState(false)
+   444→  const [loadingExpired, setLoadingExpired] = useState(false)
+   445→  const [expiredClients, setExpiredClients] = useState<Array<{
+   446→    index: number; fullName: string; cedula: string; email: string; phone: string; tarifa: string; fechaVencimiento: string; diasRestantes: number
+   447→  }> | null>(null)
+   448→  const [expiredTodayCount, setExpiredTodayCount] = useState(0)
+   449→
+   450→  // Attendance dialog
+   451→  const [attClient, setAttClient] = useState<Client | null>(null)
+   452→  const [showAttDialog, setShowAttDialog] = useState(false)
+   453→  const [loadingAtt, setLoadingAtt] = useState(false)
+   454→  const [markingAtt, setMarkingAtt] = useState(false)
+   455→  const [attData, setAttData] = useState<{
+   456→    attendances: Array<{ id: string; date: string }>;
+   457→    stats: {
+   458→      planType: string;
+   459→      totalPlanDays: number;
+   460→      planName: string | null;
+   461→      daysRemaining: number;
+   462→      ticketsRemaining: number;
+   463→      ticketTotal: number;
+   464→      startTime: string | null;
+   465→      endTime: string | null;
+   466→      totalAttendances: number;
+   467→      monthAttendanceCount: number;
+   468→      monthName: string;
+   469→      attendanceMarkedToday: boolean;
+   470→      gymMarkedToday: boolean;
+   471→      tiqueteraMarkedToday: boolean;
+   472→      // Independent tiquetera info
+   473→      tiqueteraActive: boolean;
+   474→      tiqueteraTicketsRemaining: number;
+   475→      tiqueteraDaysRemaining: number;
+   476→      tiqueteraPlanName: string | null;
+   477→    };
+   478→  } | null>(null)
+   479→
+   480→  // Fetch plans for selectors
+   481→  useEffect(() => {
+   482→    api.get<PlanOption[]>('/api/plans')
+   483→      .then(data => setPlans(Array.isArray(data) ? data.filter(p => p.active) : []))
+   484→      .catch(() => {})
+   485→  }, [])
+   486→
+   487→  const openExpiredReport = async () => {
+   488→    setLoadingExpired(true)
+   489→    try {
+   490→      const data = await api.get<{ clients: typeof expiredClients; total: number }>('/api/clients/expired-today')
+   491→      setExpiredClients(data.clients || [])
+   492→      setExpiredTodayCount(data.total || 0)
+   493→      setShowExpiredModal(true)
+   494→    } catch {
+   495→      toast.error('Error al consultar clientes vencidos')
+   496→    } finally {
+   497→      setLoadingExpired(false)
+   498→    }
+   499→  }
+   500→
+   501→  const [pdfDate, setPdfDate] = useState('')
+   502→  const [showPdfDatePicker, setShowPdfDatePicker] = useState(false)
+   503→
+   504→  // Freeze days
+   505→  const [freezeClient, setFreezeClient] = useState<Client | null>(null)
+   506→  const [freezeDays, setFreezeDays] = useState('')
+   507→  const [freezeReason, setFreezeReason] = useState('')
+   508→  const [freezeDocRef, setFreezeDocRef] = useState('')
+   509→  const [freezeSaving, setFreezeSaving] = useState(false)
+   510→  const [freezeHistory, setFreezeHistory] = useState<Array<{
+   511→    id: string; days: number; reason: string; documentRef: string | null; createdAt: string;
+   512→    approver: { id: string; name: string };
+   513→    membership: { id: string; tarifa: string | null };
+   514→  }>>([])
+   515→
+   516→  const downloadExpiredPdf = (date?: string) => {
+   517→    const qs = date ? `?date=${date}` : ''
+   518→    window.open(`/api/clients/expired-today/pdf${qs}`, '_blank')
+   519→    setShowPdfDatePicker(false)
+   520→    setPdfDate('')
+   521→  }
+   522→
+   523→  const openCreate = () => {
+   524→    setEditingClient(null)
+   525→    setFormName('')
+   526→    setFormLastName('')
+   527→    setFormCedula('')
+   528→    setFormPhone('')
+   529→    setFormEmail('')
+   530→    setFormAddress('')
+   531→    setFormNote('')
+   532→    setFormPlanId('')
+   533→    setDialogOpen(true)
+   534→  }
+   535→
+   536→  const openFreeze = async (client: Client) => {
+   537→    setFreezeClient(client)
+   538→    setFreezeDays('')
+   539→    setFreezeReason('')
+   540→    setFreezeDocRef('')
+   541→    try {
+   542→      const history = await api.get<any[]>(`/api/clients/${client.id}/freeze-days`)
+   543→      setFreezeHistory(history || [])
+   544→    } catch { setFreezeHistory([]) }
+   545→  }
+   546→
+   547→  const handleFreeze = async () => {
+   548→    if (!freezeClient) return
+   549→    const days = parseInt(freezeDays)
+   550→    if (!days || days <= 0) { toast.error('Ingrese una cantidad válida de días'); return }
+   551→    if (!freezeReason.trim()) { toast.error('El motivo es obligatorio'); return }
+   552→    setFreezeSaving(true)
+   553→    try {
+   554→      const res = await api.post<{ message: string }>(`/api/clients/${freezeClient.id}/freeze-days`, {
+   555→        days,
+   556→        reason: freezeReason.trim(),
+   557→        documentRef: freezeDocRef.trim() || undefined,
+   558→      })
+   559→      toast.success(res.message)
+   560→      setFreezeClient(null)
+   561→      fetchClients()
+   562→    } catch (err: any) {
+   563→      toast.error(err?.response?.data?.error || err?.message || 'Error al congelar días')
+   564→    } finally {
+   565→      setFreezeSaving(false)
+   566→    }
+   567→  }
+   568→
+   569→  const openEdit = (client: Client) => {
+   570→    setEditingClient(client)
+   571→    setFormName(client.name)
+   572→    setFormLastName(client.lastName || '')
+   573→    setFormCedula(client.cedula || '')
+   574→    setFormPhone(client.phone || '')
+   575→    setFormEmail(client.email || '')
+   576→    setFormAddress(client.address || '')
+   577→    setFormNote(client.note || '')
+   578→    setDialogOpen(true)
+   579→  }
+   580→
+   581→  const handleSave = async () => {
+   582→    // Name validation
+   583→    const trimmedName = formName.trim()
+   584→    if (!trimmedName) {
+   585→      toast.error('El nombre es obligatorio')
+   586→      return
+   587→    }
+   588→    if (trimmedName.length < 2) {
+   589→      toast.error('El nombre debe tener al menos 2 caracteres')
+   590→      return
+   591→    }
+   592→
+   593→    // Last name validation (gym only)
+   594→    const trimmedLastName = formLastName.trim()
+   595→    if (isGym && !trimmedLastName) {
+   596→      toast.error('El apellido es obligatorio')
+   597→      return
+   598→    }
+   599→
+   600→    // Phone validation
+   601→    if (formPhone.trim()) {
+   602→      const digitsOnly = formPhone.trim().replace(/[\s\-()]/g, '')
+   603→      if (!/^\+?\d{7,}$/.test(digitsOnly)) {
+   604→        toast.error('El teléfono debe tener al menos 7 dígitos (solo números, se permite +)')
+   605→        return
+   606→      }
+   607→    }
+   608→
+   609→    // Email validation
+   610→    if (formEmail.trim()) {
+   611→      if (!formEmail.trim().includes('@') || !formEmail.trim().includes('.')) {
+   612→        toast.error('El formato del email no es válido')
+   613→        return
+   614→      }
+   615→    }
+   616→
+   617→    // Address validation
+   618→    if (formAddress.trim() && formAddress.trim().length < 3) {
+   619→      toast.error('La dirección debe tener al menos 3 caracteres')
+   620→      return
+   621→    }
+   622→
+   623→    setSaving(true)
+   624→    try {
+   625→      if (editingClient) {
+   626→        await api.put('/api/clients', {
+   627→          id: editingClient.id,
+   628→          name: trimmedName,
+   629→          lastName: trimmedLastName,
+   630→          cedula: formCedula.trim() || null,
+   631→          phone: formPhone.trim() || null,
+   632→          email: formEmail.trim() || null,
+   633→          address: formAddress.trim() || null,
+   634→          note: formNote.trim() || null,
+   635→        })
+   636→        toast.success('Cliente actualizado')
+   637→        setDialogOpen(false)
+   638→        fetchClients()
+   639→      } else if (formPlanId) {
+   640→        // Plan selected → open payment modal instead of creating immediately
+   641→        try {
+   642→          const [methods, registers, currencies] = await Promise.all([
+   643→            api.get<PaymentMethodOption[]>(
+   644→              `/api/payment-methods?country=${country}&context=subscription`
+   645→            ),
+   646→            api.get<Array<{ id: string; status: string }>>('/api/cash-register'),
+   647→            api.get<{ id: string; code: string; symbol: string; isBase: boolean }[]>('/api/currencies'),
+   648→          ])
+   649→          const list = Array.isArray(methods) && methods.length > 0
+   650→            ? methods
+   651→            : FALLBACK_METHODS.filter(m => m.enabled)
+   652→          setCreatePaymentMethods(list)
+   653→          if (list.length > 0) setCreatePaymentMethod(list[0].code)
+   654→          setCreatePaymentReference('')
+   655→          const openReg = registers?.find((r: { status: string }) => r.status === 'abierta')
+   656→          if (openReg) setOpenCashRegId(openReg.id)
+   657→          if (Array.isArray(currencies)) setRenewCurrencies(currencies)
+   658→          setShowCreatePayment(true)
+   659→        } catch {
+   660→          toast.error('Error al cargar métodos de pago')
+   661→        }
+   662→      } else {
+   663→        // No plan — create client directly
+   664→        await api.post<Client>('/api/clients', {
+   665→          name: trimmedName,
+   666→          lastName: trimmedLastName,
+   667→          cedula: formCedula.trim() || null,
+   668→          phone: formPhone.trim() || null,
+   669→          email: formEmail.trim() || null,
+   670→          address: formAddress.trim() || null,
+   671→          note: formNote.trim() || null,
+   672→        })
+   673→        toast.success('Cliente creado')
+   674→        setDialogOpen(false)
+   675→        fetchClients()
+   676→      }
+   677→    } catch (err) {
+   678→      const msg = err instanceof Error ? err.message : 'Error al crear cliente'
+   679→      toast.error(msg)
+   680→    } finally {
+   681→      setSaving(false)
+   682→    }
+   683→  }
+   684→
+   685→  // Confirm: create client + assign plan with payment
+   686→  const handleCreateWithPayment = async () => {
+   687→    if (!createPaymentMethod) {
+   688→      toast.error('Selecciona un método de pago')
+   689→      return
+   690→    }
+   691→    const selectedPm = createPaymentMethods.find(m => m.code === createPaymentMethod)
+   692→    if (selectedPm?.needsReference && !createPaymentReference.trim()) {
+   693→      toast.error('La referencia es obligatoria para este método de pago')
+   694→      return
+   695→    }
+   696→
+   697→    setCreatingAndPaying(true)
+   698→    try {
+   699→      // 1. Create client
+   700→      const trimmedName = formName.trim()
+   701→      const trimmedLastName = formLastName.trim()
+   702→      const newClient = await api.post<Client>('/api/clients', {
+   703→        name: trimmedName,
+   704→        lastName: trimmedLastName,
+   705→        cedula: formCedula.trim() || null,
+   706→        phone: formPhone.trim() || null,
+   707→        email: formEmail.trim() || null,
+   708→        address: formAddress.trim() || null,
+   709→        note: formNote.trim() || null,
+   710→      })
+   711→
+   712→      // 2. Assign plan with payment
+   713→      const baseCurr = renewCurrencies.find(c => c.isBase)
+   714→      await api.post(`/api/clients/${newClient.id}/renew`, {
+   715→        planId: formPlanId,
+   716→        paymentMethod: createPaymentMethod,
+   717→        paymentReference: createPaymentReference.trim() || undefined,
+   718→        cashRegId: openCashRegId || undefined,
+   719→        branchId: selectedBranchId || undefined,
+   720→        currencyId: baseCurr?.id || baseCurrencyId || '',
+   721→      })
+   722→
+   723→      toast.success('Cliente creado y suscripción activada')
+   724→      setShowCreatePayment(false)
+   725→      setDialogOpen(false)
+   726→      setFormPlanId('')
+   727→      fetchClients()
+   728→    } catch (err) {
+   729→      const msg = err instanceof Error ? err.message : 'Error al crear cliente con suscripción'
+   730→      toast.error(msg)
+   731→    } finally {
+   732→      setCreatingAndPaying(false)
+   733→    }
+   734→  }
+   735→
+   736→  const handleDownloadStatement = async (client: Client) => {
+   737→    try {
+   738→      const res = await fetch(`/api/clients/${client.id}/statement`)
+   739→      if (!res.ok) throw new Error()
+   740→      const blob = await res.blob()
+   741→      const url = URL.createObjectURL(blob)
+   742→      const a = document.createElement('a')
+   743→      a.href = url
+   744→      a.download = `estado_cuenta_${client.name.replace(/\s+/g, '_')}.pdf`
+   745→      a.click()
+   746→      URL.revokeObjectURL(url)
+   747→      toast.success('Estado de cuenta descargado')
+   748→    } catch {
+   749→      toast.error('Error al descargar el estado de cuenta')
+   750→    }
+   751→  }
+   752→
+   753→  const handleSendStatement = async (client: Client) => {
+   754→    if (!client.email) {
+   755→      toast.error('El cliente no tiene email registrado')
+   756→      return
+   757→    }
+   758→    setSendingStatement(client.id)
+   759→    try {
+   760→      const res = await fetch(`/api/clients/${client.id}/send-statement`, { method: 'POST' })
+   761→      const data = await res.json()
+   762→      if (!res.ok) throw new Error(data.error)
+   763→      toast.success(`Estado de cuenta enviado a ${client.email}`)
+   764→    } catch (e: unknown) {
+   765→      const msg = e instanceof Error ? e.message : 'Error al enviar'
+   766→      toast.error(msg)
+   767→    } finally {
+   768→      setSendingStatement(null)
+   769→    }
+   770→  }
+   771→
+   772→  const openHistory = async (client: Client) => {
+   773→    setHistoryClient(client)
+   774→    setShowHistoryDialog(true)
+   775→    setClientPayments([])
+   776→    setLoadingHistory(true)
+   777→    setLoadingPayments(true)
+   778→    try {
+   779→      const [salesData, paymentsData] = await Promise.all([
+   780→        api.get<{ sales: SaleRecord[] }>(`/api/clients/${client.id}/sales`),
+   781→        api.get<{ payments: ClientPaymentRecord[] }>(`/api/clients/${client.id}/payments`),
+   782→      ])
+   783→      setSales(salesData.sales)
+   784→      setClientPayments(paymentsData.payments)
+   785→    } catch {
+   786→      toast.error('Error al cargar historial')
+   787→    } finally {
+   788→      setLoadingHistory(false)
+   789→      setLoadingPayments(false)
+   790→    }
+   791→  }
+   792→
+   793→  const openPayment = (client: Client) => {
+   794→    setPaymentClient(client)
+   795→    setPaymentSuccess(false)
+   796→    // Set default to efectivo first, then first available non-credit method
+   797→    const efectivo = paymentMethods.find(m => m.code === 'efectivo' && !m.isCredit)
+   798→    const firstNonCredit = efectivo || paymentMethods.find(m => !m.isCredit)
+   799→    setPaymentMethod(firstNonCredit?.code || paymentMethods[0]?.code || '')
+   800→    setPaymentReference('')
+   801→    // Set amount in reference currency by default
+   802→    setPaymentAmount(client.pendingBalance.toFixed(2))
+   803→    setShowPaymentDialog(true)
+   804→  }
+   805→
+   806→  // When payment method changes, toggle between local and reference currency
+   807→  const handlePaymentMethodChange = (methodCode: string) => {
+   808→    setPaymentMethod(methodCode)
+   809→    setPaymentReference('')
+   810→    if (paymentClient) {
+   811→      const pm = paymentMethods.find(m => m.code === methodCode)
+   812→      const isLocal = pm?.isLocalCurrency ?? false
+   813→      if (isLocal && exchangeRate > 0) {
+   814→        setPaymentAmount((paymentClient.pendingBalance * exchangeRate).toFixed(2))
+   815→      } else {
+   816→        setPaymentAmount(paymentClient.pendingBalance.toFixed(2))
+   817→      }
+   818→    }
+   819→  }
+   820→
+   821→  // Convert displayed amount to reference currency
+   822→  const paymentAmountInRef = (() => {
+   823→    const parsed = parseFloat(paymentAmount) || 0
+   824→    if (isLocalMethod && exchangeRate > 0) {
+   825→      return Math.round((parsed / exchangeRate) * 100) / 100
+   826→    }
+   827→    return parsed
+   828→  })()
+   829→
+   830→  const openDispatch = async (client: Client) => {
+   831→    setDispatchClient(client)
+   832→    setDispatchLines([])
+   833→    setShowDispatchDialog(true)
+   834→    setLoadingProducts(true)
+   835→    try {
+   836→      const branchParam = selectedBranchId ? `?branchId=${selectedBranchId}` : ''
+   837→      const data = await api.get<{ products: ProductOption[] }>(`/api/products?active=true${branchParam}`)
+   838→      setProducts(data.products)
+   839→    } catch {
+   840→      toast.error('Error al cargar productos')
+   841→    } finally {
+   842→      setLoadingProducts(false)
+   843→    }
+   844→  }
+   845→
+   846→  const handlePayment = async () => {
+   847→    if (!paymentClient) return
+   848→    if (!user?.id) {
+   849→      toast.error('No se pudo identificar al usuario. Inicie sesión de nuevo.')
+   850→      return
+   851→    }
+   852→    if (!baseCurrencyId) {
+   853→      toast.error('No hay moneda base configurada. Configure la moneda base en ajustes.')
+   854→      return
+   855→    }
+   856→    const amt = parseFloat(paymentAmount)
+   857→    if (!amt || amt <= 0) {
+   858→      toast.error('El monto debe ser mayor a 0')
+   859→      return
+   860→    }
+   861→    if (paymentAmountInRef > paymentClient.pendingBalance) {
+   862→      toast.error(`El monto no puede ser mayor al saldo pendiente (${fmt(paymentClient.pendingBalance)})`)
+   863→      return
+   864→    }
+   865→    if (selectedPm?.isCash && !openCashRegId) {
+   866→      toast.error('No hay caja abierta. Abra una caja registradora antes de cobrar en efectivo.')
+   867→      return
+   868→    }
+   869→    setPaying(true)
+   870→    try {
+   871→      await api.post(`/api/clients/${paymentClient.id}/payment`, {
+   872→        amount: paymentAmountInRef,
+   873→        method: paymentMethod,
+   874→        reference: paymentReference || undefined,
+   875→        cashRegId: openCashRegId || undefined,
+   876→        userId: user.id,
+   877→        currencyId: baseCurrencyId,
+   878→      })
+   879→      const displayLabel = isLocalMethod ? `Bs. ${parseFloat(paymentAmount).toFixed(2)}` : `${fmt(paymentAmountInRef)}`
+   880→      toast.success(`Cobro de ${displayLabel} registrado exitosamente`)
+   881→      setPaymentSuccess(true)
+   882→      setTimeout(() => {
+   883→        setPaymentSuccess(false)
+   884→        setShowPaymentDialog(false)
+   885→        fetchClients()
+   886→      }, 2000)
+   887→    } catch (error) {
+   888→      const msg = error instanceof Error ? error.message : 'Error al registrar cobro'
+   889→      toast.error(msg)
+   890→    } finally {
+   891→      setPaying(false)
+   892→    }
+   893→  }
+   894→
+   895→  const handleDeletePayment = async (paymentId: string, amount: number) => {
+   896→    if (!historyClient) return
+   897→    if (!window.confirm(`¿Eliminar este cobro de ${fmt(amount)}? La deuda será restaurada.`)) return
+   898→    setDeletingPaymentId(paymentId)
+   899→    try {
+   900→      await api.del(`/api/clients/${historyClient.id}/payments/${paymentId}`)
+   901→      toast.success(`Pago de ${fmt(amount)} eliminado. Deuda restaurada.`)
+   902→      // Refresh payments list, sales, and client list
+   903→      setClientPayments(prev => prev.filter(p => p.id !== paymentId))
+   904→      fetchClients()
+   905→      // Reload sales to update pending balance badges
+   906→      if (historyClient) {
+   907→        const salesData = await api.get<{ sales: SaleRecord[] }>(`/api/clients/${historyClient.id}/sales`)
+   908→        setSales(salesData.sales)
+   909→      }
+   910→    } catch (error) {
+   911→      const msg = error instanceof Error ? error.message : 'Error al eliminar pago'
+   912→      toast.error(msg)
+   913→    } finally {
+   914→      setDeletingPaymentId(null)
+   915→    }
+   916→  }
+   917→
+   918→  const handleConfirmRemoveDebt = async () => {
+   919→    if (!removeDebtTarget) return
+   920→    const { client, receivable } = removeDebtTarget
+   921→    setRemovingDebt(true)
+   922→    try {
+   923→      await api.del(`/api/clients/${client.id}/receivables/${receivable.id}`)
+   924→      toast.success('Deuda eliminada correctamente')
+   925→      setRemoveDebtTarget(null)
+   926→      setRemoveDebtClient(null)
+   927→      fetchClients()
+   928→    } catch (error) {
+   929→      const msg = error instanceof Error ? error.message : 'Error al eliminar deuda'
+   930→      toast.error(msg)
+   931→    } finally {
+   932→      setRemovingDebt(false)
+   933→    }
+   934→  }
+   935→
+   936→  const addDispatchLine = (productId: string) => {
+   937→    const product = products.find(p => p.id === productId)
+   938→    if (!product) return
+   939→
+   940→    const existingLine = dispatchLines.find(l => l.productId === productId)
+   941→    if (existingLine) {
+   942→      // Increment quantity
+   943→      if (existingLine.quantity >= existingLine.stock) {
+   944→        toast.error('Stock insuficiente')
+   945→        return
+   946→      }
+   947→      setDispatchLines(dispatchLines.map(l =>
+   948→        l.productId === productId
+   949→          ? { ...l, quantity: l.quantity + 1 }
+   950→          : l
+   951→      ))
+   952→    } else {
+   953→      const branchInv = product.inventories.find(i => i.branchId === selectedBranchId)
+   954→      const stock = branchInv?.stock ?? 0
+   955→      if (stock <= 0) {
+   956→        toast.error('Sin stock disponible')
+   957→        return
+   958→      }
+   959→      setDispatchLines([...dispatchLines, {
+   960→        productId: product.id,
+   961→        productName: product.name,
+   962→        quantity: 1,
+   963→        unitPrice: product.price,
+   964→        stock,
+   965→      }])
+   966→    }
+   967→  }
+   968→
+   969→  const updateDispatchLineQty = (productId: string, qty: number) => {
+   970→    const line = dispatchLines.find(l => l.productId === productId)
+   971→    if (!line) return
+   972→    if (qty > line.stock) {
+   973→      toast.error(`Stock insuficiente. Máximo: ${line.stock}`)
+   974→      return
+   975→    }
+   976→    if (qty <= 0) {
+   977→      setDispatchLines(dispatchLines.filter(l => l.productId !== productId))
+   978→    } else {
+   979→      setDispatchLines(dispatchLines.map(l =>
+   980→        l.productId === productId ? { ...l, quantity: qty } : l
+   981→      ))
+   982→    }
+   983→  }
+   984→
+   985→  const dispatchTotal = dispatchLines.reduce((sum, l) => sum + (l.unitPrice * l.quantity), 0)
+   986→
+   987→  const handleDispatch = async () => {
+   988→    if (!dispatchClient || dispatchLines.length === 0) return
+   989→    setSavingDispatch(true)
+   990→    try {
+   991→      await api.post(`/api/clients/${dispatchClient.id}/dispatch`, {
+   992→        lines: dispatchLines.map(l => ({
+   993→          productId: l.productId,
+   994→          quantity: l.quantity,
+   995→          unitPrice: l.unitPrice,
+   996→        })),
+   997→        userId: user?.id || '',
+   998→        branchId: selectedBranchId || undefined,
+   999→      })
+  1000→      toast.success(`Despacho registrado. Total: ${fmt(dispatchTotal)}`)
+  1001→      setShowDispatchDialog(false)
+  1002→      fetchClients()
+  1003→    } catch (error) {
+  1004→      const msg = error instanceof Error ? error.message : 'Error al registrar despacho'
+  1005→      toast.error(msg)
+  1006→    } finally {
+  1007→      setSavingDispatch(false)
+  1008→    }
+  1009→  }
+  1010→
+  1011→  const openRenew = (client: Client) => {
+  1012→    setRenewClient(client)
+  1013→    setRenewPlanId('')
+  1014→    setRenewPaymentMethod('')
+  1015→    setRenewPaymentReference('')
+  1016→    setShowRenewDialog(true)
+  1017→    // Refresh plans to get latest effectivePrice (promo/discount may have changed)
+  1018→    api.get<PlanOption[]>('/api/plans')
+  1019→      .then(data => setPlans(Array.isArray(data) ? data.filter(p => p.active) : []))
+  1020→      .catch(() => {})
+  1021→    // Load subscription-specific payment methods and open cash register
+  1022→    const countryVal = country
+  1023→    Promise.all([
+  1024→      api.get<PaymentMethodOption[]>(`/api/payment-methods?country=${countryVal}&context=subscription`),
+  1025→      api.get<Array<{ id: string; status: string }>>('/api/cash-register'),
+  1026→      api.get<{ id: string; code: string; symbol: string; isBase: boolean }[]>('/api/currencies'),
+  1027→    ]).then(([methods, registers, currencies]) => {
+  1028→      const list = Array.isArray(methods) && methods.length > 0 ? methods : FALLBACK_METHODS.filter(m => m.enabled)
+  1029→      setRenewMethods(list)
+  1030→      if (list.length > 0) {
+  1031→        const efectivo = list.find((m: { code: string }) => m.code === 'efectivo')
+  1032→        setRenewPaymentMethod(efectivo?.code || list[0].code)
+  1033→      }
+  1034→      const openReg = registers?.find((r: { status: string }) => r.status === 'abierta')
+  1035→      if (openReg) setOpenCashRegId(openReg.id)
+  1036→      if (Array.isArray(currencies)) setRenewCurrencies(currencies)
+  1037→    }).catch(() => {
+  1038→      const fallback = FALLBACK_METHODS.filter(m => m.enabled)
+  1039→      setRenewMethods(fallback)
+  1040→      if (fallback.length > 0) setRenewPaymentMethod(fallback[0].code)
+  1041→    })
+  1042→  }
+  1043→
+  1044→  const handleRenew = async () => {
+  1045→    if (!renewClient || !renewPlanId) {
+  1046→      toast.error('Selecciona un plan')
+  1047→      return
+  1048→    }
+  1049→    // The actual selected method comes from HybridPaymentSelector via renewHybridPayments
+  1050→    const effectiveMethod = renewHybridPayments[0]?.method || renewPaymentMethod
+  1051→    const effectiveRef = renewHybridPayments[0]?.reference || renewPaymentReference
+  1052→
+  1053→    if (renewIsHybrid) {
+  1054→      const selectedPlan = plans.find(p => p.id === renewPlanId)
+  1055→      if (!selectedPlan) { toast.error('Plan no encontrado'); return }
+  1056→      const sum = renewHybridPayments.reduce((s, p) => s + p.amount, 0)
+  1057→      const effectivePrice = selectedPlan.effectivePrice ?? selectedPlan.cost
+  1058→      if (Math.abs(sum - effectivePrice) > 0.01) {
+  1059→        toast.error('Los pagos híbridos no cubren el total del plan')
+  1060→        return
+  1061→      }
+  1062→      for (const p of renewHybridPayments) {
+  1063→        const m = renewMethods.find(rm => rm.code === p.method)
+  1064→        if (m?.needsReference && !p.reference) { toast.error(`Referencia obligatoria para ${m.name}`); return }
+  1065→      }
+  1066→    } else {
+  1067→      if (!effectiveMethod) {
+  1068→        toast.error('Selecciona un método de pago')
+  1069→        return
+  1070→      }
+  1071→      const selectedMethod = renewMethods.find(m => m.code === effectiveMethod)
+  1072→      if (selectedMethod?.needsReference && !effectiveRef.trim()) {
+  1073→        toast.error(`La referencia es obligatoria para ${selectedMethod.name}`)
+  1074→        return
+  1075→      }
+  1076→    }
+  1077→    setRenewing(true)
+  1078→    try {
+  1079→      const baseCurr = renewCurrencies.find(c => c.isBase)
+  1080→      const payload: Record<string, any> = {
+  1081→        planId: renewPlanId,
+  1082→        cashRegId: openCashRegId || undefined,
+  1083→        branchId: selectedBranchId || undefined,
+  1084→        currencyId: baseCurr?.id || baseCurrencyId || '',
+  1085→      }
+  1086→      if (renewIsHybrid) {
+  1087→        payload.payments = renewHybridPayments.map(p => ({
+  1088→          method: p.method,
+  1089→          amount: p.amount,
+  1090→          reference: p.reference || undefined,
+  1091→        }))
+  1092→      } else {
+  1093→        payload.paymentMethod = effectiveMethod
+  1094→        payload.paymentReference = effectiveRef.trim() || undefined
+  1095→      }
+  1096→      const res = await api.post<{ message: string }>(`/api/clients/${renewClient.id}/renew`, payload)
+  1097→      setRenewSuccess(true)
+  1098→      toast.success(res.message || 'Suscripción renovada')
+  1099→      setTimeout(() => {
+  1100→        setShowRenewDialog(false)
+  1101→        setRenewSuccess(false)
+  1102→        fetchClients()
+  1103→      }, 1500)
+  1104→    } catch (error) {
+  1105→      const msg = error instanceof Error ? error.message : 'Error al renovar'
+  1106→      toast.error(msg)
+  1107→    } finally {
+  1108→      setRenewing(false)
+  1109→    }
+  1110→  }
+  1111→
+  1112→  const openTiquetera = (client: Client) => {
+  1113→    setTiqueteraClient(client)
+  1114→    setTiqueteraPlanId('')
+  1115→    setTiqueteraPaymentMethod('')
+  1116→    setTiqueteraPaymentReference('')
+  1117→    setTiqueteraHybridPayments([])
+  1118→    setTiqueteraIsHybrid(false)
+  1119→    setTiqueteraSuccess(false)
+  1120→    setShowTiqueteraDialog(true)
+  1121→    // Load only ticket plans
+  1122→    api.get<PlanOption[]>('/api/plans')
+  1123→      .then(data => setPlans(Array.isArray(data) ? data.filter(p => p.active) : []))
+  1124→      .catch(() => {})
+  1125→    // Load payment methods and open cash register
+  1126→    const countryVal = country
+  1127→    Promise.all([
+  1128→      api.get<PaymentMethodOption[]>(`/api/payment-methods?country=${countryVal}&context=subscription`),
+  1129→      api.get<Array<{ id: string; status: string }>>('/api/cash-register'),
+  1130→      api.get<{ id: string; code: string; symbol: string; isBase: boolean }[]>('/api/currencies'),
+  1131→    ]).then(([methods, registers, currencies]) => {
+  1132→      const list = Array.isArray(methods) && methods.length > 0 ? methods : FALLBACK_METHODS.filter(m => m.enabled)
+  1133→      setTiqueteraMethods(list)
+  1134→      if (list.length > 0) {
+  1135→        const efectivo = list.find((m: { code: string }) => m.code === 'efectivo')
+  1136→        setTiqueteraPaymentMethod(efectivo?.code || list[0].code)
+  1137→      }
+  1138→      const openReg = registers?.find((r: { status: string }) => r.status === 'abierta')
+  1139→      if (openReg) setOpenCashRegId(openReg.id)
+  1140→      if (Array.isArray(currencies)) setTiqueteraCurrencies(currencies)
+  1141→    }).catch(() => {
+  1142→      const fallback = FALLBACK_METHODS.filter(m => m.enabled)
+  1143→      setTiqueteraMethods(fallback)
+  1144→      if (fallback.length > 0) setTiqueteraPaymentMethod(fallback[0].code)
+  1145→    })
+  1146→  }
+  1147→
+  1148→  const handleAddTiquetera = async () => {
+  1149→    if (!tiqueteraClient || !tiqueteraPlanId) {
+  1150→      toast.error('Selecciona un plan de tickets')
+  1151→      return
+  1152→    }
+  1153→    const effectiveMethod = tiqueteraHybridPayments[0]?.method || tiqueteraPaymentMethod
+  1154→    const effectiveRef = tiqueteraHybridPayments[0]?.reference || tiqueteraPaymentReference
+  1155→
+  1156→    if (tiqueteraIsHybrid) {
+  1157→      const selectedPlan = plans.find(p => p.id === tiqueteraPlanId)
+  1158→      if (!selectedPlan) { toast.error('Plan no encontrado'); return }
+  1159→      const sum = tiqueteraHybridPayments.reduce((s, p) => s + p.amount, 0)
+  1160→      const effectivePrice = selectedPlan.effectivePrice ?? selectedPlan.cost
+  1161→      if (Math.abs(sum - effectivePrice) > 0.01) {
+  1162→        toast.error('Los pagos híbridos no cubren el total')
+  1163→        return
+  1164→      }
+  1165→      for (const p of tiqueteraHybridPayments) {
+  1166→        const m = tiqueteraMethods.find(rm => rm.code === p.method)
+  1167→        if (m?.needsReference && !p.reference) { toast.error(`Referencia obligatoria para ${m.name}`); return }
+  1168→      }
+  1169→    } else {
+  1170→      if (!effectiveMethod) {
+  1171→        toast.error('Selecciona un método de pago')
+  1172→        return
+  1173→      }
+  1174→      const selectedMethod = tiqueteraMethods.find(m => m.code === effectiveMethod)
+  1175→      if (selectedMethod?.needsReference && !effectiveRef.trim()) {
+  1176→        toast.error(`La referencia es obligatoria para ${selectedMethod.name}`)
+  1177→        return
+  1178→      }
+  1179→    }
+  1180→    setAddingTiquetera(true)
+  1181→    try {
+  1182→      const baseCurr = tiqueteraCurrencies.find(c => c.isBase)
+  1183→      const payload: Record<string, any> = {
+  1184→        planId: tiqueteraPlanId,
+  1185→        cashRegId: openCashRegId || undefined,
+  1186→        branchId: selectedBranchId || undefined,
+  1187→        currencyId: baseCurr?.id || baseCurrencyId || '',
+  1188→      }
+  1189→      if (tiqueteraIsHybrid) {
+  1190→        payload.payments = tiqueteraHybridPayments.map(p => ({
+  1191→          method: p.method,
+  1192→          amount: p.amount,
+  1193→          reference: p.reference || undefined,
+  1194→        }))
+  1195→      } else {
+  1196→        payload.paymentMethod = effectiveMethod
+  1197→        payload.paymentReference = effectiveRef.trim() || undefined
+  1198→      }
+  1199→      const res = await api.post<{ message: string }>(`/api/clients/${tiqueteraClient.id}/tiquetera`, payload)
+  1200→      setTiqueteraSuccess(true)
+  1201→      toast.success(res.message || 'Tiquetera asignada')
+  1202→      setTimeout(() => {
+  1203→        setShowTiqueteraDialog(false)
+  1204→        setTiqueteraSuccess(false)
+  1205→        fetchClients()
+  1206→      }, 1500)
+  1207→    } catch (error) {
+  1208→      const msg = error instanceof Error ? error.message : 'Error al agregar tiquetera'
+  1209→      toast.error(msg)
+  1210→    } finally {
+  1211→      setAddingTiquetera(false)
+  1212→    }
+  1213→  }
+  1214→
+  1215→  const openAttendance = async (client: Client) => {
+  1216→    setAttClient(client)
+  1217→    setAttData(null)
+  1218→    setShowAttDialog(true)
+  1219→    setLoadingAtt(true)
+  1220→    try {
+  1221→      const data = await api.get<typeof attData>(`/api/clients/${client.id}/attendance`)
+  1222→      setAttData(data)
+  1223→    } catch {
+  1224→      toast.error('Error al cargar asistencia')
+  1225→    } finally {
+  1226→      setLoadingAtt(false)
+  1227→    }
+  1228→  }
+  1229→
+  1230→  const markAttendance = async (source: 'gym' | 'tiquetera' = 'gym') => {
+  1231→    if (!attClient) return
+  1232→    setMarkingAtt(true)
+  1233→    try {
+  1234→      await api.post(`/api/clients/${attClient.id}/attendance`, { source })
+  1235→      const label = source === 'tiquetera' ? 'Asistencia por tiquetera marcada' : 'Asistencia gym marcada'
+  1236→      toast.success(label)
+  1237→      // Refresh attendance data
+  1238→      openAttendance(attClient)
+  1239→      fetchClients()
+  1240→      fetchAttendanceToday()
+  1241→    } catch (error) {
+  1242→      const msg = error instanceof Error ? error.message : 'Error al marcar asistencia'
+  1243→      toast.error(msg)
+  1244→    } finally {
+  1245→      setMarkingAtt(false)
+  1246→    }
+  1247→  }
+  1248→
+  1249→  const handleReactivate = async (client: Client) => {
+  1250→    try {
+  1251→      await api.put('/api/clients', { id: client.id, reactivate: true })
+  1252→      toast.success(`Cliente "${client.name}" reactivado`)
+  1253→      fetchClients()
+  1254→    } catch {
+  1255→      toast.error('Error al reactivar cliente')
+  1256→    }
+  1257→  }
+  1258→
+  1259→  return (
+  1260→    <div className="space-y-4">
+  1261→      {/* Top bar: search + filters + actions */}
+  1262→      <div className="flex flex-col gap-3">
+  1263→        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+  1264→          <div className="relative flex-1 max-w-md">
+  1265→            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+  1266→            <Input placeholder="Buscar por nombre, apellido, cédula o teléfono..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" />
+  1267→          </div>
+  1268→          {isGym && attendanceToday !== null && (
+  1269→            <span className="text-xs font-semibold bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400 px-2 py-1 rounded shrink-0">
+  1270→              <UserCheck className="inline h-3.5 w-3.5 mr-1 -mt-0.5" />Asistencias hoy: {attendanceToday}
+  1271→            </span>
+  1272→          )}
+  1273→          <div className="flex items-center gap-2 text-sm">
+  1274→            <Switch
+  1275→              id="show-inactive-clients"
+  1276→              checked={showInactive}
+  1277→              onCheckedChange={setShowInactive}
+  1278→            />
+  1279→            <Label htmlFor="show-inactive-clients" className="cursor-pointer select-none">
+  1280→              {showInactive ? <Eye className="inline h-4 w-4 mr-1" /> : <EyeOff className="inline h-4 w-4 mr-1" />}
+  1281→              Inactivos ({inactiveCount})
+  1282→            </Label>
+  1283→          </div>
+  1284→          {canManage && (
+  1285→            <div className="flex items-center gap-2">
+  1286→              {isGym && (
+  1287→              <>
+  1288→              <Button variant="outline" onClick={openExpiredReport} disabled={loadingExpired} className="text-red-600 border-red-300 hover:bg-red-50 dark:text-red-400 dark:border-red-800 dark:hover:bg-red-950/40">
+  1289→                <FileText className="mr-2 h-4 w-4" /> Vencidos Hoy {expiredTodayCount > 0 && `(${expiredTodayCount})`}
+  1290→              </Button>
+  1291→              <Button variant="outline" onClick={() => setBulkImportOpen(true)} className="text-primary border-primary/30 hover:bg-primary/5">
+  1292→                <Upload className="mr-2 h-4 w-4" /> Carga Masiva
+  1293→              </Button>
+  1294→              </>
+  1295→              )}
+  1296→              <Button onClick={openCreate} className="bg-primary hover:bg-primary/90 text-white">
+  1297→                <Plus className="mr-2 h-4 w-4" /> Nuevo Cliente
+  1298→              </Button>
+  1299→            </div>
+  1300→          )}
+  1301→        </div>
+  1302→
+  1303→        {/* Membership filter bar (gym only) */}
+  1304→        {isGym && (
+  1305→        <div className="flex items-center gap-2 flex-wrap">
+  1306→          <Filter className="h-4 w-4 text-muted-foreground" />
+  1307→          <span className="text-xs text-muted-foreground mr-1">Membresía:</span>
+  1308→          {([
+  1309→            { key: 'todos' as const, label: 'Todos', count: clients.filter(c => !c.deletedAt).length, icon: <UsersRound className="h-3.5 w-3.5" /> },
+  1310→            { key: 'activo' as const, label: 'Activos', count: activeCount, icon: <UserCheck className="h-3.5 w-3.5" /> },
+  1311→            { key: 'vencido' as const, label: 'Vencidos', count: expiredCount, icon: <UserX className="h-3.5 w-3.5" /> },
+  1312→            { key: 'sin' as const, label: 'Sin membresía', count: noMembershipCount, icon: <Users className="h-3.5 w-3.5" /> },
+  1313→            { key: 'deudas' as const, label: 'Deudas', count: debtCount, icon: <AlertCircle className="h-3.5 w-3.5" /> },
+  1314→          ]).map((opt) => (
+  1315→            <button
+  1316→              key={opt.key}
+  1317→              onClick={() => setMembershipFilter(opt.key)}
+  1318→              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+  1319→                membershipFilter === opt.key
+  1320→                  ? 'bg-primary text-white shadow-sm'
+  1321→                  : 'bg-muted text-muted-foreground hover:bg-muted/80'
+  1322→              }`}
+  1323→            >
+  1324→              {opt.icon}
+  1325→              {opt.label} ({opt.count})
+  1326→            </button>
+  1327→          ))}
+  1328→          <span className="ml-auto text-xs text-muted-foreground">
+  1329→            {filtered.length} resultado{filtered.length !== 1 ? 's' : ''}
+  1330→          </span>
+  1331→        </div>
+  1332→        )}
+  1333→      </div>
+  1334→
+  1335→      {loading ? (
+  1336→        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+  1337→          {Array.from({ length: 8 }).map((_, i) => (
+  1338→            <Card key={i} className="h-52 animate-pulse bg-muted" />
+  1339→          ))}
+  1340→        </div>
+  1341→      ) : paginatedClients.length === 0 ? (
+  1342→        <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+  1343→          <Users className="h-12 w-12 mb-3 opacity-40" />
+  1344→          <p className="text-sm">No se encontraron clientes</p>
+  1345→        </div>
+  1346→      ) : (
+  1347→        <>
+  1348→        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+  1349→          {paginatedClients.map((client) => {
+  1350→            const memStatus = client.membership?.status
+  1351→            const hasMembership = memStatus && memStatus !== 'Sin membresia'
+  1352→            return (
+  1353→            <Card key={client.id} className={`relative overflow-hidden hover:shadow-md transition-shadow ${client.deletedAt ? 'opacity-60' : ''}`}>
+  1354→              {/* Top color bar */}
+  1355→              <div className={`h-1 ${
+  1356→                client.deletedAt ? 'bg-gray-400' :
+  1357→                isGym && (memStatus === 'Activo' || client.tiquetera?.status === 'Activo') ? 'bg-emerald-500' :
+  1358→                isGym && (memStatus === 'Vencido' || client.tiquetera?.status === 'Vencido') ? 'bg-red-500' :
+  1359→                'bg-gray-300 dark:bg-gray-600'
+  1360→              }`} />
+  1361→              <CardContent className="p-4 space-y-3">
+  1362→                <div className="flex items-start justify-between gap-2">
+  1363→                  <div className="min-w-0 flex-1">
+  1364→                    <h3 className="font-semibold text-sm truncate">{cap(client.name)}{isGym && client.lastName ? ` ${cap(client.lastName)}` : ''}</h3>
+  1365→                    {isGym && client.cedula && (
+  1366→                      <p className="text-[11px] text-muted-foreground font-mono">{client.cedula}</p>
+  1367→                    )}
+  1368→                  </div>
+  1369→                  <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
+  1370→                    {client.deletedAt && (
+  1371→                      <Badge variant="outline" className="text-muted-foreground text-[10px] px-1.5 py-0">
+  1372→                        Deshabilitado
+  1373→                      </Badge>
+  1374→                    )}
+  1375→                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${client.pendingBalance > 0
+  1376→                      ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400'
+  1377→                      : 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400'
+  1378→                    }`}>
+  1379→                      {client.pendingBalance > 0
+  1380→                        ? `${fmt(client.pendingBalance)}`
+  1381→                        : 'Sin deuda'
+  1382→                      }
+  1383→                    </span>
+  1384→                  </div>
+  1385→                </div>
+  1386→
+  1387→                <div className="space-y-1 text-xs text-muted-foreground">
+  1388→                  {client.phone && (
+  1389→                    <div className="flex items-center gap-1.5">
+  1390→                      <Phone className="h-3 w-3 shrink-0" />
+  1391→                      <span className="truncate">{client.phone}</span>
+  1392→                    </div>
+  1393→                  )}
+  1394→                  {client.email && (
+  1395→                    <div className="flex items-center gap-1.5">
+  1396→                      <Mail className="h-3 w-3 shrink-0" />
+  1397→                      <span className="truncate">{client.email.toLowerCase()}</span>
+  1398→                    </div>
+  1399→                  )}
+  1400→                  {client.address && (
+  1401→                    <div className="flex items-center gap-1.5">
+  1402→                      <MapPin className="h-3 w-3 shrink-0" />
+  1403→                      <span className="truncate">{cap(client.address)}</span>
+  1404→                    </div>
+  1405→                  )}
+  1406→                </div>
+  1407→
+  1408→                {/* Membership info below contact (gym only) */}
+  1409→                {isGym && (
+  1410→                <div className="space-y-1.5">
+  1411→                  {/* Gym membership row */}
+  1412→                  <div className="flex items-center gap-1.5 flex-wrap">
+  1413→                    <Badge
+  1414→                      className={`text-[10px] px-1.5 py-0 ${
+  1415→                        memStatus === 'Activo'
+  1416→                          ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400'
+  1417→                          : memStatus === 'Vencido'
+  1418→                          ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400'
+  1419→                          : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
+  1420→                      }`}
+  1421→                    >
+  1422→                      {memStatus === 'Activo' ? 'Activo' : memStatus === 'Vencido' ? 'Vencido' : 'Sin membresia'}
+  1423→                    </Badge>
+  1424→                    {hasMembership && client.membership?.tarifa && (
+  1425→                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-muted-foreground">
+  1426→                        {cap(client.membership.tarifa)}
+  1427→                      </Badge>
+  1428→                    )}
+  1429→                    {hasMembership && client.membership!.endDate && (
+  1430→                      <span className="text-[10px] text-muted-foreground">
+  1431→                        Vence: {new Date(client.membership!.endDate).toLocaleDateString('es-VE')}
+  1432→                      </span>
+  1433→                    )}
+  1434→                    {memStatus === 'Activo' && hasMembership && client.membership!.daysRemaining > 0 && (
+  1435→                      <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
+  1436→                        {client.membership!.daysRemaining}d restantes
+  1437→                      </span>
+  1438→                    )}
+  1439→                  </div>
+  1440→
+  1441→                  {/* Tiquetera row (independent) */}
+  1442→                  {client.tiquetera && (
+  1443→                  <div className="flex items-center gap-1.5 flex-wrap">
+  1444→                    <Badge
+  1445→                      className={`text-[10px] px-1.5 py-0 ${
+  1446→                        client.tiquetera.status === 'Activo'
+  1447→                          ? 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-400'
+  1448→                          : 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400'
+  1449→                      }`}
+  1450→                    >
+  1451→                      Tiquetera
+  1452→                    </Badge>
+  1453→                    {client.tiquetera.tarifa && (
+  1454→                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-purple-600 dark:text-purple-400 border-purple-300 dark:border-purple-700">
+  1455→                        {cap(client.tiquetera.tarifa)}
+  1456→                      </Badge>
+  1457→                    )}
+  1458→                    <div
+  1459→                      className={`
+  1460→                        inline-flex items-center justify-center w-6 h-6 rounded-full text-[10px] font-bold
+  1461→                        ${client.tiquetera.ticketsRemaining > 0
+  1462→                          ? 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300 ring-1 ring-purple-300 dark:ring-purple-700'
+  1463→                          : 'bg-red-100 text-red-600 dark:bg-red-950 dark:text-red-400 ring-1 ring-red-300 dark:ring-red-700'
+  1464→                        }
+  1465→                      `}
+  1466→                      title={`${client.tiquetera.ticketsRemaining} tickets restantes`}
+  1467→                    >
+  1468→                      {client.tiquetera.ticketsRemaining}
+  1469→                    </div>
+  1470→                    {client.tiquetera.endDate && (
+  1471→                      <span className={`text-[10px] ${client.tiquetera.status === 'Activo' ? 'text-muted-foreground' : 'text-red-500'}`}>
+  1472→                        Vence: {new Date(client.tiquetera.endDate).toLocaleDateString('es-VE')}
+  1473→                      </span>
+  1474→                    )}
+  1475→                    {client.tiquetera.status === 'Activo' && client.tiquetera.daysRemaining > 0 && (
+  1476→                      <span className="text-[10px] text-purple-600 dark:text-purple-400 font-medium">
+  1477→                        {client.tiquetera.daysRemaining}d
+  1478→                      </span>
+  1479→                    )}
+  1480→                  </div>
+  1481→                  )}
+  1482→                </div>
+  1483→                )}
+  1484→
+  1485→                <div className="flex items-center gap-3 text-xs text-muted-foreground">
+  1486→                  <div className="flex items-center gap-1">
+  1487→                    <ShoppingCart className="h-3 w-3" />
+  1488→                    <span>{client._count.sales} venta{client._count.sales !== 1 ? 's' : ''}</span>
+  1489→                  </div>
+  1490→                  {client.pendingBalance > 0 && (
+  1491→                    <div className="text-red-600 font-medium">
+  1492→                      Debe: {fmt(client.pendingBalance)}
+  1493→                    </div>
+  1494→                  )}
+  1495→                </div>
+  1496→
+  1497→                <div className="flex items-center gap-1 pt-2 border-t">
+  1498→                  {!client.deletedAt && (
+  1499→                    <>
+  1500→                      {isGym && (canManage || canMarkAtt) && (
+  1501→                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-blue-500 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950/40" title="Renovar Plan" onClick={() => openRenew(client)}>
+  1502→                          <RefreshCw className="h-3.5 w-3.5" />
+  1503→                        </Button>
+  1504→                      )}
+  1505→                      {canManage && isGym && client.membership?.status === 'Activo' && client.membership.planType !== 'tickets' && (
+  1506→                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-cyan-500 hover:text-cyan-700 hover:bg-cyan-50 dark:hover:bg-cyan-950/40" title="Congelar Días" onClick={() => openFreeze(client)}>
+  1507→                          <Snowflake className="h-3.5 w-3.5" />
+  1508→                        </Button>
+  1509→                      )}
+  1510→                      {canMarkAtt && isGym && (client.membership?.status === 'Activo' || client.tiquetera?.status === 'Activo') && (
+  1511→                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-emerald-500 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40" title="Marcar Asistencia" onClick={() => openAttendance(client)}>
+  1512→                          <CalendarCheck className="h-3.5 w-3.5" />
+  1513→                        </Button>
+  1514→                      )}
+  1515→                      <DropdownMenu>
+  1516→                        <DropdownMenuTrigger asChild>
+  1517→                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Más opciones">
+  1518→                            <MoreHorizontal className="h-3.5 w-3.5" />
+  1519→                          </Button>
+  1520→                        </DropdownMenuTrigger>
+  1521→                        <DropdownMenuContent align="start" className="w-52">
+  1522→                          <DropdownMenuItem onClick={() => openHistory(client)}>
+  1523→                            <Receipt className="mr-2 h-3.5 w-3.5" /> Ver Historial
+  1524→                          </DropdownMenuItem>
+  1525→                          {canManage && isGym && (
+  1526→                            <DropdownMenuItem onClick={() => openRenew(client)}>
+  1527→                              <RefreshCw className="mr-2 h-3.5 w-3.5" /> Renovar Suscripción
+  1528→                            </DropdownMenuItem>
+  1529→                          )}
+  1530→                          {canManage && isGym && client.membership?.status === 'Activo' && (
+  1531→                            <DropdownMenuItem onClick={() => openTiquetera(client)}>
+  1532→                              <Ticket className="mr-2 h-3.5 w-3.5" /> {client.tiquetera ? 'Renovar Tiquetera' : 'Agregar Tiquetera'}
+  1533→                            </DropdownMenuItem>
+  1534→                          )}
+  1535→                          {canManage && isGym && client.membership?.status === 'Activo' && client.membership.planType !== 'tickets' && (
+  1536→                            <DropdownMenuItem onClick={() => openFreeze(client)}>
+  1537→                              <Snowflake className="mr-2 h-3.5 w-3.5" /> Congelar Días
+  1538→                            </DropdownMenuItem>
+  1539→                          )}
+  1540→                          <DropdownMenuItem onClick={() => handleDownloadStatement(client)}>
+  1541→                            <FileText className="mr-2 h-3.5 w-3.5" /> Estado de Cuenta (PDF)
+  1542→                          </DropdownMenuItem>
+  1543→                          {client.email && (
+  1544→                            <DropdownMenuItem onClick={() => handleSendStatement(client)} disabled={sendingStatement === client.id}>
+  1545→                              {sendingStatement === client.id
+  1546→                                ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+  1547→                                : <Mail className="mr-2 h-3.5 w-3.5" />
+  1548→                              }
+  1549→                              Enviar por Email
+  1550→                            </DropdownMenuItem>
+  1551→                          )}
+  1552→                          {canManage && (
+  1553→                            <DropdownMenuItem onClick={() => openDispatch(client)}>
+  1554→                              <Truck className="mr-2 h-3.5 w-3.5" /> Despachar
+  1555→                            </DropdownMenuItem>
+  1556→                          )}
+  1557→                          {client.pendingBalance > 0 && (
+  1558→                            <>
+  1559→                              <DropdownMenuSeparator />
+  1560→                              <DropdownMenuItem onClick={() => openPayment(client)} className="text-primary">
+  1561→                                <DollarSign className="mr-2 h-3.5 w-3.5" /> Cobrar
+  1562→                              </DropdownMenuItem>
+  1563→                              {canManage && (
+  1564→                                <DropdownMenuItem onClick={() => {
+  1565→                                  const pendingReceivables = client.receivables?.filter(r => r.pendingBalance > 0) || []
+  1566→                                  if (pendingReceivables.length > 0) {
+  1567→                                    setRemoveDebtClient(client)
+  1568→                                    setRemoveDebtTarget(null)
+  1569→                                  } else {
+  1570→                                    toast.error('No hay deuda pendiente para quitar')
+  1571→                                  }
+  1572→                                }} className="text-red-500">
+  1573→                                  <Ban className="mr-2 h-3.5 w-3.5" /> Quitar Deuda
+  1574→                                </DropdownMenuItem>
+  1575→                              )}
+  1576→                            </>
+  1577→                          )}
+  1578→                        </DropdownMenuContent>
+  1579→                      </DropdownMenu>
+  1580→                      <div className="flex-1" />
+  1581→                      {(canManage || canMarkAtt) && (
+  1582→                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Editar" onClick={() => openEdit(client)}>
+  1583→                          <Pencil className="h-3.5 w-3.5" />
+  1584→                        </Button>
+  1585→                      )}
+  1586→                      {canManage && (
+  1587→                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-400 hover:text-red-600" title="Eliminar" onClick={() => setDeleteTarget(client)}>
+  1588→                          <Trash2 className="h-3.5 w-3.5" />
+  1589→                        </Button>
+  1590→                      )}
+  1591→                    </>
+  1592→                  )}
+  1593→                  {client.deletedAt && canManage && (
+  1594→                    <>
+  1595→                      <div className="flex-1" />
+  1596→                      <Button size="sm" variant="outline" className="h-7 text-xs" title="Reactivar cliente" onClick={() => handleReactivate(client)}>
+  1597→                        <Eye className="mr-1 h-3 w-3" /> Reactivar
+  1598→                      </Button>
+  1599→                    </>
+  1600→                  )}
+  1601→                </div>
+  1602→              </CardContent>
+  1603→            </Card>
+  1604→            )})}
+  1605→        </div>
+  1606→
+  1607→        {/* Pagination */}
+  1608→        {totalPages > 1 && (
+  1609→          <div className="flex items-center justify-between">
+  1610→            <p className="text-xs text-muted-foreground">
+  1611→              Mostrando {(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, filtered.length)} de {filtered.length}
+  1612→            </p>
+  1613→            <div className="flex items-center gap-1">
+  1614→              <Button
+  1615→                size="sm"
+  1616→                variant="outline"
+  1617→                className="h-8 w-8 p-0"
+  1618→                disabled={currentPage <= 1}
+  1619→                onClick={() => setCurrentPage(1)}
+  1620→              >
+  1621→                «
+  1622→              </Button>
+  1623→              <Button
+  1624→                size="sm"
+  1625→                variant="outline"
+  1626→                className="h-8 w-8 p-0"
+  1627→                disabled={currentPage <= 1}
+  1628→                onClick={() => setCurrentPage(p => p - 1)}
+  1629→              >
+  1630→                <ChevronLeft className="h-4 w-4" />
+  1631→              </Button>
+  1632→              <span className="text-sm font-medium px-2">
+  1633→                {currentPage} / {totalPages}
+  1634→              </span>
+  1635→              <Button
+  1636→                size="sm"
+  1637→                variant="outline"
+  1638→                className="h-8 w-8 p-0"
+  1639→                disabled={currentPage >= totalPages}
+  1640→                onClick={() => setCurrentPage(p => p + 1)}
+  1641→              >
+  1642→                <ChevronRight className="h-4 w-4" />
+  1643→              </Button>
+  1644→              <Button
+  1645→                size="sm"
+  1646→                variant="outline"
+  1647→                className="h-8 w-8 p-0"
+  1648→                disabled={currentPage >= totalPages}
+  1649→                onClick={() => setCurrentPage(totalPages)}
+  1650→              >
+  1651→                »
+  1652→              </Button>
+  1653→            </div>
+  1654→          </div>
+  1655→        )}
+  1656→        </>
+  1657→      )}
+  1658→
+  1659→      {/* Create Client Dialog */}
+  1660→      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+  1661→        <DialogContent>
+  1662→          <DialogHeader>
+  1663→            <DialogTitle>{editingClient ? 'Editar Cliente' : 'Nuevo Cliente'}</DialogTitle>
+  1664→            <DialogDescription>{editingClient ? 'Modifica los datos del cliente' : 'Registra un nuevo cliente en el sistema'}</DialogDescription>
+  1665→          </DialogHeader>
+  1666→          <div className="space-y-4">
+  1667→            <div className="grid grid-cols-2 gap-4">
+  1668→              <div className="space-y-2">
+  1669→                <Label htmlFor="cname">Nombre *</Label>
+  1670→                <Input id="cname" value={formName} onChange={(e) => setFormName(e.target.value)} placeholder="Nombre" />
+  1671→              </div>
+  1672→              {isGym && (
+  1673→              <div className="space-y-2">
+  1674→                <Label htmlFor="clastname">Apellido *</Label>
+  1675→                <Input id="clastname" value={formLastName} onChange={(e) => setFormLastName(e.target.value)} placeholder="Apellido" />
+  1676→              </div>
+  1677→              )}
+  1678→            </div>
+  1679→            {isGym && (
+  1680→            <div className="space-y-2">
+  1681→              <Label htmlFor="ccedula">Cédula</Label>
+  1682→              <Input id="ccedula" value={formCedula} onChange={(e) => setFormCedula(e.target.value)} placeholder="V-00000000" />
+  1683→            </div>
+  1684→            )}
+  1685→            <div className="grid grid-cols-2 gap-4">
+  1686→              <div className="space-y-2">
+  1687→                <Label htmlFor="cphone">Teléfono</Label>
+  1688→                <Input id="cphone" value={formPhone} onChange={(e) => setFormPhone(e.target.value)} placeholder="+58 412-0000000" />
+  1689→              </div>
+  1690→              <div className="space-y-2">
+  1691→                <Label htmlFor="cemail">Email</Label>
+  1692→                <Input id="cemail" type="email" value={formEmail} onChange={(e) => setFormEmail(e.target.value)} placeholder="correo@ejemplo.com" />
+  1693→              </div>
+  1694→            </div>
+  1695→            <div className="space-y-2">
+  1696→              <Label htmlFor="caddress">Dirección</Label>
+  1697→              <Input id="caddress" value={formAddress} onChange={(e) => setFormAddress(e.target.value)} placeholder="Dirección" />
+  1698→            </div>
+  1699→            <div className="space-y-2">
+  1700→              <Label htmlFor="cnote">Notas</Label>
+  1701→              <Input id="cnote" value={formNote} onChange={(e) => setFormNote(e.target.value)} placeholder="Notas internas" />
+  1702→            </div>
+  1703→            {isGym && !editingClient && plans.length > 0 && (
+  1704→              <div className="space-y-2">
+  1705→                <Label>Asignar Plan (opcional)</Label>
+  1706→                <Select value={formPlanId} onValueChange={setFormPlanId}>
+  1707→                  <SelectTrigger>
+  1708→                    <SelectValue placeholder="Sin plan — puedes asignarlo después" />
+  1709→                  </SelectTrigger>
+  1710→                  <SelectContent>
+  1711→                    {plans.map(p => (
+  1712→                      <SelectItem key={p.id} value={p.id}>
+  1713→                        <span className="flex items-center gap-1.5">
+  1714→                          {p.name}
+  1715→                          {(p.effectivePrice != null && p.effectivePrice !== p.cost) && (
+  1716→                            <span className="text-[9px] font-bold px-1 py-px rounded bg-amber-500 text-white leading-tight">
+  1717→                              {p.hasActivePromo ? 'PROMO' : `-${p.discountPercentage}%`}
+  1718→                            </span>
+  1719→                          )}
+  1720→                          {' — '}
+  1721→                          {(p.effectivePrice != null && p.effectivePrice !== p.cost) && <span className="line-through text-muted-foreground text-xs mr-1">{fmt(p.cost)}</span>}
+  1722→                          <span className={(p.effectivePrice != null && p.effectivePrice !== p.cost) ? 'text-amber-600 dark:text-amber-400 font-semibold' : ''}>{fmt(p.effectivePrice ?? p.cost)}</span>
+  1723→                        </span>
+  1724→                      </SelectItem>
+  1725→                    ))}
+  1726→                  </SelectContent>
+  1727→                </Select>
+  1728→              </div>
+  1729→            )}
+  1730→            <Button className="w-full bg-primary hover:bg-primary/90 text-white" onClick={handleSave} disabled={saving}>
+  1731→              {saving ? 'Cargando métodos...' : editingClient ? 'Actualizar Cliente' : formPlanId ? 'Siguiente — Cobrar Suscripción' : 'Crear Cliente'}
+  1732→            </Button>
+  1733→          </div>
+  1734→        </DialogContent>
+  1735→      </Dialog>
+  1736→
+  1737→      {/* Payment modal on top of create dialog (when plan selected) */}
+  1738→      <Dialog open={showCreatePayment} onOpenChange={(open) => { if (!open) setShowCreatePayment(false) }}>
+  1739→        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+  1740→          <DialogHeader>
+  1741→            <DialogTitle className="flex items-center gap-2">
+  1742→              <CreditCard className="h-5 w-5 text-primary" />
+  1743→              Cobrar Suscripción
+  1744→            </DialogTitle>
+  1745→            <DialogDescription>
+  1746→              {formName}{formLastName ? ` ${formLastName}` : ''} — {plans.find(p => p.id === formPlanId)?.name}
+  1747→            </DialogDescription>
+  1748→          </DialogHeader>
+  1749→
+  1750→          <div className="space-y-4">
+  1751→            {/* Plan cost */}
+  1752→            {formPlanId && (() => {
+  1753→              const selectedPlan = plans.find(p => p.id === formPlanId)
+  1754→              if (!selectedPlan) return null
+  1755→              const effectivePrice = selectedPlan.effectivePrice ?? selectedPlan.cost
+  1756→              const hasDiscount = selectedPlan.hasActivePromo || selectedPlan.hasActiveDiscount
+  1757→              return (
+  1758→                <div className={`rounded-md border p-3 ${hasDiscount ? 'bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800' : 'bg-primary/5 border-primary/20'}`}>
+  1759→                  <div className="flex items-center justify-between">
+  1760→                    <div className="flex items-center gap-2">
+  1761→                      <DollarSign className={`h-4 w-4 ${hasDiscount ? 'text-amber-600' : 'text-primary'}`} />
+  1762→                      <span className="text-sm font-medium">
+  1763→                        {hasDiscount
+  1764→                          ? selectedPlan.hasActivePromo
+  1765→                            ? 'Precio promocional:'
+  1766→                            : `Precio con ${selectedPlan.discountPercentage}% desc.:`
+  1767→                          : 'Costo del plan:'}
+  1768→                      </span>
+  1769→                    </div>
+  1770→                    <div className="text-right">
+  1771→                      {hasDiscount && (
+  1772→                        <span className="text-xs text-muted-foreground line-through block">{fmt(selectedPlan.cost)}</span>
+  1773→                      )}
+  1774→                      <span className={`text-lg font-bold ${hasDiscount ? 'text-amber-700 dark:text-amber-400' : 'text-primary'}`}>
+  1775→                        {fmt(effectivePrice)}
+  1776→                      </span>
+  1777→                    </div>
+  1778→                  </div>
+  1779→                </div>
+  1780→              )
+  1781→            })()}
+  1782→
+  1783→            <Separator />
+  1784→
+  1785→            {/* Payment method selector */}
+  1786→            <div className="space-y-2">
+  1787→              <Label className="flex items-center gap-1.5">
+  1788→                <CreditCard className="h-3.5 w-3.5" />
+  1789→                Método de Pago *
+  1790→              </Label>
+  1791→              {createPaymentMethods.length > 0 ? (
+  1792→                <RadioGroup
+  1793→                  value={createPaymentMethod}
+  1794→                  onValueChange={(v) => { setCreatePaymentMethod(v); setCreatePaymentReference('') }}
+  1795→                  className="grid grid-cols-2 gap-3"
+  1796→                >
+  1797→                  {createPaymentMethods.map((pm) => {
+  1798→                    const Icon = getRenewIcon(pm.icon)
+  1799→                    return (
+  1800→                      <label
+  1801→                        key={pm.code}
+  1802→                        className={`flex cursor-pointer flex-col items-center gap-2 rounded-lg border-2 p-3 transition-colors ${
+  1803→                          createPaymentMethod === pm.code
+  1804→                            ? 'border-primary bg-primary/5 dark:bg-primary/10'
+  1805→                            : 'border-muted hover:border-muted-foreground/30'
+  1806→                        }`}
+  1807→                      >
+  1808→                        <RadioGroupItem value={pm.code} className="sr-only" />
+  1809→                        <Icon className={`h-5 w-5 ${createPaymentMethod === pm.code ? 'text-primary' : 'text-muted-foreground'}`} />
+  1810→                        <span className={`text-xs font-medium ${createPaymentMethod === pm.code ? 'text-primary dark:text-primary' : ''}`}>
+  1811→                          {pm.name}
+  1812→                        </span>
+  1813→                        {pm.isCredit && (
+  1814→                          <span className="text-[9px] text-amber-600 dark:text-amber-400 font-medium">Genera deuda</span>
+  1815→                        )}
+  1816→                      </label>
+  1817→                    )
+  1818→                  })}
+  1819→                </RadioGroup>
+  1820→              ) : (
+  1821→                <p className="text-xs text-center text-muted-foreground py-2">
+  1822→                  No hay métodos de pago activos para suscripciones
+  1823→                </p>
+  1824→              )}
+  1825→            </div>
+  1826→
+  1827→            {/* Reference input */}
+  1828→            {createPaymentMethods.find(m => m.code === createPaymentMethod)?.needsReference && (
+  1829→              <div className="space-y-2 animate-in fade-in slide-in-from-top-2 duration-200">
+  1830→                <Label htmlFor="create-pay-reference">Referencia *</Label>
+  1831→                <Input
+  1832→                  id="create-pay-reference"
+  1833→                  value={createPaymentReference}
+  1834→                  onChange={(e) => setCreatePaymentReference(e.target.value)}
+  1835→                  placeholder="Número de referencia..."
+  1836→                />
+  1837→              </div>
+  1838→            )}
+  1839→
+  1840→            {/* No cash register warning */}
+  1841→            {!openCashRegId && (
+  1842→              <div className="rounded-md border border-red-300 bg-red-50 dark:border-red-800 dark:bg-red-950/30 p-2.5 text-xs text-red-700 dark:text-red-400 flex items-start gap-2">
+  1843→                <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+  1844→                <span><strong>No hay caja abierta.</strong> Debe abrir una caja antes de registrar la suscripción.</span>
+  1845→              </div>
+  1846→            )}
+  1847→
+  1848→            {/* Credit info */}
+  1849→            {createPaymentMethods.find(m => m.code === createPaymentMethod)?.isCredit && (
+  1850→              <div className="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-2.5 text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2">
+  1851→                <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+  1852→                <span>El pago a crédito generará una cuenta por cobrar para el cliente. No se sumará al saldo de caja.</span>
+  1853→              </div>
+  1854→            )}
+  1855→
+  1856→            {/* Action buttons */}
+  1857→            <div className="flex gap-2">
+  1858→              <Button
+  1859→                variant="outline"
+  1860→                className="flex-1"
+  1861→                onClick={() => setShowCreatePayment(false)}
+  1862→                disabled={creatingAndPaying}
+  1863→              >
+  1864→                Volver
+  1865→              </Button>
+  1866→              <Button
+  1867→                className="flex-1 bg-primary hover:bg-primary/90 text-white"
+  1868→                onClick={handleCreateWithPayment}
+  1869→                disabled={creatingAndPaying || !createPaymentMethod || !openCashRegId}
+  1870→              >
+  1871→                {creatingAndPaying ? (
+  1872→                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Procesando...</>
+  1873→                ) : (
+  1874→                  <><CheckCircle2 className="mr-2 h-4 w-4" /> Confirmar y Crear</>
+  1875→                )}
+  1876→              </Button>
+  1877→            </div>
+  1878→          </div>
+  1879→        </DialogContent>
+  1880→      </Dialog>
+  1881→
+  1882→      {/* Dispatch Dialog */}
+  1883→      <Dialog open={showDispatchDialog} onOpenChange={setShowDispatchDialog}>
+  1884→        <DialogContent className="sm:max-w-2xl max-h-[80vh]">
+  1885→          <DialogHeader>
+  1886→            <DialogTitle>Despachar a {dispatchClient?.name}</DialogTitle>
+  1887→            <DialogDescription>Selecciona productos y cantidades para despachar</DialogDescription>
+  1888→          </DialogHeader>
+  1889→          <div className="space-y-4 max-h-[60vh] overflow-y-auto">
+  1890→            {/* Product selector */}
+  1891→            <div className="space-y-2">
+  1892→              <Label>Agregar Producto</Label>
+  1893→              <Select onValueChange={(v) => { addDispatchLine(v); }}>
+  1894→                <SelectTrigger>
+  1895→                  <SelectValue placeholder="Seleccionar producto..." />
+  1896→                </SelectTrigger>
+  1897→                <SelectContent>
+  1898→                  {products.map((p) => {
+  1899→                    const branchInv = p.inventories.find(i => i.branchId === selectedBranchId)
+  1900→                    const stock = branchInv?.stock ?? 0
+  1901→                    return (
+  1902→                      <SelectItem key={p.id} value={p.id} disabled={stock <= 0}>
+  1903→                        {p.name} — {p.currency.symbol}{p.price.toFixed(2)} (Stock: {stock})
+  1904→                      </SelectItem>
+  1905→                    )
+  1906→                  })}
+  1907→                </SelectContent>
+  1908→              </Select>
+  1909→            </div>
+  1910→
+  1911→            {/* Lines */}
+  1912→            {dispatchLines.length > 0 ? (
+  1913→              <Card>
+  1914→                <CardHeader className="pb-2">
+  1915→                  <CardTitle className="text-sm">Productos a Despachar</CardTitle>
+  1916→                </CardHeader>
+  1917→                <CardContent>
+  1918→                  <div className="space-y-3">
+  1919→                    {dispatchLines.map((line) => (
+  1920→                      <div key={line.productId} className="flex items-center gap-3">
+  1921→                        <div className="flex-1 min-w-0">
+  1922→                          <p className="text-sm font-medium truncate">{line.productName}</p>
+  1923→                          <p className="text-xs text-muted-foreground">
+  1924→                            {fmt(line.unitPrice)} c/u · Stock: {line.stock}
+  1925→                          </p>
+  1926→                        </div>
+  1927→                        <div className="flex items-center gap-2">
+  1928→                          <Button
+  1929→                            size="sm"
+  1930→                            variant="outline"
+  1931→                            className="h-7 w-7 p-0"
+  1932→                            onClick={() => updateDispatchLineQty(line.productId, line.quantity - 1)}
+  1933→                          >
+  1934→                            -
+  1935→                          </Button>
+  1936→                          <span className="text-sm font-medium w-8 text-center">{line.quantity}</span>
+  1937→                          <Button
+  1938→                            size="sm"
+  1939→                            variant="outline"
+  1940→                            className="h-7 w-7 p-0"
+  1941→                            onClick={() => updateDispatchLineQty(line.productId, line.quantity + 1)}
+  1942→                          >
+  1943→                            +
+  1944→                          </Button>
+  1945→                        </div>
+  1946→                        <div className="text-right w-20">
+  1947→                          <p className="text-sm font-semibold">{fmt(line.unitPrice * line.quantity)}</p>
+  1948→                        </div>
+  1949→                        <Button
+  1950→                          size="sm"
+  1951→                          variant="ghost"
+  1952→                          className="h-7 w-7 p-0 text-red-600"
+  1953→                          onClick={() => setDispatchLines(dispatchLines.filter(l => l.productId !== line.productId))}
+  1954→                        >
+  1955→                          <X className="h-3 w-3" />
+  1956→                        </Button>
+  1957→                      </div>
+  1958→                    ))}
+  1959→
+  1960→                    <div className="flex justify-between items-center pt-2 border-t">
+  1961→                      <span className="text-sm font-medium">Total del Despacho:</span>
+  1962→                      <span className="text-lg font-bold text-primary">{fmt(dispatchTotal)}</span>
+  1963→                    </div>
+  1964→                  </div>
+  1965→                </CardContent>
+  1966→              </Card>
+  1967→            ) : (
+  1968→              <div className="rounded-md border border-dashed p-6 text-center">
+  1969→                <Truck className="mx-auto mb-2 h-8 w-8 text-muted-foreground opacity-50" />
+  1970→                <p className="text-sm text-muted-foreground">Selecciona productos arriba para agregar al despacho</p>
+  1971→              </div>
+  1972→            )}
+  1973→
+  1974→            <div className="rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 p-2 text-xs text-amber-700 dark:text-amber-400">
+  1975→              El despacho genera una venta a credito con vencimiento a 30 dias. El cliente podra pagar la factura desde la opcion &quot;Cobrar&quot;.
+  1976→            </div>
+  1977→
+  1978→            <Button
+  1979→              className="w-full bg-primary hover:bg-primary/90 text-white"
+  1980→              onClick={handleDispatch}
+  1981→              disabled={savingDispatch || dispatchLines.length === 0}
+  1982→            >
+  1983→              {savingDispatch ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Truck className="mr-2 h-4 w-4" />}
+  1984→              {savingDispatch ? 'Procesando...' : `Confirmar Despacho (${fmt(dispatchTotal)})`}
+  1985→            </Button>
+  1986→          </div>
+  1987→        </DialogContent>
+  1988→      </Dialog>
+  1989→
+  1990→      {/* Sales/Dispatch History Dialog */}
+  1991→      <Dialog open={showHistoryDialog} onOpenChange={setShowHistoryDialog}>
+  1992→        <DialogContent className="sm:max-w-2xl max-h-[80vh]">
+  1993→          <DialogHeader>
+  1994→            <DialogTitle>Historial de {historyClient?.name}</DialogTitle>
+  1995→            <DialogDescription>Ventas y despachos realizados a este cliente</DialogDescription>
+  1996→          </DialogHeader>
+  1997→          {loadingHistory ? (
+  1998→            <div className="h-48 rounded-lg bg-muted animate-pulse" />
+  1999→          ) : (
+  2000→            <div className="space-y-4 max-h-[60vh] overflow-y-auto">
+
+[showing lines 1-2000 of 3323; use offset=2001 with limit to continue reading]
