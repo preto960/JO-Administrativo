@@ -469,6 +469,11 @@ export function ClientsTable() {
       attendanceMarkedToday: boolean;
       gymMarkedToday: boolean;
       tiqueteraMarkedToday: boolean;
+      // Independent tiquetera info
+      tiqueteraActive: boolean;
+      tiqueteraTicketsRemaining: number;
+      tiqueteraDaysRemaining: number;
+      tiqueteraPlanName: string | null;
     };
   } | null>(null)
 
@@ -1502,7 +1507,7 @@ export function ClientsTable() {
                           <Snowflake className="h-3.5 w-3.5" />
                         </Button>
                       )}
-                      {canMarkAtt && isGym && client.membership?.status === 'Activo' && (
+                      {canMarkAtt && isGym && (client.membership?.status === 'Activo' || client.tiquetera?.status === 'Activo') && (
                         <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-emerald-500 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40" title="Marcar Asistencia" onClick={() => openAttendance(client)}>
                           <CalendarCheck className="h-3.5 w-3.5" />
                         </Button>
@@ -2881,8 +2886,8 @@ export function ClientsTable() {
               {/* Botones de asistencia */}
               {(canManage || canMarkAtt) && attData && (
                 <div className="space-y-2">
-                  {/* Plan por tickets: mostrar ambos botones */}
-                  {attData.stats.planType === 'tickets' && !attData.stats.attendanceMarkedToday && (
+                  {/* ── Cliente con tiquetera activa (con o sin gym) ── */}
+                  {attData.stats.tiqueteraActive && !attData.stats.gymMarkedToday && !attData.stats.tiqueteraMarkedToday && (
                     <div className="grid grid-cols-2 gap-2">
                       <Button
                         className="bg-blue-600 hover:bg-blue-700 text-white"
@@ -2895,16 +2900,16 @@ export function ClientsTable() {
                       <Button
                         className="bg-purple-600 hover:bg-purple-700 text-white"
                         onClick={() => markAttendance('tiquetera')}
-                        disabled={markingAtt || !attData.stats.gymMarkedToday || attData.stats.ticketsRemaining <= 0 || attData.stats.tiqueteraMarkedToday}
-                        title={!attData.stats.gymMarkedToday ? 'Primero marque asistencia de gym' : attData.stats.ticketsRemaining <= 0 ? 'Sin tickets disponibles' : attData.stats.tiqueteraMarkedToday ? 'Tiquetera ya usada hoy' : `Usar ticket (${attData.stats.ticketsRemaining} restantes)`}
+                        disabled={markingAtt || !attData.stats.gymMarkedToday || attData.stats.tiqueteraTicketsRemaining <= 0}
+                        title={!attData.stats.gymMarkedToday ? 'Primero marque asistencia de gym' : attData.stats.tiqueteraTicketsRemaining <= 0 ? 'Sin tickets disponibles' : `Usar ticket (${attData.stats.tiqueteraTicketsRemaining} restantes)`}
                       >
                         {markingAtt ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Ticket className="mr-2 h-4 w-4" />}
                         Tiquetera
                       </Button>
                     </div>
                   )}
-                  {/* Plan por tickets con gym marcado pero tiquetera no */}
-                  {attData.stats.planType === 'tickets' && attData.stats.gymMarkedToday && !attData.stats.tiqueteraMarkedToday && (
+                  {/* Gym marcado, tiquetera pendiente */}
+                  {attData.stats.tiqueteraActive && attData.stats.gymMarkedToday && !attData.stats.tiqueteraMarkedToday && (
                     <div className="space-y-2">
                       <div className="rounded-md bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 p-2 text-center">
                         <p className="text-xs text-green-700 dark:text-green-400 font-medium">✓ Asistencia gym marcada</p>
@@ -2912,22 +2917,41 @@ export function ClientsTable() {
                       <Button
                         className="w-full bg-purple-600 hover:bg-purple-700 text-white"
                         onClick={() => markAttendance('tiquetera')}
-                        disabled={markingAtt || attData.stats.ticketsRemaining <= 0}
-                        title={attData.stats.ticketsRemaining <= 0 ? 'Sin tickets disponibles' : `Usar ticket (${attData.stats.ticketsRemaining} restantes)`}
+                        disabled={markingAtt || attData.stats.tiqueteraTicketsRemaining <= 0}
+                        title={attData.stats.tiqueteraTicketsRemaining <= 0 ? 'Sin tickets disponibles' : `Usar ticket (${attData.stats.tiqueteraTicketsRemaining} restantes)`}
                       >
                         {markingAtt ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Ticket className="mr-2 h-4 w-4" />}
-                        Usar Tiquetera ({attData.stats.ticketsRemaining} restantes)
+                        Usar Tiquetera ({attData.stats.tiqueteraTicketsRemaining} restantes)
                       </Button>
                     </div>
                   )}
-                  {/* Plan por tickets con ambas asistencias marcadas */}
-                  {attData.stats.planType === 'tickets' && attData.stats.gymMarkedToday && attData.stats.tiqueteraMarkedToday && (
-                    <div className="rounded-md bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 p-3 text-center">
-                      <p className="text-sm text-green-700 dark:text-green-400 font-medium">✓ Asistencia ya marcada hoy</p>
+                  {/* Gym y tiquetera ambas marcadas */}
+                  {attData.stats.tiqueteraActive && attData.stats.gymMarkedToday && attData.stats.tiqueteraMarkedToday && (
+                    <div className="space-y-2">
+                      <div className="rounded-md bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 p-2 text-center">
+                        <p className="text-xs text-green-700 dark:text-green-400 font-medium">✓ Gym y Tiquetera marcadas hoy</p>
+                      </div>
                     </div>
                   )}
-                  {/* Plan por días/horario: botón simple */}
-                  {attData.stats.planType !== 'tickets' && !attData.stats.attendanceMarkedToday && (
+                  {/* Tiquetera usada pero gym no (edge case: solo tiquetera marcada) */}
+                  {attData.stats.tiqueteraActive && !attData.stats.gymMarkedToday && attData.stats.tiqueteraMarkedToday && (
+                    <div className="space-y-2">
+                      <div className="rounded-md bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800 p-2 text-center">
+                        <p className="text-xs text-purple-700 dark:text-purple-400 font-medium">✓ Tiquetera usada hoy</p>
+                      </div>
+                      <Button
+                        className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                        onClick={() => markAttendance('gym')}
+                        disabled={markingAtt}
+                      >
+                        {markingAtt ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
+                        Marcar Asistencia Gym
+                      </Button>
+                    </div>
+                  )}
+
+                  {/* ── Cliente SIN tiquetera activa: solo gym ── */}
+                  {!attData.stats.tiqueteraActive && !attData.stats.gymMarkedToday && (
                     <Button
                       className="w-full bg-blue-600 hover:bg-blue-700 text-white"
                       onClick={() => markAttendance('gym')}
@@ -2937,9 +2961,21 @@ export function ClientsTable() {
                       {markingAtt ? 'Marcando...' : 'Marcar Asistencia de Hoy'}
                     </Button>
                   )}
-                  {attData.stats.planType !== 'tickets' && attData.stats.attendanceMarkedToday && (
+                  {!attData.stats.tiqueteraActive && attData.stats.gymMarkedToday && (
                     <div className="rounded-md bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 p-3 text-center">
                       <p className="text-sm text-green-700 dark:text-green-400 font-medium">✓ Asistencia ya marcada hoy</p>
+                    </div>
+                  )}
+
+                  {/* Info de tiquetera si está activa */}
+                  {attData.stats.tiqueteraActive && attData.stats.tiqueteraPlanName && (
+                    <div className="flex items-center gap-2 rounded-md bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800 p-2 text-sm">
+                      <Ticket className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                      <span className="text-purple-600 dark:text-purple-400">Tiquetera:</span>
+                      <span className="font-medium">{attData.stats.tiqueteraPlanName}</span>
+                      <span className="text-xs text-purple-500 dark:text-purple-400 ml-auto">
+                        {attData.stats.tiqueteraTicketsRemaining} tickets · {attData.stats.tiqueteraDaysRemaining}d
+                      </span>
                     </div>
                   )}
                 </div>
