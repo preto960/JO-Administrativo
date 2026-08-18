@@ -1320,8 +1320,9 @@ export function CashRegisterView() {
               <div className="divide-y">
                 {closedRegisters.map((reg) => {
                   const isExpanded = expandedHistory === reg.id
-                  const earnings = reg.currentAmt - reg.initialAmt
-                  const isPositive = earnings >= 0
+                  const totalCollected = (reg as any).totalCollected ?? 0
+                  const descuadre = (reg as any).descuadre ?? 0
+                  const descuadrePositive = descuadre >= 0
                   return (
                     <div key={reg.id}>
                       {/* Collapsible header */}
@@ -1342,12 +1343,18 @@ export function CashRegisterView() {
                             <Clock className="h-3 w-3 inline mr-1" />
                             {formatTime(reg.openingDate)}
                           </div>
-                          {/* Fix 3: Use fmt() in history list */}
+                          {/* Venta real + Descuadre */}
                           <div className="text-right">
-                            <p className="text-sm font-semibold tabular-nums">{fmtBase(reg.currentAmt)}</p>
-                            <p className={`text-xs tabular-nums ${isPositive ? 'text-emerald-600' : 'text-red-600'}`}>
-                              {isPositive ? '+' : ''}{fmt(earnings)}
-                            </p>
+                            <p className="text-sm font-semibold tabular-nums">{fmtBase(totalCollected)}</p>
+                            <p className="text-[10px] text-muted-foreground">venta real</p>
+                            {descuadre !== 0 && (
+                              <p className={`text-xs font-semibold tabular-nums ${descuadrePositive ? 'text-emerald-600' : 'text-red-600'}`}>
+                                {descuadrePositive ? '+' : ''}{fmt(descuadre)} descuadre
+                              </p>
+                            )}
+                            {descuadre === 0 && (
+                              <p className="text-xs tabular-nums text-muted-foreground">sin descuadre</p>
+                            )}
                           </div>
                           <div className="text-right">
                             <Badge variant="outline" className="bg-slate-50 text-slate-600 border-slate-200 dark:bg-slate-900/50 dark:text-slate-400 dark:border-slate-700">
@@ -1398,13 +1405,13 @@ export function CashRegisterView() {
                               <p className="font-medium tabular-nums">{fmtBase(reg.initialAmt)}</p>
                             </div>
                             <div>
-                              <p className="text-xs text-muted-foreground">Monto Final</p>
-                              <p className="font-bold tabular-nums">{fmtBase(reg.currentAmt)}</p>
+                              <p className="text-xs text-muted-foreground">Venta Real</p>
+                              <p className="font-bold tabular-nums">{fmtBase(totalCollected)}</p>
                             </div>
                             <div>
-                              <p className="text-xs text-muted-foreground">Diferencia</p>
-                              <p className={`font-bold tabular-nums ${isPositive ? 'text-emerald-600' : 'text-red-600'}`}>
-                                {isPositive ? '+' : ''}{fmt(earnings)}
+                              <p className="text-xs text-muted-foreground">Descuadre</p>
+                              <p className={`font-bold tabular-nums ${descuadre === 0 ? 'text-muted-foreground' : descuadrePositive ? 'text-emerald-600' : 'text-red-600'}`}>
+                                {descuadre === 0 ? '0' : `${descuadrePositive ? '+' : ''}${fmt(descuadre)}`}
                               </p>
                             </div>
                             <div>

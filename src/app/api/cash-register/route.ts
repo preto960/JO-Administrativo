@@ -38,35 +38,59 @@ export async function GET(request: NextRequest) {
     const creditCodes = new Set(pmList.filter(m => m.isCredit).map(m => m.code))
     const cashCodes = new Set(pmList.filter(m => m.isCash).map(m => m.code))
 
-    const openRegs = registers.filter(r => r.status === 'abierta')
-    if (openRegs.length > 0) {
-      const openRegIds = openRegs.map(r => r.id)
+    // ── For ALL registers: compute totalCollected (non-credit sales total) ──
+    const allRegIds = registers.map(r => r.id)
 
-      // Get all non-credit payments for open registers
-      const allPayments = await db.salePayment.findMany({
-        where: {
-          sale: { cashRegId: { in: openRegIds } },
-          method: { notIn: [...creditCodes] },
-        },
-        include: { sale: { select: { cashRegId: true } } },
-      })
+    const allPayments = await db.salePayment.findMany({
+      where: {
+        sale: { cashRegId: { in: allRegIds } },
+        method: { notIn: [...creditCodes] },
+      },
+      include: { sale: { select: { cashRegId: true } } },
+    })
 
-      // Get all manual movements for open registers (exclude subscription-linked)
-      const allMovements = await db.cashMovement.findMany({
-        where: { cashRegId: { in: openRegIds } },
-      })
+    const allMovements = await db.cashMovement.findMany({
+      where: { cashRegId: { in: allRegIds } },
+    })
 
-      for (const reg of openRegs) {
-        // All non-credit payments for this register
-        const regPayments = allPayments.filter(p => p.sale.cashRegId === reg.id)
+    // Get audits for closed registers (for descuadre)
+    const closedRegIds = registers.filter(r => r.status === 'cerrada').map(r => r.id)
+    const audits = closedRegIds.length > 0
+      ? await db.cashAudit.findMany({
+          where: { cashRegId: { in: closedRegIds } },
+          select: { cashRegId: true, difference: true },
+          orderBy: { auditDate: 'desc' },
+        })
+      : []
+    // Map: cashRegId -> latest audit difference
+    const auditByReg = new Map<string, number>()
+    for (const a of audits) {
+      if (!auditByReg.has(a.cashRegId)) {
+        auditByReg.set(a.cashRegId, a.difference)
+      }
+    }
 
-        // Recaudado = ALL non-credit payments (efectivo + transferencia + divisas + ...)
-        const totalCollected = Math.round(regPayments.reduce((sum, p) => sum + p.amount, 0) * 100) / 100
+    for (const reg of registers) {
+      // All non-credit payments for this register
+      const regPayments = allPayments.filter(p => p.sale.cashRegId === reg.id)
 
+      // Recaudado = ALL non-credit payments (efectivo + transferencia + divisas + ...)
+      const totalCollected = Math.round(regPayments.reduce((sum, p) => sum + p.amount, 0) * 100) / 100
+
+      // Attach totalCollected for frontend display
+      ;(reg as any).totalCollected = totalCollected
+
+      // Attach descuadre from audit (closed registers)
+      if (reg.status === 'cerrada') {
+        ;(reg as any).descuadre = auditByReg.get(reg.id) ?? 0
+      }
+
+      // For open registers: recalculate currentAmt and attach descuadre
+      if (reg.status === 'abierta') {
         // Physical cash only (isCash) — what should actually be in the drawer
         const cashTotal = Math.round(regPayments.filter(p => cashCodes.has(p.method)).reduce((sum, p) => sum + p.amount, 0) * 100) / 100
 
-        // Sum manual movements (exclude subscription/sale-linked: [saleId] prefix or Suscripción/Renovación)
+        // Sum manual movements (exclude subscription/sale-linked)
         const manualMovements = allMovements.filter(m =>
           m.cashRegId === reg.id &&
           !m.concept.match(/^\[[\w-]+\]\s*/) &&
@@ -74,7 +98,7 @@ export async function GET(request: NextRequest) {
           !m.concept.includes('Renovación')
         )
 
-        // Exclude non-cash credit payments from net calculation (no physical cash)
+        // Exclude non-cash credit payments from net calculation
         const cashAffectingMovements = manualMovements.filter(m => {
           if (!m.concept.startsWith('Cobro credito:')) return true
           const match = m.concept.match(/\((.+)\)\s*$/)
@@ -96,9 +120,6 @@ export async function GET(request: NextRequest) {
           })
           reg.currentAmt = expectedAmt
         }
-
-        // Attach totalCollected for frontend "Recaudado" display
-        ;(reg as any).totalCollected = totalCollected
       }
     }
 
