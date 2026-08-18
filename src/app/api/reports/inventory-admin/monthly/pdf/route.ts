@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
       where: branchFilter,
       include: {
         product: {
-          select: { id: true, name: true, active: true, sku: true, currency: { select: { symbol: true, code: true } } },
+          select: { id: true, name: true, active: true, sku: true, costAvg: true, currency: { select: { symbol: true, code: true } } },
         },
       },
     })
@@ -87,11 +87,38 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // ── Descuadres from inventory checks (apertura/cierre, verificados) ──
+    const descuadreItems = await db.inventoryCheckItem.findMany({
+      where: {
+        check: {
+          status: 'verificado',
+          inventoryType: { in: ['apertura', 'cierre'] },
+          checkDate: { gte: startDate, lte: endDate },
+          ...(branchId ? { branchId } : {}),
+        },
+      },
+      select: {
+        productId: true,
+        discrepancyQty: true,
+      },
+    })
+
+    const descuadreByProduct = new Map<string, number>()
+    for (const item of descuadreItems) {
+      descuadreByProduct.set(item.productId, (descuadreByProduct.get(item.productId) || 0) + item.discrepancyQty)
+    }
+
+    // Get currency symbol from first active inventory item
+    const currencySymbol = activeInventory.length > 0 ? activeInventory[0].product.currency.symbol : '$'
+
     // Build rows
     const rows = activeInventory.map(inv => ({
       productName: inv.product.name,
+      salePrice: inv.price,
+      purchasePrice: inv.product.costAvg,
       salesQty: Math.round((salesByProduct.get(inv.productId) || 0) * 100) / 100,
       currentStock: inv.stock,
+      descuadreQty: Math.round((descuadreByProduct.get(inv.productId) || 0) * 100) / 100,
       perdidasQty: Math.round((perdidasByProduct.get(inv.productId) || 0) * 100) / 100,
       obsequiosQty: Math.round((obsequiosByProduct.get(inv.productId) || 0) * 100) / 100,
     }))
@@ -99,6 +126,7 @@ export async function GET(request: NextRequest) {
     const totals = {
       salesQty: Math.round(rows.reduce((s, r) => s + r.salesQty, 0) * 100) / 100,
       currentStock: Math.round(rows.reduce((s, r) => s + r.currentStock, 0) * 100) / 100,
+      descuadreQty: Math.round(rows.reduce((s, r) => s + r.descuadreQty, 0) * 100) / 100,
       perdidasQty: Math.round(rows.reduce((s, r) => s + r.perdidasQty, 0) * 100) / 100,
       obsequiosQty: Math.round(rows.reduce((s, r) => s + r.obsequiosQty, 0) * 100) / 100,
     }
@@ -111,6 +139,7 @@ export async function GET(request: NextRequest) {
       businessName,
       branchName,
       yearMonth,
+      currencySymbol,
       rows,
       totals,
     })
@@ -136,23 +165,28 @@ interface MonthlyReportData {
   businessName: string
   branchName: string
   yearMonth: string
+  currencySymbol: string
   rows: {
     productName: string
+    salePrice: number
+    purchasePrice: number
     salesQty: number
     currentStock: number
+    descuadreQty: number
     perdidasQty: number
     obsequiosQty: number
   }[]
   totals: {
     salesQty: number
     currentStock: number
+    descuadreQty: number
     perdidasQty: number
     obsequiosQty: number
   }
 }
 
 function generateMonthlyInventoryPDF(data: MonthlyReportData): Uint8Array {
-  const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' })
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'letter' })
 
   const pageW = doc.internal.pageSize.getWidth()
   const margin = 40
@@ -187,27 +221,42 @@ function generateMonthlyInventoryPDF(data: MonthlyReportData): Uint8Array {
   doc.text(`Sucursal: ${data.branchName}`, pageW - margin, y, { align: 'right' })
   y += 20
 
+  const cs = data.currencySymbol
+
   // ── Table ──
   const tableBody = data.rows.map(row => [
     row.productName,
+    `${cs}${formatNumber(row.salePrice)}`,
+    `${cs}${formatNumber(row.purchasePrice)}`,
     formatNumber(row.salesQty),
     formatNumber(row.currentStock),
+    row.descuadreQty !== 0
+      ? (row.descuadreQty > 0 ? `+${formatNumber(row.descuadreQty)}` : formatNumber(row.descuadreQty))
+      : '0',
     formatNumber(row.perdidasQty),
     formatNumber(row.obsequiosQty),
   ])
 
+  // Track descuadre values for coloring
+  const descuadreValues = data.rows.map(r => r.descuadreQty)
+
   // Add totals row
   tableBody.push([
     'TOTALES',
+    '',
+    '',
     formatNumber(data.totals.salesQty),
     formatNumber(data.totals.currentStock),
+    data.totals.descuadreQty !== 0
+      ? (data.totals.descuadreQty > 0 ? `+${formatNumber(data.totals.descuadreQty)}` : formatNumber(data.totals.descuadreQty))
+      : '0',
     formatNumber(data.totals.perdidasQty),
     formatNumber(data.totals.obsequiosQty),
   ])
 
   autoTable(doc, {
     startY: y,
-    head: [['Producto', 'Ventas del Mes', 'Stock Actual', 'Pérdidas', 'Obsequios']],
+    head: [['Producto', 'Precio Venta', 'Precio Compra', 'Ventas del Mes', 'Stock Actual', 'Descuadre', 'Pérdidas', 'Obsequios']],
     body: tableBody,
     margin: { left: margin, right: margin },
     styles: {
@@ -225,20 +274,33 @@ function generateMonthlyInventoryPDF(data: MonthlyReportData): Uint8Array {
       halign: 'center',
     },
     columnStyles: {
-      1: { halign: 'center' },
-      2: { halign: 'center' },
+      0: { cellWidth: 140 },
+      1: { halign: 'right', cellWidth: 70 },
+      2: { halign: 'right', cellWidth: 70 },
       3: { halign: 'center' },
       4: { halign: 'center' },
+      5: { halign: 'center' },
+      6: { halign: 'center' },
+      7: { halign: 'center' },
     },
     alternateRowStyles: {
       fillColor: [249, 250, 251],
     },
-    didParseCell(data: { section: string; row: { index: number }; column: { index: number }; cell: { styles: { fillColor: number[]; textColor: number[]; fontStyle: string } } }) {
+    didParseCell(cellData: { section: string; row: { index: number }; column: { index: number }; cell: { styles: { fillColor: number[]; textColor: number[]; fontStyle: string }; raw: string | number } }) {
+      // Color descuadre column: red for negative, green for positive
+      if (cellData.section === 'body' && cellData.column.index === 5 && cellData.row.index < descuadreValues.length) {
+        const val = descuadreValues[cellData.row.index]
+        if (val < 0) {
+          cellData.cell.styles.textColor = [220, 38, 38] // red-600
+        } else if (val > 0) {
+          cellData.cell.styles.textColor = [22, 163, 74] // green-600
+        }
+      }
       // Style the totals row (last row)
-      if (data.section === 'body' && data.row.index === tableBody.length - 1) {
-        data.cell.styles.fillColor = [243, 244, 246] // gray-100
-        data.cell.styles.fontStyle = 'bold'
-        data.cell.styles.textColor = [17, 24, 39]
+      if (cellData.section === 'body' && cellData.row.index === tableBody.length - 1) {
+        cellData.cell.styles.fillColor = [243, 244, 246] // gray-100
+        cellData.cell.styles.fontStyle = 'bold'
+        cellData.cell.styles.textColor = [17, 24, 39]
       }
     },
   })

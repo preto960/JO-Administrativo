@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
       where: branchFilter,
       include: {
         product: {
-          select: { id: true, name: true, active: true, sku: true, currency: { select: { symbol: true, code: true } } },
+          select: { id: true, name: true, active: true, sku: true, costAvg: true, currency: { select: { symbol: true, code: true } } },
         },
       },
     })
@@ -98,21 +98,47 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // ── Descuadres from inventory checks (apertura/cierre, verificados) ──
+    const descuadreItems = await db.inventoryCheckItem.findMany({
+      where: {
+        check: {
+          status: 'verificado',
+          inventoryType: { in: ['apertura', 'cierre'] },
+          checkDate: { gte: startDate, lte: endDate },
+          ...(branchId ? { branchId } : {}),
+        },
+      },
+      select: {
+        productId: true,
+        discrepancyQty: true,
+      },
+    })
+
+    // Aggregate descuadre by product
+    const descuadreByProduct = new Map<string, number>()
+    for (const item of descuadreItems) {
+      descuadreByProduct.set(item.productId, (descuadreByProduct.get(item.productId) || 0) + item.discrepancyQty)
+    }
+
     // Build report data
     const report = activeInventory.map(inv => {
       const productId = inv.productId
       const salesQty = Math.round((salesByProduct.get(productId) || 0) * 100) / 100
       const perdidasQty = Math.round((perdidasByProduct.get(productId) || 0) * 100) / 100
       const obsequiosQty = Math.round((obsequiosByProduct.get(productId) || 0) * 100) / 100
+      const descuadreQty = Math.round((descuadreByProduct.get(productId) || 0) * 100) / 100
 
       return {
         productId,
         productName: inv.product.name,
         sku: inv.product.sku || null,
+        salePrice: inv.price,
+        purchasePrice: inv.product.costAvg,
         currentStock: inv.stock,
         salesQty,
         perdidasQty,
         obsequiosQty,
+        descuadreQty,
         currencySymbol: inv.product.currency.symbol,
       }
     })
@@ -123,6 +149,7 @@ export async function GET(request: NextRequest) {
       perdidasQty: Math.round(report.reduce((s, r) => s + r.perdidasQty, 0) * 100) / 100,
       obsequiosQty: Math.round(report.reduce((s, r) => s + r.obsequiosQty, 0) * 100) / 100,
       currentStock: Math.round(report.reduce((s, r) => s + r.currentStock, 0) * 100) / 100,
+      descuadreQty: Math.round(report.reduce((s, r) => s + r.descuadreQty, 0) * 100) / 100,
     }
 
     return NextResponse.json({

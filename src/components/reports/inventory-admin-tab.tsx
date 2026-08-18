@@ -32,6 +32,10 @@ interface MonthlyItem {
   currentStock: number
   losses: number
   gifts: number
+  salePrice: number
+  purchasePrice: number
+  descuadreQty: number
+  currencySymbol: string
 }
 
 interface DiscrepancyItem {
@@ -231,8 +235,11 @@ export function InventoryAdminTab({ userRole }: InventoryAdminTabProps) {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Producto</TableHead>
+                    <TableHead className="text-right">Precio Venta</TableHead>
+                    <TableHead className="text-right">Precio Compra</TableHead>
                     <TableHead className="text-center">Ventas del Mes</TableHead>
                     <TableHead className="text-center">Stock Actual</TableHead>
+                    <TableHead className="text-center">Descuadre</TableHead>
                     <TableHead className="text-center">Perdidas</TableHead>
                     <TableHead className="text-center">Obsequios</TableHead>
                   </TableRow>
@@ -241,8 +248,25 @@ export function InventoryAdminTab({ userRole }: InventoryAdminTabProps) {
                   {monthlyItems.map((item) => (
                     <TableRow key={item.productId}>
                       <TableCell className="font-medium">{item.productName}</TableCell>
+                      <TableCell className="text-right tabular-nums">{item.currencySymbol}{fmtMoney(item.salePrice)}</TableCell>
+                      <TableCell className="text-right tabular-nums">{item.currencySymbol}{fmtMoney(item.purchasePrice)}</TableCell>
                       <TableCell className="text-center">{item.monthlySales}</TableCell>
                       <TableCell className="text-center">{item.currentStock}</TableCell>
+                      <TableCell className="text-center">
+                        {item.descuadreQty !== 0 ? (
+                          <span
+                            className={
+                              item.descuadreQty < 0
+                                ? 'text-red-600 font-semibold'
+                                : 'text-green-600 font-semibold'
+                            }
+                          >
+                            {item.descuadreQty > 0 ? `+${item.descuadreQty}` : item.descuadreQty}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">0</span>
+                        )}
+                      </TableCell>
                       <TableCell className="text-center">
                         {item.losses > 0 ? (
                           <span className="text-red-600 font-semibold">
@@ -266,7 +290,7 @@ export function InventoryAdminTab({ userRole }: InventoryAdminTabProps) {
                   {monthlyItems.length === 0 && (
                     <TableRow>
                       <TableCell
-                        colSpan={5}
+                        colSpan={8}
                         className="text-center py-8 text-muted-foreground"
                       >
                         <PackageSearch className="mx-auto mb-2 h-8 w-8 opacity-50" />

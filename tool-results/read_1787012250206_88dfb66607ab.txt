@@ -1,0 +1,813 @@
+     1→generator client {
+     2→  provider = "prisma-client-js"
+     3→}
+     4→
+     5→datasource db {
+     6→  provider = "postgresql"
+     7→  url      = env("DATABASE_URL")
+     8→}
+     9→
+    10→model User {
+    11→  id        String    @id @default(cuid())
+    12→  name      String
+    13→  email     String    @unique
+    14→  password  String    @default("changeme")
+    15→  role      String    @default("cajero")
+    16→  active    Boolean   @default(true)
+    17→  branchId  String?
+    18→  deletedAt DateTime?
+    19→  createdAt DateTime  @default(now())
+    20→  updatedAt DateTime  @updatedAt
+    21→
+    22→  sales            Sale[]
+    23→  cashOpens        CashRegister[]
+    24→  movements        CashMovement[]
+    25→  adjustments      InventoryAdjustment[]
+    26→  expenses         Expense[]
+    27→  notifications    Notification[]
+    28→  supplierPayments SupplierPayment[]
+    29→  clientPayments   ClientPayment[]
+    30→  audits           CashAudit[]
+    31→  auditLogs        AuditLog[]
+    32→  branch           Branch?               @relation(fields: [branchId], references: [id])
+    33→  salesTargets     SalesTarget[]
+    34→  freezeApprovals  MembershipFreeze[]
+    35→  createdCredits   AccountReceivable[]  @relation("CreditCreator")
+    36→  inventoryChecks  InventoryCheck[]
+    37→  costEntries      CostEntry[]
+    38→
+    39→  @@map("User")
+    40→}
+    41→
+    42→model Client {
+    43→  id             String    @id @default(cuid())
+    44→  cedula         String?   @unique
+    45→  name           String
+    46→  lastName       String?
+    47→  phone          String?
+    48→  email          String?
+    49→  address        String?
+    50→  birthDate      DateTime?
+    51→  age            Int?
+    52→  gender         String? // Masculino, Femenino
+    53→  note           String?
+    54→  lastAttendance DateTime?
+    55→  source         String?   // "nuevo" | "renovado" | "recuperado" | "referido" | "otro"
+    56→  agreementName  String?   // nombre del convenio si aplica
+    57→  promotionName  String?   // nombre de la promocion si aplica
+    58→  deletedAt      DateTime?
+    59→  createdAt      DateTime  @default(now())
+    60→  updatedAt      DateTime  @updatedAt
+    61→
+    62→  sales          Sale[]
+    63→  receivables    AccountReceivable[]
+    64→  clientPayments ClientPayment[]
+    65→  notifications  Notification[]
+    66→  memberships    ClientMembership[]
+    67→  attendances    Attendance[]
+    68→
+    69→  @@map("Client")
+    70→}
+    71→
+    72→model ClientMembership {
+    73→  id               String    @id @default(cuid())
+    74→  clientId         String
+    75→  status           String    @default("Sin membresia") // Activo, Vencido, Sin membresia
+    76→  planId           String?
+    77→  planType         String    @default("dias") // "dias" | "horario" | "tickets"
+    78→  tarifa           String? // tipo de tarifa: Mensual, Trimestral, etc.
+    79→  paymentDate      DateTime? // fecha del último pago
+    80→  startDate        DateTime? // inicio de la membresía
+    81→  endDate          DateTime? // vencimiento de la membresía
+    82→  daysRemaining    Int       @default(0)
+    83→  ticketsRemaining Int       @default(0)
+    84→  startTime        String? // Hora inicio (HH:mm) — solo para planType "horario"
+    85→  endTime          String? // Hora fin (HH:mm) — solo para planType "horario"
+    86→  createdAt        DateTime  @default(now())
+    87→  updatedAt        DateTime  @updatedAt
+    88→
+    89→  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+    90→  plan   Plan?  @relation(fields: [planId], references: [id])
+    91→  freezes MembershipFreeze[]
+    92→
+    93→  @@index([clientId])
+    94→  @@index([status])
+    95→  @@index([planId])
+    96→
+    97→  @@map("ClientMembership")
+    98→}
+    99→
+   100→model MembershipFreeze {
+   101→  id           String   @id @default(cuid())
+   102→  membershipId String
+   103→  days         Int      // Cantidad de días a congelar
+   104→  reason       String   // Motivo (ej: "Incapacidad médica")
+   105→  documentRef  String?  // Referencia del comprobante
+   106→  approvedBy   String   // ID del usuario que aprueba
+   107→  createdAt    DateTime @default(now())
+   108→
+   109→  membership ClientMembership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+   110→  approver   User           @relation(fields: [approvedBy], references: [id])
+   111→
+   112→  @@index([membershipId])
+   113→  @@index([approvedBy])
+   114→
+   115→  @@map("MembershipFreeze")
+   116→}
+   117→
+   118→model Supplier {
+   119→  id        String    @id @default(cuid())
+   120→  name      String
+   121→  rif       String?   @unique
+   122→  phone     String?
+   123→  email     String?
+   124→  address   String?
+   125→  balance   Float     @default(0)
+   126→  deletedAt DateTime?
+   127→  createdAt DateTime  @default(now())
+   128→  updatedAt DateTime  @updatedAt
+   129→
+   130→  purchases Purchase[]
+   131→  payables  AccountPayable[]
+   132→  payments  SupplierPayment[]
+   133→
+   134→  @@map("Supplier")
+   135→}
+   136→
+   137→model Currency {
+   138→  id        String   @id @default(cuid())
+   139→  code      String   @unique
+   140→  name      String
+   141→  symbol    String
+   142→  isBase    Boolean  @default(false)
+   143→  createdAt DateTime @default(now())
+   144→
+   145→  exchangeRatesFrom ExchangeRate[]      @relation("FromCurrency")
+   146→  exchangeRatesTo   ExchangeRate[]      @relation("ToCurrency")
+   147→  products          Product[]
+   148→  purchases         Purchase[]
+   149→  salePayments      SalePayment[]
+   150→  cashMovements     CashMovement[]
+   151→  expenses          Expense[]
+   152→  sales             Sale[]
+   153→  cashRegisters     CashRegister[]
+   154→  receivables       AccountReceivable[]
+   155→  payables          AccountPayable[]
+   156→  costEntries       CostEntry[]
+   157→
+   158→  @@map("Currency")
+   159→}
+   160→
+   161→model ExchangeRate {
+   162→  id             String   @id @default(cuid())
+   163→  fromCurrencyId String
+   164→  toCurrencyId   String
+   165→  rate           Float
+   166→  date           DateTime @default(now())
+   167→
+   168→  fromCurrency Currency @relation("FromCurrency", fields: [fromCurrencyId], references: [id])
+   169→  toCurrency   Currency @relation("ToCurrency", fields: [toCurrencyId], references: [id])
+   170→
+   171→  @@unique([fromCurrencyId, toCurrencyId, date])
+   172→
+   173→  @@map("ExchangeRate")
+   174→}
+   175→
+   176→model Product {
+   177→  id         String   @id @default(cuid())
+   178→  name       String
+   179→  sku        String?  @unique
+   180→  type       String   @default("simple")
+   181→  costAvg    Float    @default(0)
+   182→  price      Float
+   183→  currencyId String
+   184→  categoryId String?
+   185→  imageUrl   String   @default("")
+   186→  active     Boolean  @default(true)
+   187→  createdAt  DateTime @default(now())
+   188→  updatedAt  DateTime @updatedAt
+   189→
+   190→  currency          Currency              @relation(fields: [currencyId], references: [id])
+   191→  category          Category?             @relation(fields: [categoryId], references: [id])
+   192→  inventories       Inventory[]
+   193→  saleLines         SaleLine[]
+   194→  purchaseLines     PurchaseLine[]
+   195→  adjustments       InventoryAdjustment[]
+   196→  recipeAsParent    RecipeComponent[]     @relation("ParentProduct")
+   197→  recipeAsComponent RecipeComponent[]     @relation("ComponentProduct")
+   198→  inventoryCheckItems InventoryCheckItem[]
+   199→
+   200→  @@map("Product")
+   201→}
+   202→
+   203→model Category {
+   204→  id        String   @id @default(cuid())
+   205→  name      String
+   206→  unitType  String   @default("unit") // unit | weight | volume
+   207→  createdAt DateTime @default(now())
+   208→
+   209→  products Product[]
+   210→
+   211→  @@map("Category")
+   212→}
+   213→
+   214→model RecipeComponent {
+   215→  id          String @id @default(cuid())
+   216→  productId   String
+   217→  componentId String
+   218→  quantity    Float
+   219→  unit        String @default("unidad")
+   220→
+   221→  parentProduct    Product @relation("ParentProduct", fields: [productId], references: [id])
+   222→  componentProduct Product @relation("ComponentProduct", fields: [componentId], references: [id])
+   223→
+   224→  @@unique([productId, componentId])
+   225→
+   226→  @@map("RecipeComponent")
+   227→}
+   228→
+   229→model Branch {
+   230→  id        String   @id @default(cuid())
+   231→  name      String
+   232→  code      String   @unique
+   233→  address   String?
+   234→  phone     String?
+   235→  active    Boolean  @default(true)
+   236→  isMain    Boolean  @default(false)
+   237→  createdAt DateTime @default(now())
+   238→  updatedAt DateTime @updatedAt
+   239→
+   240→  inventories          Inventory[]
+   241→  sales                Sale[]
+   242→  purchases            Purchase[]
+   243→  cashRegisters        CashRegister[]
+   244→  expenses             Expense[]
+   245→  inventoryAdjustments InventoryAdjustment[]
+   246→  inventoryChecks     InventoryCheck[]
+   247→  users                User[]
+   248→
+   249→  @@map("Branch")
+   250→}
+   251→
+   252→model Inventory {
+   253→  id        String   @id @default(cuid())
+   254→  productId String
+   255→  branchId  String
+   256→  stock     Float    @default(0)
+   257→  minStock  Float    @default(0)
+   258→  price     Float    @default(0)
+   259→  updatedAt DateTime @updatedAt
+   260→
+   261→  product Product @relation(fields: [productId], references: [id])
+   262→  branch  Branch  @relation(fields: [branchId], references: [id])
+   263→
+   264→  @@unique([productId, branchId])
+   265→
+   266→  @@map("Inventory")
+   267→}
+   268→
+   269→model Purchase {
+   270→  id          String   @id @default(cuid())
+   271→  supplierId  String
+   272→  branchId    String
+   273→  date        DateTime @default(now())
+   274→  total       Float    @default(0)
+   275→  paidAmount  Float    @default(0)
+   276→  status      String   @default("recibida")
+   277→  currencyId  String
+   278→  paidUpfront Boolean  @default(false)
+   279→  createdAt   DateTime @default(now())
+   280→  updatedAt   DateTime @updatedAt
+   281→
+   282→  supplier Supplier @relation(fields: [supplierId], references: [id])
+   283→  currency Currency @relation(fields: [currencyId], references: [id])
+   284→  branch   Branch   @relation(fields: [branchId], references: [id])
+   285→
+   286→  lines    PurchaseLine[]
+   287→  payables AccountPayable[]
+   288→
+   289→  @@map("Purchase")
+   290→}
+   291→
+   292→model PurchaseLine {
+   293→  id         String @id @default(cuid())
+   294→  purchaseId String
+   295→  productId  String
+   296→  quantity   Float
+   297→  unitCost   Float
+   298→  subtotal   Float
+   299→
+   300→  purchase Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+   301→  product  Product  @relation(fields: [productId], references: [id])
+   302→
+   303→  @@map("PurchaseLine")
+   304→}
+   305→
+   306→model Sale {
+   307→  id         String   @id @default(cuid())
+   308→  clientId   String?
+   309→  cashRegId  String?
+   310→  userId     String
+   311→  branchId   String
+   312→  currencyId String   @default("")
+   313→  date       DateTime @default(now())
+   314→  total         Float    @default(0)
+   315→  originalTotal Float    @default(0) // precio original del plan antes de descuento/promo
+   316→  discountAmount Float   @default(0) // monto descontado (0 si no hubo descuento)
+   317→  discountNotes  String? // "Promo", "Descuento 10%", "Promo + Descuento 15%"
+   318→  status        String   @default("completada")
+   319→  syncStatus    String   @default("synced")
+   320→  createdAt  DateTime @default(now())
+   321→  updatedAt  DateTime @updatedAt
+   322→
+   323→  client   Client?       @relation(fields: [clientId], references: [id])
+   324→  cashReg  CashRegister? @relation(fields: [cashRegId], references: [id])
+   325→  currency Currency?     @relation(fields: [currencyId], references: [id])
+   326→  user     User          @relation(fields: [userId], references: [id])
+   327→  branch   Branch        @relation(fields: [branchId], references: [id])
+   328→
+   329→  lines       SaleLine[]
+   330→  payments    SalePayment[]
+   331→  receivables AccountReceivable[]
+   332→
+   333→  @@map("Sale")
+   334→}
+   335→
+   336→model SaleLine {
+   337→  id         String @id @default(cuid())
+   338→  saleId     String
+   339→  productId  String
+   340→  quantity   Float
+   341→  unitPrice  Float
+   342→  unitCost   Float
+   343→  lineTotal  Float
+   344→  lineProfit Float
+   345→
+   346→  sale    Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
+   347→  product Product @relation(fields: [productId], references: [id])
+   348→
+   349→  @@map("SaleLine")
+   350→}
+   351→
+   352→model SalePayment {
+   353→  id         String  @id @default(cuid())
+   354→  saleId     String
+   355→  method     String
+   356→  amount     Float
+   357→  currencyId String
+   358→  reference  String?
+   359→
+   360→  sale     Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+   361→  currency Currency @relation(fields: [currencyId], references: [id])
+   362→
+   363→  @@map("SalePayment")
+   364→}
+   365→
+   366→model CashRegister {
+   367→  id          String    @id @default(cuid())
+   368→  name        String?
+   369→  userId      String
+   370→  branchId    String
+   371→  currencyId  String    @default("")
+   372→  openingDate DateTime  @default(now())
+   373→  closingDate DateTime?
+   374→  initialAmt  Float     @default(0)
+   375→  currentAmt  Float     @default(0)
+   376→  status      String    @default("abierta")
+   377→
+   378→  user      User           @relation(fields: [userId], references: [id])
+   379→  branch    Branch         @relation(fields: [branchId], references: [id])
+   380→  currency  Currency?      @relation(fields: [currencyId], references: [id])
+   381→  sales     Sale[]
+   382→  movements CashMovement[]
+   383→  cuts      CashCut[]
+   384→  audits    CashAudit[]
+   385→
+   386→  @@map("CashRegister")
+   387→}
+   388→
+   389→model CashMovement {
+   390→  id         String   @id @default(cuid())
+   391→  cashRegId  String
+   392→  userId     String
+   393→  type       String
+   394→  amount     Float
+   395→  concept    String
+   396→  currencyId String
+   397→  createdAt  DateTime @default(now())
+   398→
+   399→  cashReg  CashRegister @relation(fields: [cashRegId], references: [id], onDelete: Cascade)
+   400→  currency Currency     @relation(fields: [currencyId], references: [id])
+   401→  user     User         @relation(fields: [userId], references: [id])
+   402→
+   403→  @@map("CashMovement")
+   404→}
+   405→
+   406→model CashCut {
+   407→  id            String   @id @default(cuid())
+   408→  cashRegId     String
+   409→  totalSales    Float    @default(0)
+   410→  totalExpenses Float    @default(0)
+   411→  totalRetiros  Float    @default(0)
+   412→  expected      Float    @default(0)
+   413→  actual        Float    @default(0)
+   414→  difference    Float    @default(0)
+   415→  cutDate       DateTime @default(now())
+   416→
+   417→  cashReg CashRegister @relation(fields: [cashRegId], references: [id], onDelete: Cascade)
+   418→
+   419→  @@map("CashCut")
+   420→}
+   421→
+   422→model CashAudit {
+   423→  id         String   @id @default(cuid())
+   424→  cashRegId  String
+   425→  userId     String
+   426→  expected   Float    @default(0)
+   427→  counted    Float    @default(0)
+   428→  difference Float    @default(0)
+   429→  breakdown  Json     @default("{}")
+   430→  notes      String?
+   431→  auditDate  DateTime @default(now())
+   432→
+   433→  cashReg CashRegister @relation(fields: [cashRegId], references: [id])
+   434→  user    User         @relation(fields: [userId], references: [id])
+   435→
+   436→  @@map("CashAudit")
+   437→}
+   438→
+   439→model InventoryAdjustment {
+   440→  id        String   @id @default(cuid())
+   441→  productId String
+   442→  branchId  String
+   443→  type      String
+   444→  quantity  Float
+   445→  reason    String
+   446→  userId    String
+   447→  createdAt DateTime @default(now())
+   448→
+   449→  product Product @relation(fields: [productId], references: [id])
+   450→  user    User    @relation(fields: [userId], references: [id])
+   451→  branch  Branch  @relation(fields: [branchId], references: [id])
+   452→
+   453→  @@map("InventoryAdjustment")
+   454→}
+   455→
+   456→model AccountReceivable {
+   457→  id             String    @id @default(cuid())
+   458→  clientId       String
+   459→  saleId         String
+   460→  currencyId     String    @default("")
+   461→  amount         Float
+   462→  pendingBalance Float
+   463→  dueDate        DateTime?
+   464→  status         String    @default("pendiente")
+   465→  createdById    String?   // Denormalized from Sale.userId — the cashier who created the credit
+   466→  createdAt      DateTime  @default(now())
+   467→
+   468→  client    Client          @relation(fields: [clientId], references: [id])
+   469→  sale      Sale            @relation(fields: [saleId], references: [id])
+   470→  currency  Currency?       @relation(fields: [currencyId], references: [id])
+   471→  payments  ClientPayment[]
+   472→  createdBy User?           @relation("CreditCreator", fields: [createdById], references: [id])
+   473→
+   474→  @@map("AccountReceivable")
+   475→}
+   476→
+   477→model ClientPayment {
+   478→  id           String   @id @default(cuid())
+   479→  clientId     String
+   480→  receivableId String
+   481→  amount       Float
+   482→  method       String   @default("efectivo")
+   483→  reference    String?
+   484→  cashRegId    String?
+   485→  userId       String
+   486→  createdAt    DateTime @default(now())
+   487→
+   488→  client     Client            @relation(fields: [clientId], references: [id])
+   489→  receivable AccountReceivable @relation(fields: [receivableId], references: [id])
+   490→  user       User              @relation(fields: [userId], references: [id])
+   491→
+   492→  @@map("ClientPayment")
+   493→}
+   494→
+   495→model AccountPayable {
+   496→  id             String    @id @default(cuid())
+   497→  supplierId     String
+   498→  purchaseId     String?
+   499→  currencyId     String    @default("")
+   500→  amount         Float
+   501→  pendingBalance Float
+   502→  dueDate        DateTime?
+   503→  status         String    @default("pendiente")
+   504→  description    String?
+   505→  invoiceNumber  String?
+   506→  invoiceUrl     String?
+   507→  createdAt      DateTime  @default(now())
+   508→
+   509→  supplier Supplier?         @relation(fields: [supplierId], references: [id])
+   510→  purchase Purchase?         @relation(fields: [purchaseId], references: [id])
+   511→  currency Currency?         @relation(fields: [currencyId], references: [id])
+   512→  payments SupplierPayment[]
+   513→
+   514→  @@map("AccountPayable")
+   515→}
+   516→
+   517→model SupplierPayment {
+   518→  id         String   @id @default(cuid())
+   519→  supplierId String
+   520→  payableId  String?
+   521→  amount     Float
+   522→  method     String   @default("efectivo")
+   523→  reference  String?
+   524→  cashRegId  String?
+   525→  userId     String
+   526→  createdAt  DateTime @default(now())
+   527→
+   528→  supplier Supplier?       @relation(fields: [supplierId], references: [id])
+   529→  payable  AccountPayable? @relation(fields: [payableId], references: [id])
+   530→  user     User            @relation(fields: [userId], references: [id])
+   531→
+   532→  @@map("SupplierPayment")
+   533→}
+   534→
+   535→model Expense {
+   536→  id          String    @id @default(cuid())
+   537→  branchId    String
+   538→  category    String
+   539→  description String
+   540→  amount      Float
+   541→  currencyId  String
+   542→  date        DateTime  @default(now())
+   543→  userId      String
+   544→  deletedAt   DateTime?
+   545→  createdAt   DateTime  @default(now())
+   546→
+   547→  currency Currency @relation(fields: [currencyId], references: [id])
+   548→  user     User     @relation(fields: [userId], references: [id])
+   549→  branch   Branch   @relation(fields: [branchId], references: [id])
+   550→
+   551→  @@map("Expense")
+   552→}
+   553→
+   554→model PaymentMethod {
+   555→  id                    String   @id @default(cuid())
+   556→  code                  String   @unique // "efectivo", "divisas", "pago_movil", etc.
+   557→  name                  String // Display name: "Efectivo", "Divisas", etc.
+   558→  icon                  String   @default("Banknote") // Lucide icon name
+   559→  enabled               Boolean  @default(true) // General enabled (legacy fallback)
+   560→  enabledInPos          Boolean  @default(true) // Visible in Point of Sale
+   561→  enabledInSubscription Boolean  @default(true) // Visible in Subscription/Gym renewal
+   562→  needsReference        Boolean  @default(false)
+   563→  isLocalCurrency       Boolean  @default(false) // Uses country's local currency (Bs, COP, etc.)
+   564→  isCash                Boolean  @default(false) // Affects cash register (only efectivo = true)
+   565→  isCredit              Boolean  @default(false) // Creates AccountReceivable
+   566→  sortOrder             Int      @default(0)
+   567→  countries             String   @default("ALL") // "ALL" = all countries, or comma-joined "VE,CO,MX"
+   568→  isDefault             Boolean  @default(false) // System methods cannot be deleted
+   569→  createdAt             DateTime @default(now())
+   570→  updatedAt             DateTime @updatedAt
+   571→
+   572→  @@map("PaymentMethod")
+   573→}
+   574→
+   575→model Settings {
+   576→  id                   String   @id @default(cuid())
+   577→  key                  String   @default("general")
+   578→  businessName         String   @default("JO-Administrativo")
+   579→  logoUrl              String   @default("")
+   580→  address              String   @default("")
+   581→  phone                String   @default("")
+   582→  rif                  String   @default("")
+   583→  email                String   @default("")
+   584→  baseCurrencyId       String   @default("")
+   585→  referenceCurrency    String   @default("USD")
+   586→  usdRate              Float    @default(0)
+   587→  eurRate              Float    @default(0)
+   588→  customRate           Float    @default(0)
+   589→  exchangeRate         Float    @default(36.50)
+   590→  sessionDuration      Int      @default(28800)
+   591→  notificationsEnabled Boolean  @default(true)
+   592→  ivaEnabled           Boolean  @default(false)
+   593→  ivaRate              Float    @default(16.00)
+   594→  primaryColor         String   @default("blue")
+   595→  secondaryColor       String   @default("slate")
+   596→  theme                String   @default("light")
+   597→  rolePermissions      Json     @default("{}")
+   598→  multiCurrencyEnabled Boolean  @default(false)
+   599→  country              String   @default("VE")
+   600→  tutorialTexts        Json     @default("{}")
+   601→  tutorialAutoStart    Boolean  @default(true)
+   602→  businessType         String   @default("") // "gym" | "pyme" — empty = all features visible
+   603→  clientCode           String   @default("") // unique per installation, e.g. "GYM1", "PYME3"
+   604→  createdAt            DateTime @default(now())
+   605→  updatedAt            DateTime @updatedAt
+   606→
+   607→  @@map("Settings")
+   608→}
+   609→
+   610→model Notification {
+   611→  id         String   @id @default(cuid())
+   612→  userId     String
+   613→  title      String
+   614→  message    String
+   615→  type       String   @default("info")
+   616→  read       Boolean  @default(false)
+   617→  createdAt  DateTime @default(now())
+   618→  clientId   String?
+   619→  clientName String?
+   620→
+   621→  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+   622→  client Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+   623→
+   624→  @@map("Notification")
+   625→}
+   626→
+   627→model AuditLog {
+   628→  id        String   @id @default(cuid())
+   629→  userId    String   @default("system")
+   630→  userName  String   @default("Sistema")
+   631→  userRole  String   @default("system")
+   632→  action    String
+   633→  entity    String
+   634→  entityId  String?
+   635→  details   Json?
+   636→  ipAddress String?
+   637→  userAgent String?
+   638→  createdAt DateTime @default(now())
+   639→
+   640→  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+   641→
+   642→  @@index([userId])
+   643→  @@index([entity])
+   644→  @@index([action])
+   645→  @@index([createdAt])
+   646→
+   647→  @@map("AuditLog")
+   648→}
+   649→
+   650→model Plan {
+   651→  id           String   @id @default(cuid())
+   652→  name         String   @unique
+   653→  planType     String   @default("dias") // "dias" | "horario" | "tickets"
+   654→  durationType String   @default("1_mes") // "1_mes" | "bimestral" | "anual" | "dia" | "otro" — solo para planType "dias"
+   655→  durationDays Int? // solo cuando durationType = "otro"
+   656→  ticketCount  Int      @default(0) // cantidad de tickets — solo para planType "tickets"
+   657→  startTime    String? // Hora inicio (HH:mm) — solo para planType "horario"
+   658→  endTime      String? // Hora fin (HH:mm) — solo para planType "horario"
+   659→  cost         Float    @default(0)
+   660→  description  String?
+   661→  active       Boolean  @default(true)
+   662→
+   663→  // Descuento porcentual con vigencia
+   664→  discountPercentage Float  @default(0)
+   665→  discountStartDate DateTime?
+   666→  discountEndDate   DateTime?
+   667→
+   668→  // Precio promocional con vigencia
+   669→  promoPrice      Float?
+   670→  promoStartDate   DateTime?
+   671→  promoEndDate     DateTime?
+   672→
+   673→  createdAt    DateTime @default(now())
+   674→  updatedAt    DateTime @updatedAt
+   675→
+   676→  memberships ClientMembership[]
+   677→
+   678→  @@map("Plan")
+   679→}
+   680→
+   681→model Attendance {
+   682→  id        String   @id @default(cuid())
+   683→  clientId  String
+   684→  date      DateTime @default(now())
+   685→  source    String   @default("gym") // "gym" | "tiquetera"
+   686→  createdAt DateTime @default(now())
+   687→
+   688→  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+   689→
+   690→  @@unique([clientId, date, source])
+   691→  @@index([clientId])
+   692→  @@index([date])
+   693→  @@index([source])
+   694→
+   695→  @@map("Attendance")
+   696→}
+   697→
+   698→model SalesTarget {
+   699→  id                  String   @id @default(cuid())
+   700→  userId              String
+   701→  yearMonth           String   // format: "2025-06"
+   702→  targetAmount        Float    @default(0)
+   703→  dailyTargetAmount   Float    @default(0)
+   704→  applyDailyAllMonth  Boolean  @default(false) // if true, daily target applies every day of the month
+   705→  createdAt           DateTime @default(now())
+   706→  updatedAt           DateTime @updatedAt
+   707→
+   708→  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+   709→
+   710→  @@unique([userId, yearMonth], name: "userId_yearMonth")
+   711→  @@index([yearMonth])
+   712→
+   713→  @@map("SalesTarget")
+   714→}
+   715→
+   716→// ── Reportes: Inventario ──
+   717→
+   718→model InventoryCheck {
+   719→  id            String   @id @default(cuid())
+   720→  branchId      String
+   721→  userId        String
+   722→  checkDate     DateTime @default(now())
+   723→  status        String   @default("pendiente") // "pendiente" | "verificado"
+   724→  inventoryType String   @default("manual") // "manual" | "apertura" | "cierre"
+   725→  cashRegId     String?
+   726→  notes         String?
+   727→  createdAt     DateTime @default(now())
+   728→  updatedAt     DateTime @updatedAt
+   729→
+   730→  user   User     @relation(fields: [userId], references: [id])
+   731→  branch Branch   @relation(fields: [branchId], references: [id])
+   732→  items  InventoryCheckItem[]
+   733→
+   734→  @@index([branchId])
+   735→  @@index([checkDate])
+   736→  @@index([inventoryType])
+   737→
+   738→  @@map("InventoryCheck")
+   739→}
+   740→
+   741→model InventoryCheckItem {
+   742→  id              String   @id @default(cuid())
+   743→  checkId         String
+   744→  productId       String
+   745→  productName     String
+   746→  initialStock    Float
+   747→  verifiedStock   Float
+   748→  unitPrice       Float
+   749→  discrepancyQty  Float
+   750→  discrepancyAmt  Float
+   751→  notes           String?
+   752→
+   753→  check   InventoryCheck @relation(fields: [checkId], references: [id], onDelete: Cascade)
+   754→  product Product         @relation(fields: [productId], references: [id])
+   755→
+   756→  @@index([checkId])
+   757→
+   758→  @@map("InventoryCheckItem")
+   759→}
+   760→
+   761→// ── Reportes: Financieros ──
+   762→
+   763→model CostCenter {
+   764→  id        String   @id @default(cuid())
+   765→  name      String   @unique
+   766→  code      String?  @unique
+   767→  active    Boolean  @default(true)
+   768→  createdAt DateTime @default(now())
+   769→  updatedAt DateTime @updatedAt
+   770→
+   771→  entries  CostEntry[]
+   772→  budgets  ExpenseBudget[]
+   773→
+   774→  @@map("CostCenter")
+   775→}
+   776→
+   777→model CostEntry {
+   778→  id          String   @id @default(cuid())
+   779→  costCenterId String
+   780→  concept     String
+   781→  amount      Float
+   782→  currencyId  String
+   783→  date        DateTime @default(now())
+   784→  userId      String
+   785→  createdAt   DateTime @default(now())
+   786→  updatedAt   DateTime @updatedAt
+   787→
+   788→  costCenter CostCenter @relation(fields: [costCenterId], references: [id])
+   789→  currency   Currency    @relation(fields: [currencyId], references: [id])
+   790→  user       User        @relation(fields: [userId], references: [id])
+   791→
+   792→  @@index([costCenterId])
+   793→  @@index([date])
+   794→
+   795→  @@map("CostEntry")
+   796→}
+   797→
+   798→model ExpenseBudget {
+   799→  id            String   @id @default(cuid())
+   800→  costCenterId String
+   801→  yearMonth     String
+   802→  budgetAmount  Float   @default(0)
+   803→  createdAt     DateTime @default(now())
+   804→  updatedAt     DateTime @updatedAt
+   805→
+   806→  costCenter CostCenter @relation(fields: [costCenterId], references: [id])
+   807→
+   808→  @@unique([costCenterId, yearMonth])
+   809→  @@index([yearMonth])
+   810→
+   811→  @@map("ExpenseBudget")
+   812→}
+   813→
