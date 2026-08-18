@@ -75,6 +75,7 @@ interface ClientReportRow {
   membresiaEstado: string
   tipoPlan: string
   plan: string
+  soldBy: string
   totalVentas: number
   totalDeuda: number
 }
@@ -164,6 +165,42 @@ async function buildClientReportData(filters: {
     orderBy: { createdAt: 'desc' },
   })
 
+  // ── Resolve soldBy (latest sale cashier) for each client ──
+  const clientIds = clients.map(c => c.id)
+  let soldByMap = new Map<string, string>()
+
+  if (clientIds.length > 0) {
+    const clientSales = await db.sale.findMany({
+      where: { clientId: { in: clientIds }, status: 'completada' },
+      select: { clientId: true, userId: true, date: true },
+      orderBy: { date: 'desc' },
+    })
+
+    // Group by clientId — pick latest sale per client
+    const latestMap: Map<string, { userId: string; date: Date }> = new Map()
+    for (const s of clientSales) {
+      if (!s.clientId) continue
+      const existing = latestMap.get(s.clientId)
+      if (!existing || s.date > existing.date) {
+        latestMap.set(s.clientId, { userId: String(s.userId), date: s.date })
+      }
+    }
+
+    // Resolve userIds to names
+    const userIds = new Set(Array.from(latestMap.values()).map(v => v.userId))
+    if (userIds.size > 0) {
+      const users = await db.user.findMany({
+        where: { id: { in: Array.from(userIds) } },
+        select: { id: true, name: true },
+      })
+      const userMap = new Map<string, string>(users.map(u => [u.id, u.name]))
+      soldByMap = new Map<string, string>()
+      for (const [clientId, val] of latestMap) {
+        soldByMap.set(clientId, userMap.get(val.userId) || 'Desconocido')
+      }
+    }
+  }
+
   // Summary counters
   let conMembresiaActiva = 0
   let conDeuda = 0
@@ -201,6 +238,7 @@ async function buildClientReportData(filters: {
       membresiaEstado: m?.status || 'Sin membresía',
       tipoPlan: m?.planType || '',
       plan: m?.plan?.name || '',
+      soldBy: soldByMap.get(c.id) || '',
       totalVentas: c._count.sales,
       totalDeuda: c._count.receivables,
     }
@@ -294,7 +332,7 @@ function generateClientsPDF(
 
   // ── Main Clients Table ──
   const headers = [
-    ['Nombre', 'Cédula', 'Teléfono', 'Email', 'Origen', 'Convenio', 'Membresía', 'Tipo Plan', 'Ventas', 'Deuda'],
+    ['Nombre', 'Cédula', 'Teléfono', 'Email', 'Origen', 'Convenio', 'Membresía', 'Tipo Plan', 'Cajero', 'Ventas', 'Deuda'],
   ]
 
   const tableBody = data.clients.map((c) => [
@@ -306,6 +344,7 @@ function generateClientsPDF(
     c.convenio,
     c.membresiaEstado,
     c.tipoPlan || '—',
+    c.soldBy || '—',
     String(c.totalVentas),
     String(c.totalDeuda),
   ])
@@ -330,16 +369,17 @@ function generateClientsPDF(
       halign: 'center',
     },
     columnStyles: {
-      0: { cellWidth: 110 },
-      1: { cellWidth: 80, halign: 'center' },
-      2: { cellWidth: 90, halign: 'center' },
-      3: { cellWidth: 100 },
-      4: { cellWidth: 70, halign: 'center' },
-      5: { cellWidth: 70 },
-      6: { cellWidth: 80, halign: 'center' },
-      7: { cellWidth: 60, halign: 'center' },
-      8: { cellWidth: 40, halign: 'center' },
-      9: { cellWidth: 40, halign: 'center' },
+      0: { cellWidth: 100 },
+      1: { cellWidth: 70, halign: 'center' },
+      2: { cellWidth: 80, halign: 'center' },
+      3: { cellWidth: 90 },
+      4: { cellWidth: 60, halign: 'center' },
+      5: { cellWidth: 60 },
+      6: { cellWidth: 70, halign: 'center' },
+      7: { cellWidth: 50, halign: 'center' },
+      8: { cellWidth: 70, halign: 'center' },
+      9: { cellWidth: 35, halign: 'center' },
+      10: { cellWidth: 35, halign: 'center' },
     },
     alternateRowStyles: {
       fillColor: [249, 250, 251],
@@ -357,7 +397,7 @@ function generateClientsPDF(
         }
       }
       // Highlight debt count
-      if (tableData.section === 'body' && tableData.column.index === 9) {
+      if (tableData.section === 'body' && tableData.column.index === 10) {
         const val = parseInt(String(tableData.cell.raw), 10)
         if (val > 0) {
           tableData.cell.styles.textColor = [220, 38, 38]

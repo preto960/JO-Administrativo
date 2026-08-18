@@ -156,38 +156,55 @@ export async function GET(request: NextRequest) {
       }),
     ])
 
-    // ── Enrich with createdBy (earliest sale user) ──
+    // ── Enrich with createdBy (earliest sale user) and soldBy (latest sale user = renewal cashier) ──
     const clientIds = clients.map(c => c.id)
     let createdByMap = new Map<string, string>()
+    let soldByMap = new Map<string, string>()
 
     if (clientIds.length > 0) {
-      const earliestSales = await db.sale.findMany({
+      const clientSales = await db.sale.findMany({
         where: { clientId: { in: clientIds }, status: 'completada' },
         select: { clientId: true, userId: true, date: true },
         orderBy: { date: 'asc' },
       })
 
-      // Group by clientId and pick earliest
-      const map: Map<string, { userId: string; date: Date }> = new Map()
-      for (const s of earliestSales) {
-        const existing = map.get(s.clientId)
-        if (!existing || s.date < existing.date) {
-          map.set(s.clientId, { userId: String(s.userId), date: s.date })
+      // Group by clientId — pick earliest and latest sale
+      const earliestMap: Map<string, { userId: string; date: Date }> = new Map()
+      const latestMap: Map<string, { userId: string; date: Date }> = new Map()
+      for (const s of clientSales) {
+        if (!s.clientId) continue
+        // Earliest
+        const existingE = earliestMap.get(s.clientId)
+        if (!existingE || s.date < existingE.date) {
+          earliestMap.set(s.clientId, { userId: String(s.userId), date: s.date })
+        }
+        // Latest
+        const existingL = latestMap.get(s.clientId)
+        if (!existingL || s.date > existingL.date) {
+          latestMap.set(s.clientId, { userId: String(s.userId), date: s.date })
         }
       }
 
-      // Resolve userId to name
-      const userIds = new Set(Array.from(map.values()).map(v => v.userId))
-      if (userIds.size > 0) {
+      // Resolve userIds to names
+      const allUserIds = new Set<string>()
+      for (const v of earliestMap.values()) allUserIds.add(v.userId)
+      for (const v of latestMap.values()) allUserIds.add(v.userId)
+
+      if (allUserIds.size > 0) {
         const users = await db.user.findMany({
-          where: { id: { in: Array.from(userIds) } },
+          where: { id: { in: Array.from(allUserIds) } },
           select: { id: true, name: true },
         })
         const userMap = new Map<string, string>(users.map(u => [u.id, u.name]))
 
         createdByMap = new Map<string, string>()
-        for (const [clientId, val] of map) {
-          createdByMap.set(String(clientId), userMap.get(val.userId) || 'Desconocido')
+        for (const [clientId, val] of earliestMap) {
+          createdByMap.set(clientId, userMap.get(val.userId) || 'Desconocido')
+        }
+
+        soldByMap = new Map<string, string>()
+        for (const [clientId, val] of latestMap) {
+          soldByMap.set(clientId, userMap.get(val.userId) || 'Desconocido')
         }
       }
     }
@@ -229,6 +246,7 @@ export async function GET(request: NextRequest) {
           diasRestantes: ticketMembership.daysRemaining,
         } : null,
         createdBy: createdByMap.get(c.id) || null,
+        soldBy: soldByMap.get(c.id) || null,
         totalVentas: c._count.sales,
         totalDeuda: c._count.receivables,
         totalAsistencias: c._count.attendances,

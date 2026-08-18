@@ -27,6 +27,7 @@ interface ClientReport {
   phone: string
   membershipStatus: string
   planName: string
+  soldBy: string
 }
 
 interface ClientReportAPIResponse {
@@ -56,6 +57,7 @@ interface ClientReportAPIItem {
     ticketsRestantes: number
   } | null
   createdBy: string | null
+  soldBy: string | null
   totalVentas: number
   totalDeuda: number
   totalAsistencias: number
@@ -155,6 +157,7 @@ export function ClientsReportTab() {
           phone: c.telefono || '',
           membershipStatus: c.membresia?.estado || 'Sin membresía',
           planName: c.membresia?.plan || '',
+          soldBy: c.soldBy || '',
         })),
         total: raw.count ?? 0,
         page: raw.page ?? 1,
@@ -299,6 +302,7 @@ export function ClientsReportTab() {
                       <TableHead>Teléfono</TableHead>
                       <TableHead>Estado Membresía</TableHead>
                       <TableHead>Plan</TableHead>
+                      <TableHead>Cajero</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -312,6 +316,7 @@ export function ClientsReportTab() {
                           </Badge>
                         </TableCell>
                         <TableCell>{c.planName || '—'}</TableCell>
+                        <TableCell className="text-sm">{c.soldBy || '—'}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
