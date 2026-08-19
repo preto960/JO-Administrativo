@@ -2205,7 +2205,7 @@ export function ClientsTable() {
                                 <TableCell className="text-xs text-muted-foreground max-w-[150px] truncate" title={saleProducts}>
                                   {saleProducts || `Factura ${payment.receivable.saleId.slice(0, 8)}`}
                                 </TableCell>
-                                {canManage && (
+                                {user?.role === 'admin' && (
                                   <TableCell>
                                     <Button
                                       size="sm"
