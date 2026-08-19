@@ -232,6 +232,10 @@ export function ClientsTable() {
   const [removeDebtTarget, setRemoveDebtTarget] = useState<{ client: Client; receivable: ReceivableRecord } | null>(null)
   const [removingDebt, setRemovingDebt] = useState(false)
 
+  // Delete renewal (admin only)
+  const [deleteRenewalTarget, setDeleteRenewalTarget] = useState<SaleRecord | null>(null)
+  const [deletingRenewal, setDeletingRenewal] = useState(false)
+
   // Sale lines detail modal
   const [detailSale, setDetailSale] = useState<SaleRecord | null>(null)
 
@@ -912,6 +916,25 @@ export function ClientsTable() {
       toast.error(msg)
     } finally {
       setDeletingPaymentId(null)
+    }
+  }
+
+  const handleDeleteRenewal = async () => {
+    if (!deleteRenewalTarget || !historyClient) return
+    setDeletingRenewal(true)
+    try {
+      await api.del(`/api/sales/${deleteRenewalTarget.id}/renewal`)
+      toast.success(`Renovación de ${fmt(deleteRenewalTarget.total)} eliminada correctamente`)
+      setDeleteRenewalTarget(null)
+      // Refresh sales, client list and payments
+      const salesData = await api.get<{ sales: SaleRecord[] }>(`/api/clients/${historyClient.id}/sales`)
+      setSales(salesData.sales)
+      fetchClients()
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Error al eliminar la renovación'
+      toast.error(msg)
+    } finally {
+      setDeletingRenewal(false)
     }
   }
 
@@ -2083,6 +2106,7 @@ export function ClientsTable() {
                                   )}
                                 </TableCell>
                                 <TableCell>
+                                  <div className="flex items-center gap-1">
                                   <Button
                                     size="sm"
                                     variant="ghost"
@@ -2106,6 +2130,18 @@ export function ClientsTable() {
                                   >
                                     <Printer className="h-3.5 w-3.5" />
                                   </Button>
+                                  {user?.role === 'admin' && sale.lines.length === 0 && sale.status === 'completada' && (
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/40"
+                                      title="Eliminar Renovación"
+                                      onClick={() => setDeleteRenewalTarget(sale)}
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </Button>
+                                  )}
+                                  </div>
                                 </TableCell>
                               </TableRow>
                             )
@@ -3130,6 +3166,47 @@ export function ClientsTable() {
             <AlertDialogCancel disabled={removingDebt}>Cancelar</AlertDialogCancel>
             <AlertDialogAction variant="destructive" onClick={handleConfirmRemoveDebt} disabled={removingDebt}>
               {removingDebt ? 'Eliminando...' : 'Quitar Deuda'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete Renewal Confirmation (Admin Only) */}
+      <AlertDialog open={!!deleteRenewalTarget} onOpenChange={(open) => { if (!open) setDeleteRenewalTarget(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-red-500" />
+              Eliminar Renovación
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                <p>
+                  ¿Estás seguro de eliminar esta renovación? Se eliminará:
+                </p>
+                <ul className="list-disc list-inside text-sm space-y-1">
+                  <li>La membresía/tiquetera asignada al cliente</li>
+                  <li>El registro de venta y sus pagos</li>
+                  <li>Se revertirá el monto de la caja (si fue efectivo)</li>
+                </ul>
+                {deleteRenewalTarget && (
+                  <div className="mt-3 p-3 bg-red-50 dark:bg-red-950/30 rounded-lg border border-red-200 dark:border-red-800">
+                    <p className="text-sm"><span className="font-medium">Cliente:</span> {historyClient?.name} {historyClient?.lastName || ''}</p>
+                    <p className="text-sm"><span className="font-medium">Monto:</span> {fmt(deleteRenewalTarget.total)}</p>
+                    <p className="text-sm"><span className="font-medium">Método:</span> {deleteRenewalTarget.payments.map(p => p.method).join(', ')}</p>
+                    <p className="text-sm"><span className="font-medium">Fecha:</span> {new Date(deleteRenewalTarget.date).toLocaleDateString('es-VE')}</p>
+                  </div>
+                )}
+                <p className="text-red-600 dark:text-red-400 font-medium text-sm mt-2">
+                  Esta acción no se puede deshacer.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingRenewal}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" onClick={handleDeleteRenewal} disabled={deletingRenewal}>
+              {deletingRenewal ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Eliminando...</> : 'Eliminar Renovación'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
