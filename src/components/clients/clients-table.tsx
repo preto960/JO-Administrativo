@@ -1331,7 +1331,7 @@ export function ClientsTable() {
               )}
               </>
               )}
-              {canManage && (
+              {(canManage || canMarkAtt) && (
               <Button onClick={openCreate} className="bg-primary hover:bg-primary/90 text-white">
                 <Plus className="mr-2 h-4 w-4" /> Nuevo Cliente
               </Button>
