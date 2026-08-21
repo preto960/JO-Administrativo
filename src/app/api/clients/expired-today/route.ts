@@ -1,23 +1,36 @@
 import { db } from '@/lib/db'
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/require-auth'
 import { fetchToday } from '@/lib/tz-helpers'
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const auth = await requireAuth()
   if ('status' in auth) return auth
 
   try {
-    const today = await fetchToday()
-    const tomorrow = new Date(today)
-    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1)
+    const { searchParams } = new URL(request.url)
+    const dateParam = searchParams.get('date') // format: YYYY-MM-DD
+
+    let targetDate: Date
+    let targetDateStr: string
+    if (dateParam) {
+      const [y, m, d] = dateParam.split('-').map(Number)
+      targetDate = new Date(y, m - 1, d)
+      targetDateStr = dateParam
+    } else {
+      targetDate = await fetchToday()
+      targetDateStr = targetDate.toISOString().split('T')[0]
+    }
+
+    const nextDay = new Date(targetDate)
+    nextDay.setUTCDate(nextDay.getUTCDate() + 1)
 
     const clients = await db.client.findMany({
       where: {
         deletedAt: null,
         memberships: {
           some: {
-            endDate: { gte: today, lt: tomorrow },
+            endDate: { gte: targetDate, lt: nextDay },
             status: { in: ['Vencido', 'Activo'] },
           },
         },
@@ -30,7 +43,7 @@ export async function GET() {
         email: true,
         phone: true,
         memberships: {
-          where: { endDate: { gte: today, lt: tomorrow } },
+          where: { endDate: { gte: targetDate, lt: nextDay } },
           orderBy: { createdAt: 'desc' },
           take: 1,
           select: {
@@ -60,7 +73,7 @@ export async function GET() {
       status: c.memberships[0]?.status || '',
     }))
 
-    return NextResponse.json({ clients: formatted, date: today.toISOString().split('T')[0], total: formatted.length })
+    return NextResponse.json({ clients: formatted, date: targetDateStr, total: formatted.length })
   } catch (error) {
     console.error('[ExpiredToday]', error)
     return NextResponse.json({ error: 'Error al consultar' }, { status: 500 })

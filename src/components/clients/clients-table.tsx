@@ -450,6 +450,9 @@ export function ClientsTable() {
     index: number; fullName: string; cedula: string; email: string; phone: string; tarifa: string; fechaVencimiento: string; diasRestantes: number
   }> | null>(null)
   const [expiredTodayCount, setExpiredTodayCount] = useState(0)
+  const [expiredFilterDate, setExpiredFilterDate] = useState('') // YYYY-MM-DD or empty = today
+  const [expiredQueryDate, setExpiredQueryDate] = useState('') // the date that was actually queried
+  const [showExpiredDatePicker, setShowExpiredDatePicker] = useState(false)
 
   // Attendance dialog
   const [attClient, setAttClient] = useState<Client | null>(null)
@@ -488,12 +491,14 @@ export function ClientsTable() {
       .catch(() => {})
   }, [])
 
-  const openExpiredReport = async () => {
+  const openExpiredReport = async (date?: string) => {
     setLoadingExpired(true)
     try {
-      const data = await api.get<{ clients: typeof expiredClients; total: number }>('/api/clients/expired-today')
+      const qs = date ? `?date=${date}` : ''
+      const data = await api.get<{ clients: typeof expiredClients; total: number; date: string }>(`/api/clients/expired-today${qs}`)
       setExpiredClients(data.clients || [])
       setExpiredTodayCount(data.total || 0)
+      setExpiredQueryDate(data.date || '')
       setShowExpiredModal(true)
     } catch {
       toast.error('Error al consultar clientes vencidos')
@@ -501,9 +506,6 @@ export function ClientsTable() {
       setLoadingExpired(false)
     }
   }
-
-  const [pdfDate, setPdfDate] = useState('')
-  const [showPdfDatePicker, setShowPdfDatePicker] = useState(false)
 
   // Freeze days
   const [freezeClient, setFreezeClient] = useState<Client | null>(null)
@@ -520,8 +522,6 @@ export function ClientsTable() {
   const downloadExpiredPdf = (date?: string) => {
     const qs = date ? `?date=${date}` : ''
     window.open(`/api/clients/expired-today/pdf${qs}`, '_blank')
-    setShowPdfDatePicker(false)
-    setPdfDate('')
   }
 
   const openCreate = () => {
@@ -1308,9 +1308,22 @@ export function ClientsTable() {
             <div className="flex items-center gap-2">
               {isGym && (
               <>
-              <Button variant="outline" onClick={openExpiredReport} disabled={loadingExpired} className="text-red-600 border-red-300 hover:bg-red-50 dark:text-red-400 dark:border-red-800 dark:hover:bg-red-950/40">
-                <FileText className="mr-2 h-4 w-4" /> Vencidos Hoy {expiredTodayCount > 0 && `(${expiredTodayCount})`}
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" disabled={loadingExpired} className="text-red-600 border-red-300 hover:bg-red-50 dark:text-red-400 dark:border-red-800 dark:hover:bg-red-950/40">
+                    {loadingExpired ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />} Vencidos Hoy {expiredTodayCount > 0 && `(${expiredTodayCount})`}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => openExpiredReport()}>
+                    <CalendarDays className="mr-2 h-4 w-4" /> Vencidos de Hoy
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => setShowExpiredDatePicker(true)}>
+                    <CalendarCheck className="mr-2 h-4 w-4" /> Buscar por fecha...
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
               {canManage && (
               <Button variant="outline" onClick={() => setBulkImportOpen(true)} className="text-primary border-primary/30 hover:bg-primary/5">
                 <Upload className="mr-2 h-4 w-4" /> Carga Masiva
@@ -3218,20 +3231,47 @@ export function ClientsTable() {
 
       {isGym && <ClientBulkImport open={bulkImportOpen} onOpenChange={setBulkImportOpen} />}
 
-      {/* Expired Today Report Modal */}
+      {/* Expired Report Modal */}
       <Dialog open={showExpiredModal} onOpenChange={setShowExpiredModal}>
         <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <AlertTriangle className="h-5 w-5 text-red-500" />
-              Clientes con Plan Vencido Hoy
+              {expiredQueryDate ? `Vencidos del ${expiredQueryDate}` : 'Clientes con Plan Vencido Hoy'}
             </DialogTitle>
             <DialogDescription>
               {expiredClients && expiredClients.length > 0
-                ? `Se encontraron ${expiredClients.length} cliente${expiredClients.length !== 1 ? 's' : ''} con vencimiento hoy.`
-                : 'No hay clientes con plan vencido hoy.'}
+                ? `Se encontraron ${expiredClients.length} cliente${expiredClients.length !== 1 ? 's' : ''} con vencimiento${expiredQueryDate ? ` el ${expiredQueryDate}` : ' hoy'}.`
+                : `No hay clientes con plan vencido${expiredQueryDate ? ` el ${expiredQueryDate}` : ' hoy'}.`}
             </DialogDescription>
           </DialogHeader>
+
+          {/* Date picker to re-query */}
+          <div className="flex items-center gap-2 pb-1">
+            <Label className="text-xs text-muted-foreground whitespace-nowrap">Consultar fecha:</Label>
+            <Input
+              type="date"
+              value={expiredFilterDate}
+              onChange={(e) => setExpiredFilterDate(e.target.value)}
+              max={new Date().toISOString().split('T')[0]}
+              className="h-8 w-40 text-sm"
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => openExpiredReport(expiredFilterDate || undefined)}
+              disabled={loadingExpired}
+              className="h-8"
+            >
+              {loadingExpired ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Search className="mr-1.5 h-3.5 w-3.5" />}
+              Buscar
+            </Button>
+            {!expiredFilterDate && expiredQueryDate && (
+              <Button variant="ghost" size="sm" onClick={() => { setExpiredFilterDate(''); openExpiredReport() }} className="h-8 text-xs">
+                Volver a hoy
+              </Button>
+            )}
+          </div>
 
           {expiredClients && expiredClients.length > 0 ? (
             <>
@@ -3269,46 +3309,41 @@ export function ClientsTable() {
                 <span className="text-sm text-muted-foreground">
                   Total: {expiredClients.length} cliente{expiredClients.length !== 1 ? 's' : ''}
                 </span>
-                <div className="flex items-center gap-2">
-                  <Button variant="outline" onClick={() => downloadExpiredPdf()} size="sm">
-                    <Printer className="mr-2 h-4 w-4" /> Hoy
-                  </Button>
-                  <Button onClick={() => setShowPdfDatePicker(true)} size="sm" className="bg-primary hover:bg-primary/90 text-white">
-                    <CalendarDays className="mr-2 h-4 w-4" /> Otra fecha
-                  </Button>
-                </div>
+                <Button onClick={() => downloadExpiredPdf(expiredQueryDate || undefined)} size="sm" className="bg-primary hover:bg-primary/90 text-white">
+                  <Printer className="mr-2 h-4 w-4" /> Descargar PDF
+                </Button>
               </div>
             </>
           ) : expiredClients && expiredClients.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
               <CheckCircle2 className="h-10 w-10 mb-2 text-emerald-500" />
-              <p className="text-sm">Ningun cliente con vencimiento hoy</p>
+              <p className="text-sm">Ningun cliente con vencimiento{expiredQueryDate ? ` el ${expiredQueryDate}` : ' hoy'}</p>
             </div>
           ) : null}
         </DialogContent>
       </Dialog>
 
-      {/* Date picker for expired report */}
-      <Dialog open={showPdfDatePicker} onOpenChange={setShowPdfDatePicker}>
+      {/* Date picker for expired report - opened from main button dropdown */}
+      <Dialog open={showExpiredDatePicker} onOpenChange={setShowExpiredDatePicker}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle>Descargar Informe de Vencidos</DialogTitle>
-            <DialogDescription>Selecciona la fecha para consultar los vencimientos de ese día.</DialogDescription>
+            <DialogTitle>Buscar Vencidos por Fecha</DialogTitle>
+            <DialogDescription>Selecciona la fecha para consultar los vencimientos de ese dia.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
               <Label>Fecha</Label>
               <Input
                 type="date"
-                value={pdfDate}
-                onChange={(e) => setPdfDate(e.target.value)}
+                value={expiredFilterDate}
+                onChange={(e) => setExpiredFilterDate(e.target.value)}
                 max={new Date().toISOString().split('T')[0]}
               />
             </div>
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => { setShowPdfDatePicker(false); setPdfDate('') }}>Cancelar</Button>
-              <Button onClick={() => downloadExpiredPdf(pdfDate)} disabled={!pdfDate} className="bg-primary hover:bg-primary/90 text-white">
-                <Printer className="mr-2 h-4 w-4" /> Descargar PDF
+              <Button variant="outline" onClick={() => { setShowExpiredDatePicker(false); setExpiredFilterDate('') }}>Cancelar</Button>
+              <Button onClick={() => { setShowExpiredDatePicker(false); openExpiredReport(expiredFilterDate || undefined) }} disabled={!expiredFilterDate} className="bg-primary hover:bg-primary/90 text-white">
+                <Search className="mr-2 h-4 w-4" /> Buscar
               </Button>
             </div>
           </div>
