@@ -1,7 +1,6 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/require-auth'
-import { getPermissions } from '@/lib/permissions'
 import { fetchAppTz } from '@/lib/tz-helpers'
 
 // GET /api/reports/inventory-check — List inventory checks with filters
@@ -85,10 +84,8 @@ export async function POST(request: NextRequest) {
     const auth = await requireAuth()
     if ('status' in auth) return auth
 
-    const perms = getPermissions(auth.role)
-    if (!perms.canManageProducts && auth.role !== 'admin' && auth.role !== 'gerente') {
-      return NextResponse.json({ error: 'Sin permisos para crear conteos de inventario' }, { status: 403 })
-    }
+    // Todos los roles autenticados pueden crear conteos de inventario
+    // (cajeros lo hacen al abrir/cerrar caja)
 
     const body = await request.json()
     const { branchId, notes, inventoryType, cashRegId } = body

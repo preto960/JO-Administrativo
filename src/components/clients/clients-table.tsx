@@ -1304,21 +1304,25 @@ export function ClientsTable() {
               Inactivos ({inactiveCount})
             </Label>
           </div>
-          {canManage && (
+          {(canManage || canMarkAtt || isGym) && (
             <div className="flex items-center gap-2">
               {isGym && (
               <>
               <Button variant="outline" onClick={openExpiredReport} disabled={loadingExpired} className="text-red-600 border-red-300 hover:bg-red-50 dark:text-red-400 dark:border-red-800 dark:hover:bg-red-950/40">
                 <FileText className="mr-2 h-4 w-4" /> Vencidos Hoy {expiredTodayCount > 0 && `(${expiredTodayCount})`}
               </Button>
+              {canManage && (
               <Button variant="outline" onClick={() => setBulkImportOpen(true)} className="text-primary border-primary/30 hover:bg-primary/5">
                 <Upload className="mr-2 h-4 w-4" /> Carga Masiva
               </Button>
+              )}
               </>
               )}
+              {canManage && (
               <Button onClick={openCreate} className="bg-primary hover:bg-primary/90 text-white">
                 <Plus className="mr-2 h-4 w-4" /> Nuevo Cliente
               </Button>
+              )}
             </div>
           )}
         </div>
