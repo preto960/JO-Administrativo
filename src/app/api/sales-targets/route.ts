@@ -67,7 +67,7 @@ export async function PUT(request: NextRequest) {
             userId: t.userId,
             yearMonth: t.yearMonth,
             targetAmount: t.targetAmount || 0,
-            dailyTargetAmount: t.dailyTargetAmount || 0,
+            dailyTargetAmount: t.dailyTargetAmount ?? 0,
             applyDailyAllMonth: t.applyDailyAllMonth ?? false,
           },
           update: {
