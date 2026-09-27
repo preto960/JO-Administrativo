@@ -66,6 +66,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Debe incluir al menos una línea de venta' }, { status: 400 })
     }
 
+    if (!payments || !Array.isArray(payments) || payments.length === 0) {
+      return NextResponse.json({ error: 'Debe incluir al menos un método de pago' }, { status: 400 })
+    }
+    for (const p of payments) {
+      if (!p.method) {
+        return NextResponse.json({ error: 'Cada pago debe tener un método' }, { status: 400 })
+      }
+      if (typeof p.amount !== 'number' || p.amount <= 0) {
+        return NextResponse.json({ error: 'Cada pago debe tener un monto mayor a 0' }, { status: 400 })
+      }
+    }
+
     const branchId = branchFromBody(body) || await resolveBranchId()
     const ivaEnabled = body.ivaEnabled === true
     const ivaRate = Number(body.ivaRate) || 0
@@ -141,6 +153,14 @@ export async function POST(request: NextRequest) {
     if (ivaEnabled && ivaRate > 0) {
       ivaAmount = Math.round(total * (ivaRate / 100) * 100) / 100
       total = Math.round((total + ivaAmount) * 100) / 100
+    }
+
+    // ── Validate payments sum equals sale total (prevents credit/abono mismatches) ──
+    const paymentsSum = Math.round(payments.reduce((s: number, p: { amount: number }) => s + p.amount, 0) * 100) / 100
+    if (Math.abs(paymentsSum - total) > 0.01) {
+      return NextResponse.json({
+        error: `El total de los pagos (${paymentsSum.toFixed(2)}) no coincide con el total de la venta (${total.toFixed(2)}). Si desea cobrar un abono y dejar el resto a crédito, use el modo Híbrido combinando el método de abono + crédito.`,
+      }, { status: 400 })
     }
 
     // Audit log data (declared outside transaction so it's accessible after commit)

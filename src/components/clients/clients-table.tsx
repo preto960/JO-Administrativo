@@ -1106,6 +1106,8 @@ export function ClientsTable() {
         branchId: selectedBranchId || undefined,
         currencyId: baseCurr?.id || baseCurrencyId || '',
       }
+      // Always send payments[] — single mode sends a 1-entry array (preserves user-entered abono amount)
+      // This allows credit + abono combinations to work properly.
       if (renewIsHybrid) {
         payload.payments = renewHybridPayments.map(p => ({
           method: p.method,
@@ -1113,8 +1115,12 @@ export function ClientsTable() {
           reference: p.reference || undefined,
         }))
       } else {
-        payload.paymentMethod = effectiveMethod
-        payload.paymentReference = effectiveRef.trim() || undefined
+        // Single mode — use amount from HybridPaymentSelector if present
+        payload.payments = [{
+          method: effectiveMethod,
+          amount: renewHybridPayments[0]?.amount ?? 0,
+          reference: effectiveRef.trim() || undefined,
+        }]
       }
       const res = await api.post<{ message: string }>(`/api/clients/${renewClient.id}/renew`, payload)
       setRenewSuccess(true)
@@ -1209,6 +1215,7 @@ export function ClientsTable() {
         branchId: selectedBranchId || undefined,
         currencyId: baseCurr?.id || baseCurrencyId || '',
       }
+      // Always send payments[] — single mode sends a 1-entry array (preserves user-entered abono amount)
       if (tiqueteraIsHybrid) {
         payload.payments = tiqueteraHybridPayments.map(p => ({
           method: p.method,
@@ -1216,8 +1223,11 @@ export function ClientsTable() {
           reference: p.reference || undefined,
         }))
       } else {
-        payload.paymentMethod = effectiveMethod
-        payload.paymentReference = effectiveRef.trim() || undefined
+        payload.payments = [{
+          method: effectiveMethod,
+          amount: tiqueteraHybridPayments[0]?.amount ?? 0,
+          reference: effectiveRef.trim() || undefined,
+        }]
       }
       const res = await api.post<{ message: string }>(`/api/clients/${tiqueteraClient.id}/tiquetera`, payload)
       setTiqueteraSuccess(true)

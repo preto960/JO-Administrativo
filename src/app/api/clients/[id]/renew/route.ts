@@ -76,9 +76,7 @@ export async function POST(
       )
     }
 
-    // Validate payment method(s)
-    const isHybrid = Array.isArray(hybridPayments) && hybridPayments.length > 1
-    let pmInfo: { code: string; isCash: boolean; isCredit: boolean; isLocalCurrency: boolean } | null = null
+    // Validate payment method(s) — fetch PM list now (effectivePrice will be used later)
     const pmList = await getPaymentMethodsFromDB().catch(() => FALLBACK_METHODS)
 
     // ── Calculate effective price (promo + discount auto-applied) ──
@@ -115,22 +113,37 @@ export async function POST(
           ? `Descuento ${plan.discountPercentage}%`
           : null
 
-    if (isHybrid) {
-      // Hybrid: validate all methods exist
-      for (const p of hybridPayments) {
+    // Build payments array — frontend always sends payments[] now (even single mode = 1 entry)
+    // For legacy clients still sending paymentMethod/paymentReference, normalize to a 1-entry array
+    // using effectivePrice as the default amount.
+    const allPayments: Array<{ method: string; amount: number; reference?: string }> = Array.isArray(hybridPayments) && hybridPayments.length > 0
+      ? hybridPayments.map(p => ({ method: p.method, amount: Number(p.amount) || 0, reference: p.reference?.trim() || undefined }))
+      : (paymentMethod ? [{ method: paymentMethod, amount: effectivePrice, reference: paymentReference?.trim() || undefined }] : [])
+    const isHybrid = allPayments.length > 1
+    let pmInfo: { code: string; isCash: boolean; isCredit: boolean; isLocalCurrency: boolean } | null = null
+
+    if (allPayments.length === 0) {
+      // No payment specified (e.g. free plan or trial) — skip sale creation
+    } else {
+      // Validate each payment method exists
+      for (const p of allPayments) {
         const found = pmList.find((m: any) => m.code === p.method)
         if (!found) return NextResponse.json({ error: `Método de pago no válido: ${p.method}` }, { status: 400 })
-        if (found.isCredit) return NextResponse.json({ error: 'Los pagos híbridos no permiten crédito' }, { status: 400 })
       }
-      // Validate amounts sum to effectivePrice
-      const sum = hybridPayments.reduce((s, p) => s + (p.amount || 0), 0)
+      // Validate sum of payments equals effectivePrice
+      const sum = Math.round(allPayments.reduce((s, p) => s + p.amount, 0) * 100) / 100
       if (Math.abs(sum - effectivePrice) > 0.01) {
-        return NextResponse.json({ error: `Los pagos (${sum}) no coinciden con el precio del plan (${effectivePrice})` }, { status: 400 })
+        return NextResponse.json({
+          error: `El total de los pagos (${sum.toFixed(2)}) no coincide con el precio del plan (${effectivePrice.toFixed(2)}). Use modo Híbrido para combinar abono + crédito.`,
+        }, { status: 400 })
       }
-      pmInfo = { code: 'hibrido', isCash: false, isCredit: false, isLocalCurrency: false }
-    } else if (paymentMethod) {
-      pmInfo = pmList.find((m: any) => m.code === paymentMethod) || null
-      if (!pmInfo) return NextResponse.json({ error: 'Método de pago no válido' }, { status: 400 })
+      // Determine pmInfo from single payment (for backward-compat with non-hybrid paths)
+      if (!isHybrid) {
+        pmInfo = pmList.find((m: any) => m.code === allPayments[0].method) || null
+        if (!pmInfo) return NextResponse.json({ error: 'Método de pago no válido' }, { status: 400 })
+      } else {
+        pmInfo = { code: 'hibrido', isCash: false, isCredit: false, isLocalCurrency: false }
+      }
     }
 
     const today = await fetchToday()
@@ -231,33 +244,23 @@ export async function POST(
     let movementError: string | null = null
     let receivableId: string | null = null
 
-    if ((paymentMethod || isHybrid) && resolvedCurrencyId) {
+    if (allPayments.length > 0 && resolvedCurrencyId) {
       const clientName = `${client.name}${client.lastName ? ' ' + client.lastName : ''}`
 
       try {
-        // Build payment label for concept
+        // Build the SalePayment records — use actual payment amounts (respects abono)
+        const salePayments = allPayments.map(p => ({
+          method: p.method,
+          amount: Math.round(p.amount * 100) / 100,
+          currencyId: resolvedCurrencyId,
+          reference: p.reference?.trim() || null,
+        }))
+
         const hybridLabel = isHybrid
-          ? `Híbrido (${hybridPayments.map(p => p.method).join(', ')})`
-          : paymentMethod || ''
+          ? `Híbrido (${allPayments.map(p => p.method).join(', ')})`
+          : allPayments[0]?.method || ''
 
-        // Build the "method" string for each SalePayment
-        const salePayments = isHybrid
-          ? hybridPayments.map(p => ({
-              method: p.method,
-              amount: p.amount,
-              currencyId: resolvedCurrencyId,
-              reference: p.reference?.trim() || null,
-            }))
-          : [{
-              method: paymentMethod!,
-              amount: effectivePrice,
-              currencyId: resolvedCurrencyId,
-              reference: paymentReference?.trim() || null,
-            }]
-
-        const refPart = isHybrid
-          ? hybridPayments.map(p => p.reference?.trim()).filter(Boolean).join(', ')
-          : paymentReference?.trim() || ''
+        const refPart = allPayments.map(p => p.reference?.trim()).filter(Boolean).join(', ')
         const refDisplay = refPart ? `: ${refPart}` : ''
 
         const previousPlan = existingMembership?.tarifa && existingMembership.tarifa !== plan.name
@@ -271,7 +274,7 @@ export async function POST(
             clientId: id,
             cashRegId: cashRegId || null,
             userId: auth.userId,
-            branchId: effectiveBranchId ?? undefined,
+            branchId: effectiveBranchId || '',
             total: effectivePrice,
             originalTotal: plan.cost,
             discountAmount: discountAmount > 0 ? discountAmount : 0,
@@ -286,40 +289,42 @@ export async function POST(
         })
         saleId = sale.id
 
-        // Handle cash register: only add CASH payments to physical register balance
-        if (cashRegId && pmInfo && !pmInfo.isCredit) {
+        // Update cash register: add CASH payments to physical balance (all non-credit payments)
+        const creditCodeSet = new Set(pmList.filter((m: any) => m.isCredit).map((m: any) => m.code))
+        const nonCreditCashAmount = allPayments
+          .filter(p => {
+            const pm = pmList.find((m: any) => m.code === p.method)
+            return pm?.isCash && !creditCodeSet.has(p.method)
+          })
+          .reduce((s, p) => s + p.amount, 0)
+
+        if (cashRegId && nonCreditCashAmount > 0) {
           const register = await db.cashRegister.findUnique({ where: { id: cashRegId } })
           if (register && register.status === 'abierta') {
-            const cashAmount = isHybrid
-              ? hybridPayments
-                  .filter(p => {
-                    const pm = pmList.find((m: any) => m.code === p.method)
-                    return pm?.isCash
-                  })
-                  .reduce((s, p) => s + (p.amount || 0), 0)
-              : pmInfo.isCash
-                ? effectivePrice
-                : 0
-
-            if (cashAmount > 0) {
-              await db.cashRegister.update({
-                where: { id: cashRegId },
-                data: { currentAmt: Math.round((register.currentAmt + cashAmount) * 100) / 100 },
-              })
-            }
+            await db.cashRegister.update({
+              where: { id: cashRegId },
+              data: { currentAmt: Math.round((register.currentAmt + nonCreditCashAmount) * 100) / 100 },
+            })
           } else if (register && register.status !== 'abierta') {
             movementError = `Caja está cerrada (status: ${register.status})`
           }
         }
 
-        // Handle credit: create AccountReceivable (single mode only)
-        if (!isHybrid && pmInfo?.isCredit) {
+        // Handle credit: create AccountReceivable for the credit portion (sum of credit payments)
+        const creditPortion = allPayments
+          .filter(p => {
+            const pm = pmList.find((m: any) => m.code === p.method)
+            return pm?.isCredit
+          })
+          .reduce((s, p) => s + p.amount, 0)
+
+        if (creditPortion > 0) {
           const receivable = await db.accountReceivable.create({
             data: {
               clientId: id,
               saleId: sale.id,
-              amount: effectivePrice,
-              pendingBalance: effectivePrice,
+              amount: Math.round(creditPortion * 100) / 100,
+              pendingBalance: Math.round(creditPortion * 100) / 100,
               status: 'pendiente',
               currencyId: resolvedCurrencyId,
               createdById: auth.userId,
@@ -348,7 +353,7 @@ export async function POST(
         originalCost: plan.cost,
         discountAmount: discountAmount > 0 ? discountAmount : undefined,
         discountNotes: discountNotes || undefined,
-        paymentMethod: isHybrid ? `Híbrido (${hybridPayments.map(p => p.method).join(', ')})` : (paymentMethod || null),
+        paymentMethod: isHybrid ? `Híbrido (${allPayments.map(p => p.method).join(', ')})` : (allPayments[0]?.method || null),
         saleId,
         movementId,
         receivableId,

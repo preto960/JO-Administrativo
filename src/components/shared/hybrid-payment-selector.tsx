@@ -92,7 +92,8 @@ export function HybridPaymentSelector({
 
   const selectedSingle = methods.find(m => m.code === singleMethod)
   const isLocalSingle = multiEnabled ? (selectedSingle?.isLocalCurrency ?? false) : false
-  const nonCreditMethods = useMemo(() => methods.filter(m => !m.isCredit), [methods])
+  // Credit is now allowed in hybrid mode so users can combine abono + crédito
+  const hybridMethods = methods
 
   const handleSingleMethodChange = (code: string) => {
     setSingleMethod(code)
@@ -179,9 +180,9 @@ export function HybridPaymentSelector({
     setIsHybrid(next)
     onModeChange?.(next)
     if (next) {
-      setEntries([{ method: nonCreditMethods[0]?.code || '', amount: 0, reference: '' }])
+      setEntries([{ method: hybridMethods[0]?.code || '', amount: 0, reference: '' }])
       setEntryTexts([''])
-      emitHybrid([{ method: nonCreditMethods[0]?.code || '', amount: 0, reference: '' }])
+      emitHybrid([{ method: hybridMethods[0]?.code || '', amount: 0, reference: '' }])
     } else {
       setSingleMethod(methods[0]?.code || '')
       setSingleAmountText(String(total))
@@ -257,7 +258,7 @@ export function HybridPaymentSelector({
                   )}
                 </div>
                 <RadioGroup value={entry.method} onValueChange={v => handleHybridMethod(idx, v)} className="grid grid-cols-3 gap-2">
-                  {nonCreditMethods.map((pm) => {
+                  {hybridMethods.map((pm) => {
                     const Icon = getIcon(pm.icon)
                     return (
                       <label key={pm.code} className={`flex cursor-pointer flex-col items-center gap-1 rounded-md border-2 p-2 transition-colors ${entry.method === pm.code ? 'border-primary bg-primary/5 dark:bg-primary/10' : 'border-muted hover:border-muted-foreground/30'}`}>
