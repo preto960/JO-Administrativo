@@ -238,18 +238,6 @@ export async function POST(
     // ── POR TICKETS (tiquetera) ──
     if (planType === 'tickets') {
       if (source === 'tiquetera') {
-        // Asistencia por tiquetera: verificar que gym ya fue marcado hoy
-        const existingGym = await db.attendance.findFirst({
-          where: {
-            clientId: id,
-            date: today,
-            source: { in: ['gym', ''] },
-          },
-        })
-        if (!existingGym) {
-          return NextResponse.json({ error: 'Debe marcar la asistencia de gym antes de usar tiquetera' }, { status: 400 })
-        }
-
         // Verificar si tiquetera ya fue marcada hoy
         const existingTiquetera = await db.attendance.findFirst({
           where: { clientId: id, date: today, source: 'tiquetera' },

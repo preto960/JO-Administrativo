@@ -1466,10 +1466,14 @@ export function ClientsTable() {
                           ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400'
                           : memStatus === 'Vencido'
                           ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400'
+                          : client.tiquetera?.status === 'Activo'
+                          ? 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-400'
+                          : client.tiquetera?.status === 'Vencido'
+                          ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400'
                           : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
                       }`}
                     >
-                      {memStatus === 'Activo' ? 'Activo' : memStatus === 'Vencido' ? 'Vencido' : 'Sin membresia'}
+                      {memStatus === 'Activo' ? 'Activo' : memStatus === 'Vencido' ? 'Vencido' : client.tiquetera?.status === 'Activo' ? 'Tiquetera Activa' : client.tiquetera?.status === 'Vencido' ? 'Tiquetera Vencida' : 'Sin membresia'}
                     </Badge>
                     {hasMembership && client.membership?.tarifa && (
                       <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-muted-foreground">
@@ -2963,8 +2967,8 @@ export function ClientsTable() {
                       <Button
                         className="bg-purple-600 hover:bg-purple-700 text-white"
                         onClick={() => markAttendance('tiquetera')}
-                        disabled={markingAtt || !attData.stats.gymMarkedToday || attData.stats.tiqueteraTicketsRemaining <= 0}
-                        title={!attData.stats.gymMarkedToday ? 'Primero marque asistencia de gym' : attData.stats.tiqueteraTicketsRemaining <= 0 ? 'Sin tickets disponibles' : `Usar ticket (${attData.stats.tiqueteraTicketsRemaining} restantes)`}
+                        disabled={markingAtt || attData.stats.tiqueteraTicketsRemaining <= 0}
+                        title={attData.stats.tiqueteraTicketsRemaining <= 0 ? 'Sin tickets disponibles' : `Usar ticket (${attData.stats.tiqueteraTicketsRemaining} restantes)`}
                       >
                         {markingAtt ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Ticket className="mr-2 h-4 w-4" />}
                         Tiquetera
