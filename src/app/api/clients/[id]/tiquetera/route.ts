@@ -141,9 +141,22 @@ export async function POST(
     const today = await fetchToday()
     const ticketCount = plan.ticketCount
 
+    // Calculate tiquetera validity from plan duration (same logic as renew)
+    const getPlanDays = (dt: string, dd: number | null): number => {
+      switch (dt) {
+        case 'dia': return 1
+        case '1_mes': return 30
+        case 'bimestral': return 60
+        case 'anual': return 365
+        case 'otro': return dd || 60
+        default: return 60
+      }
+    }
+    const totalDays = getPlanDays(plan.durationType, plan.durationDays)
+
     // ── Create NEW membership for tiquetera (does NOT affect existing gym membership) ──
     const ticketEndDate = new Date(today)
-    ticketEndDate.setDate(ticketEndDate.getDate() + 90) // 90 days validity for tickets
+    ticketEndDate.setDate(ticketEndDate.getDate() + totalDays)
 
     const membership = await db.clientMembership.create({
       data: {
@@ -156,7 +169,7 @@ export async function POST(
         ticketsRemaining: ticketCount,
         startDate: today,
         endDate: ticketEndDate,
-        daysRemaining: 90,
+        daysRemaining: totalDays,
       },
     })
 

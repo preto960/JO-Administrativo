@@ -3169,17 +3169,19 @@ export function ClientsTable() {
       <AlertDialog open={!!cancelTarget} onOpenChange={(open) => { if (!open) setCancelTarget(null) }}>
         <AlertDialogContent size="sm">
           <AlertDialogHeader>
-            <AlertDialogTitle>Cancelar {cancelTarget?.label}</AlertDialogTitle>
+            <AlertDialogTitle className="flex items-center gap-2 text-red-600">
+              <XCircle className="h-5 w-5" />
+              Cancelar {cancelTarget?.label}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              Se cancelará la {cancelTarget?.label.toLowerCase()} de <b>{cancelTarget?.client.name}{cancelTarget?.client.lastName ? ` ${cancelTarget.client.lastName}` : ''}</b>.
-              El estado cambiará a <b>Vencido</b> y se perderán los días/tickets restantes.
-              Esta acción no se puede deshacer.
+              Se cancelará la {cancelTarget?.label.toLowerCase()} de {cancelTarget?.client.name}{cancelTarget?.client.lastName ? ` ${cancelTarget.client.lastName}` : ''}.
+              El estado cambiará a Vencido y se perderán los días/tickets restantes. Esta acción no se puede deshacer.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={cancelling}>No, mantener</AlertDialogCancel>
+            <AlertDialogCancel disabled={cancelling}>Mantener</AlertDialogCancel>
             <AlertDialogAction variant="destructive" onClick={handleConfirmCancelMembership} disabled={cancelling}>
-              {cancelling ? 'Cancelando...' : `Sí, cancelar ${cancelTarget?.label.toLowerCase()}`}
+              {cancelling ? 'Cancelando...' : 'Cancelar'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
