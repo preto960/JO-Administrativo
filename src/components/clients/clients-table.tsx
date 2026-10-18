@@ -54,7 +54,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { HybridPaymentSelector, type HybridPaymentEntry } from '@/components/shared/hybrid-payment-selector'
 import { Separator } from '@/components/ui/separator'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Plus, Search, Users, DollarSign, Loader2, Receipt, Truck, X, Trash2, Printer, FileText, Mail, Pencil, Phone, MapPin, ShoppingCart, Eye, EyeOff, AlertTriangle, Upload, ChevronLeft, ChevronRight, Filter, UserCheck, UserX, UsersRound, RefreshCw, CalendarCheck, CalendarDays, CheckCircle2, CreditCard, Banknote, ArrowLeftRight, Clock, Smartphone, CircleDollarSign, Ban, MoreHorizontal, AlertCircle, Ticket, Snowflake, Tag, type LucideIcon } from 'lucide-react'
+import { Plus, Search, Users, DollarSign, Loader2, Receipt, Truck, X, Trash2, Printer, FileText, Mail, Pencil, Phone, MapPin, ShoppingCart, Eye, EyeOff, AlertTriangle, Upload, ChevronLeft, ChevronRight, Filter, UserCheck, UserX, UsersRound, RefreshCw, CalendarCheck, CalendarDays, CheckCircle2, CreditCard, Banknote, ArrowLeftRight, Clock, Smartphone, CircleDollarSign, Ban, MoreHorizontal, AlertCircle, Ticket, Snowflake, Tag, XCircle, type LucideIcon } from 'lucide-react'
 import { ClientBulkImport } from './client-bulk-import'
 import { FALLBACK_METHODS } from '@/lib/payment-methods'
 import { toast } from 'sonner'
@@ -264,6 +264,25 @@ export function ClientsTable() {
   // Delete confirmation dialog
   const [deleteTarget, setDeleteTarget] = useState<Client | null>(null)
   const [deleting, setDeleting] = useState(false)
+
+  // Cancel membership/tiquetera dialog
+  const [cancelTarget, setCancelTarget] = useState<{ client: Client; membershipId: string; label: string } | null>(null)
+  const [cancelling, setCancelling] = useState(false)
+
+  const handleConfirmCancelMembership = async () => {
+    if (!cancelTarget) return
+    setCancelling(true)
+    try {
+      await api.del(`/api/clients/${cancelTarget.client.id}/membership`, { membershipId: cancelTarget.membershipId })
+      toast.success(`${cancelTarget.label} cancelada correctamente`)
+      fetchClients()
+    } catch {
+      toast.error(`Error al cancelar ${cancelTarget.label.toLowerCase()}`)
+    } finally {
+      setCancelling(false)
+      setCancelTarget(null)
+    }
+  }
 
   const handleConfirmDelete = async () => {
     if (!deleteTarget) return
@@ -1596,6 +1615,16 @@ export function ClientsTable() {
                           {canManage && isGym && client.membership?.status === 'Activo' && client.membership.planType !== 'tickets' && (
                             <DropdownMenuItem onClick={() => openFreeze(client)}>
                               <Snowflake className="mr-2 h-3.5 w-3.5" /> Congelar Días
+                            </DropdownMenuItem>
+                          )}
+                          {canManage && isGym && hasMembership && client.membership?.status === 'Activo' && client.membership.planType !== 'tickets' && (
+                            <DropdownMenuItem className="text-red-500 focus:text-red-600" onClick={() => setCancelTarget({ client, membershipId: client.membership!.id, label: 'Suscripción' })}>
+                              <XCircle className="mr-2 h-3.5 w-3.5" /> Cancelar Suscripción
+                            </DropdownMenuItem>
+                          )}
+                          {canManage && isGym && client.tiquetera?.status === 'Activo' && (
+                            <DropdownMenuItem className="text-red-500 focus:text-red-600" onClick={() => setCancelTarget({ client, membershipId: client.tiquetera.id, label: 'Tiquetera' })}>
+                              <XCircle className="mr-2 h-3.5 w-3.5" /> Cancelar Tiquetera
                             </DropdownMenuItem>
                           )}
                           <DropdownMenuItem onClick={() => handleDownloadStatement(client)}>
@@ -3136,7 +3165,25 @@ export function ClientsTable() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Select Debt to Remove Dialog */}
+      {/* Cancel Membership/Tiquetera confirmation */}
+      <AlertDialog open={!!cancelTarget} onOpenChange={(open) => { if (!open) setCancelTarget(null) }}>
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancelar {cancelTarget?.label}</AlertDialogTitle>
+            <AlertDialogDescription>
+              Se cancelará la {cancelTarget?.label.toLowerCase()} de <b>{cancelTarget?.client.name}{cancelTarget?.client.lastName ? ` ${cancelTarget.client.lastName}` : ''}</b>.
+              El estado cambiará a <b>Vencido</b> y se perderán los días/tickets restantes.
+              Esta acción no se puede deshacer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={cancelling}>No, mantener</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" onClick={handleConfirmCancelMembership} disabled={cancelling}>
+              {cancelling ? 'Cancelando...' : `Sí, cancelar ${cancelTarget?.label.toLowerCase()}`}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <Dialog open={!!removeDebtClient && !removeDebtTarget} onOpenChange={(open) => { if (!open) setRemoveDebtClient(null) }}>
         <DialogContent className="sm:max-w-md max-h-[80vh] overflow-y-auto">
           <DialogHeader>
