@@ -369,9 +369,16 @@ export function ClientsTable() {
   }
 
   const inactiveCount = clients.filter((c) => c.deletedAt !== null).length
-  const activeCount = clients.filter((c) => !c.deletedAt && c.membership?.status === 'Activo').length
-  const expiredCount = clients.filter((c) => !c.deletedAt && c.membership?.status === 'Vencido').length
-  const noMembershipCount = clients.filter((c) => !c.deletedAt && (!c.membership?.status || c.membership?.status === 'Sin membresia')).length
+  // Un cliente es "activo" si tiene membresía gym activa O tiquetera activa
+  const isClientActive = (c: Client) => !c.deletedAt && (c.membership?.status === 'Activo' || c.tiquetera?.status === 'Activo')
+  // Un cliente es "vencido" si no es activo y tiene membresía gym vencida (con o sin tiquetera vencida)
+  const isClientExpired = (c: Client) => !c.deletedAt && !isClientActive(c) && (c.membership?.status === 'Vencido' || c.tiquetera?.status === 'Vencido')
+  // Sin membresía: no gym y no tiquetera
+  const isClientNoMembership = (c: Client) => !c.deletedAt && !isClientActive(c) && !isClientExpired(c) && (!c.membership?.status || c.membership?.status === 'Sin membresia')
+
+  const activeCount = clients.filter(isClientActive).length
+  const expiredCount = clients.filter(isClientExpired).length
+  const noMembershipCount = clients.filter(isClientNoMembership).length
   const debtCount = clients.filter((c) => !c.deletedAt && c.receivables?.some((r: { pendingBalance: number; status: string }) => r.pendingBalance > 0 && (r.status === 'pendiente' || r.status === 'parcial'))).length
 
   const searchLower = search.toLowerCase().trim()
@@ -379,11 +386,11 @@ export function ClientsTable() {
     // Inactive toggle: when ON, show ONLY inactive clients
     if (showInactive && !c.deletedAt) return false
 
-    // Membership filter (gym only)
+    // Membership filter (gym + tiquetera)
     if (isGym) {
-      if (membershipFilter === 'activo' && c.membership?.status !== 'Activo') return false
-      if (membershipFilter === 'vencido' && c.membership?.status !== 'Vencido') return false
-      if (membershipFilter === 'sin' && c.membership?.status && c.membership?.status !== 'Sin membresia') return false
+      if (membershipFilter === 'activo' && !isClientActive(c)) return false
+      if (membershipFilter === 'vencido' && !isClientExpired(c)) return false
+      if (membershipFilter === 'sin' && !isClientNoMembership(c)) return false
       if (membershipFilter === 'deudas' && !c.receivables?.some((r: { pendingBalance: number; status: string }) => r.pendingBalance > 0 && (r.status === 'pendiente' || r.status === 'parcial'))) return false
     }
 
