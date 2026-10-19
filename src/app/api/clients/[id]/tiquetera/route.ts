@@ -141,18 +141,9 @@ export async function POST(
     const today = await fetchToday()
     const ticketCount = plan.ticketCount
 
-    // Calculate tiquetera validity from plan duration (same logic as renew)
-    const getPlanDays = (dt: string, dd: number | null): number => {
-      switch (dt) {
-        case 'dia': return 1
-        case '1_mes': return 30
-        case 'bimestral': return 60
-        case 'anual': return 365
-        case 'otro': return dd || 60
-        default: return 60
-      }
-    }
-    const totalDays = getPlanDays(plan.durationType, plan.durationDays)
+    // Calculate tiquetera validity from plan's ticketDurationMonths (default 2 months = 60 days)
+    const ticketDurationMonths = plan.ticketDurationMonths || 2
+    const totalDays = ticketDurationMonths * 30
 
     // ── Create NEW membership for tiquetera (does NOT affect existing gym membership) ──
     const ticketEndDate = new Date(today)
@@ -280,6 +271,8 @@ export async function POST(
         planName: plan.name,
         planId: plan.id,
         ticketCount,
+        ticketDurationMonths,
+        totalDays,
         cost: effectivePrice,
         originalCost: plan.cost,
         discountAmount: discountAmount > 0 ? discountAmount : undefined,
@@ -296,7 +289,7 @@ export async function POST(
       saleId,
       movementError,
       receivableId,
-      message: `Tiquetera "${plan.name}" asignada (${ticketCount} tickets)`,
+      message: `Tiquetera "${plan.name}" asignada (${ticketCount} tickets, ${ticketDurationMonths} mes${ticketDurationMonths !== 1 ? 'es' : ''})`,
     }, { status: 201 })
   } catch (error) {
     console.error('[Tiquetera POST]', error instanceof Error ? error.message : error)

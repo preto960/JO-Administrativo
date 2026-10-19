@@ -97,6 +97,7 @@ interface Plan {
   durationType: string
   durationDays: number | null
   ticketCount: number
+  ticketDurationMonths: number
   startTime: string | null
   endTime: string | null
   cost: number
@@ -131,6 +132,7 @@ export function PlansTab() {
   const [formDurationType, setFormDurationType] = useState<DurationType>('1_mes')
   const [formCustomDays, setFormCustomDays] = useState('')
   const [formTicketCount, setFormTicketCount] = useState('')
+  const [formTicketDurationMonths, setFormTicketDurationMonths] = useState('2')
   const [formStartTime, setFormStartTime] = useState('')
   const [formEndTime, setFormEndTime] = useState('')
   const [formCost, setFormCost] = useState('')
@@ -162,6 +164,7 @@ export function PlansTab() {
     setFormDurationType('1_mes')
     setFormCustomDays('')
     setFormTicketCount('')
+    setFormTicketDurationMonths('2')
     setFormStartTime('')
     setFormEndTime('')
     setFormCost('')
@@ -188,6 +191,7 @@ export function PlansTab() {
     setFormDurationType(plan.durationType as DurationType)
     setFormCustomDays(plan.durationDays ? String(plan.durationDays) : '')
     setFormTicketCount(plan.ticketCount ? String(plan.ticketCount) : '')
+    setFormTicketDurationMonths(String(plan.ticketDurationMonths || 2))
     setFormStartTime(plan.startTime || '')
     setFormEndTime(plan.endTime || '')
     setFormCost(plan.cost ? String(plan.cost) : '')
@@ -221,6 +225,10 @@ export function PlansTab() {
       toast.error('Especifica la cantidad de tickets')
       return
     }
+    if (formPlanType === 'tickets' && (!formTicketDurationMonths || Number(formTicketDurationMonths) <= 0)) {
+      toast.error('Especifica la duración en meses de la tiquetera')
+      return
+    }
 
     setSaving(true)
     try {
@@ -230,6 +238,7 @@ export function PlansTab() {
         durationType: formPlanType === 'dias' ? formDurationType : '1_mes',
         durationDays: formPlanType === 'dias' && formDurationType === 'otro' ? Number(formCustomDays) : null,
         ticketCount: formPlanType === 'tickets' ? Number(formTicketCount) : 0,
+        ticketDurationMonths: formPlanType === 'tickets' ? (Number(formTicketDurationMonths) || 2) : 2,
         startTime: formPlanType === 'horario' ? formStartTime : null,
         endTime: formPlanType === 'horario' ? formEndTime : null,
         cost: Number(formCost) || 0,
@@ -283,6 +292,7 @@ export function PlansTab() {
         durationType: plan.durationType,
         durationDays: plan.durationDays,
         ticketCount: plan.ticketCount,
+        ticketDurationMonths: plan.ticketDurationMonths,
         startTime: plan.startTime,
         endTime: plan.endTime,
         cost: plan.cost,
@@ -367,7 +377,7 @@ export function PlansTab() {
                         {plan.planType === 'tickets' && (
                           <span className="flex items-center gap-1.5">
                             <Ticket className="h-3.5 w-3.5" />
-                            {plan.ticketCount} tickets
+                            {plan.ticketCount} tickets / {plan.ticketDurationMonths || 2} mes{(plan.ticketDurationMonths || 2) !== 1 ? 'es' : ''}
                           </span>
                         )}
                       </TableCell>
@@ -492,6 +502,7 @@ export function PlansTab() {
                   setFormCustomDays('')
                   setFormStartTime('')
                   setFormEndTime('')
+                  setFormTicketDurationMonths('2')
                 }
               }}>
                 <SelectTrigger>
@@ -592,21 +603,37 @@ export function PlansTab() {
               </div>
             )}
 
-            {/* POR TICKETS: Cantidad de tickets */}
+            {/* POR TICKETS: Cantidad de tickets + Duración en meses */}
             {formPlanType === 'tickets' && (
-              <div className="space-y-2 animate-in fade-in slide-in-from-top-2 duration-200">
-                <Label htmlFor="plan-ticket-count">Cantidad de Tickets *</Label>
-                <Input
-                  id="plan-ticket-count"
-                  type="number"
-                  min={1}
-                  value={formTicketCount}
-                  onChange={(e) => setFormTicketCount(e.target.value)}
-                  placeholder="Ej: 10, 20, 30..."
-                />
-                <p className="text-xs text-muted-foreground">
-                  Cada vez que el cliente marque asistencia se le descontará 1 ticket
-                </p>
+              <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-200">
+                <div className="space-y-2">
+                  <Label htmlFor="plan-ticket-count">Cantidad de Tickets *</Label>
+                  <Input
+                    id="plan-ticket-count"
+                    type="number"
+                    min={1}
+                    value={formTicketCount}
+                    onChange={(e) => setFormTicketCount(e.target.value)}
+                    placeholder="Ej: 10, 20, 30..."
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Cada vez que el cliente marque asistencia se le descontará 1 ticket
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="plan-ticket-duration">Duración (meses) *</Label>
+                  <Input
+                    id="plan-ticket-duration"
+                    type="number"
+                    min={1}
+                    value={formTicketDurationMonths}
+                    onChange={(e) => setFormTicketDurationMonths(e.target.value)}
+                    placeholder="Ej: 2, 3, 6..."
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Define por cuántos meses es válida la tiquetera. Si el cliente no usa todos los tickets antes de este periodo, la tiquetera vencerá automáticamente.
+                  </p>
+                </div>
               </div>
             )}
 

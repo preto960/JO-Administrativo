@@ -128,6 +128,7 @@ interface PlanOption {
   durationType: string
   durationDays: number | null
   ticketCount: number
+  ticketDurationMonths: number
   startTime: string | null
   endTime: string | null
   cost: number
@@ -2633,6 +2634,11 @@ export function ClientsTable() {
                         Ahorro del cliente: {fmt(savings)} ({selectedPlan.hasActivePromo ? 'promo' : `${selectedPlan.discountPercentage}%`})
                       </div>
                     )}
+                    {selectedPlan.planType === 'tickets' && (
+                      <div className="mt-1.5 text-[11px] text-muted-foreground">
+                        {selectedPlan.ticketCount} tickets · Válida por {selectedPlan.ticketDurationMonths || 2} mes{(selectedPlan.ticketDurationMonths || 2) !== 1 ? 'es' : ''}
+                      </div>
+                    )}
                   </div>
                 )
               })()}
@@ -2813,6 +2819,9 @@ export function ClientsTable() {
                         Ahorro del cliente: {fmt(savings)} ({selectedPlan.hasActivePromo ? 'promo' : `${selectedPlan.discountPercentage}%`})
                       </div>
                     )}
+                    <div className="mt-1.5 text-[11px] text-muted-foreground">
+                      {selectedPlan.ticketCount} tickets · Válida por {selectedPlan.ticketDurationMonths || 2} mes{(selectedPlan.ticketDurationMonths || 2) !== 1 ? 'es' : ''}
+                    </div>
                   </div>
                 )
               })()}

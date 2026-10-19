@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { name, planType, durationType, durationDays, ticketCount, startTime, endTime, cost, description, discountPercentage, discountStartDate, discountEndDate, promoPrice, promoStartDate, promoEndDate } = body
+    const { name, planType, durationType, durationDays, ticketCount, ticketDurationMonths, startTime, endTime, cost, description, discountPercentage, discountStartDate, discountEndDate, promoPrice, promoStartDate, promoEndDate } = body
 
     if (!name?.trim()) {
       return NextResponse.json({ error: 'El nombre es obligatorio' }, { status: 400 })
@@ -116,6 +116,7 @@ export async function POST(request: NextRequest) {
         durationType: resolvedPlanType === 'dias' ? (durationType || '1_mes') : '1_mes',
         durationDays: resolvedPlanType === 'dias' && durationType === 'otro' ? Number(durationDays) : null,
         ticketCount: resolvedPlanType === 'tickets' ? Number(ticketCount) : 0,
+        ticketDurationMonths: resolvedPlanType === 'tickets' ? (Number(ticketDurationMonths) || 2) : 2,
         startTime: resolvedPlanType === 'horario' ? startTime : null,
         endTime: resolvedPlanType === 'horario' ? endTime : null,
         cost: Number(cost) || 0,
@@ -152,7 +153,7 @@ export async function PUT(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { id, name, planType, durationType, durationDays, ticketCount, startTime, endTime, cost, description, active, discountPercentage, discountStartDate, discountEndDate, promoPrice, promoStartDate, promoEndDate } = body
+    const { id, name, planType, durationType, durationDays, ticketCount, ticketDurationMonths, startTime, endTime, cost, description, active, discountPercentage, discountStartDate, discountEndDate, promoPrice, promoStartDate, promoEndDate } = body
 
     if (!id) {
       return NextResponse.json({ error: 'ID requerido' }, { status: 400 })
@@ -188,6 +189,7 @@ export async function PUT(request: NextRequest) {
         durationType: resolvedPlanType === 'dias' ? (durationType || '1_mes') : '1_mes',
         durationDays: resolvedPlanType === 'dias' && durationType === 'otro' ? Number(durationDays) : null,
         ticketCount: resolvedPlanType === 'tickets' ? Number(ticketCount) : 0,
+        ticketDurationMonths: resolvedPlanType === 'tickets' ? (Number(ticketDurationMonths) || 2) : 2,
         startTime: resolvedPlanType === 'horario' ? startTime : null,
         endTime: resolvedPlanType === 'horario' ? endTime : null,
         cost: cost !== undefined ? Number(cost) : undefined,

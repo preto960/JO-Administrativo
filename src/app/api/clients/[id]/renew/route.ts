@@ -163,7 +163,8 @@ export async function POST(
 
     // For "horario" type, we still set a reasonable duration (30 days default)
     // so the membership has an expiration window
-    const effectiveDays = planType === 'horario' ? 30 : (planType === 'tickets' ? 90 : totalDays)
+    // For "tickets" type, use ticketDurationMonths from the plan (default 2 months = 60 days)
+    const effectiveDays = planType === 'horario' ? 30 : (planType === 'tickets' ? (plan.ticketDurationMonths || 2) * 30 : totalDays)
 
     // ── Membership: create or update ──
     // IMPORTANT: Always look for a gym membership (not tickets) when renewing a gym plan
@@ -362,7 +363,7 @@ export async function POST(
     })
 
     const detailMessage = planType === 'tickets'
-      ? `Plan "${plan.name}" asignado (${ticketCount} tickets)`
+      ? `Plan "${plan.name}" asignado (${ticketCount} tickets, ${plan.ticketDurationMonths || 2} mes${(plan.ticketDurationMonths || 2) !== 1 ? 'es' : ''})`
       : planType === 'horario'
         ? `Plan "${plan.name}" asignado (${plan.startTime} - ${plan.endTime}, ${effectiveDays} días)`
         : `Plan "${plan.name}" asignado (+${effectiveDays} días)`

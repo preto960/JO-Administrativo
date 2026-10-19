@@ -654,6 +654,7 @@ model Plan {
   durationType String   @default("1_mes") // "1_mes" | "bimestral" | "anual" | "dia" | "otro" — solo para planType "dias"
   durationDays Int? // solo cuando durationType = "otro"
   ticketCount  Int      @default(0) // cantidad de tickets — solo para planType "tickets"
+  ticketDurationMonths Int @default(2) // duración en meses de la tiquetera — solo para planType "tickets"
   startTime    String? // Hora inicio (HH:mm) — solo para planType "horario"
   endTime      String? // Hora fin (HH:mm) — solo para planType "horario"
   cost         Float    @default(0)
