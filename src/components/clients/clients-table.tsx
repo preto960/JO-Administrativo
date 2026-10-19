@@ -494,7 +494,7 @@ export function ClientsTable() {
   const [loadingAtt, setLoadingAtt] = useState(false)
   const [markingAtt, setMarkingAtt] = useState(false)
   const [attData, setAttData] = useState<{
-    attendances: Array<{ id: string; date: string }>;
+    attendances: Array<{ id: string; date: string; source: string }>;
     stats: {
       planType: string;
       totalPlanDays: number;
@@ -3317,8 +3317,15 @@ export function ClientsTable() {
                                   {attDate.toLocaleDateString('es', { timeZone: tz, year: 'numeric' })}
                                 </p>
                               </div>
+                              <Badge className={`text-[10px] ${
+                                att.source === 'tiquetera'
+                                  ? 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300'
+                                  : 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
+                              }`}>
+                                {att.source === 'tiquetera' ? 'Tiquetera' : 'Gym'}
+                              </Badge>
                               {isToday && (
-                                <Badge className="text-[10px] bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+                                <Badge className="text-[10px] bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300">
                                   Hoy
                                 </Badge>
                               )}
