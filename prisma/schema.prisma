@@ -81,6 +81,7 @@ model ClientMembership {
   endDate          DateTime? // vencimiento de la membresía
   daysRemaining    Int       @default(0)
   ticketsRemaining Int       @default(0)
+  saleId           String?  // FK to the Sale that created/last-renewed this membership
   startTime        String? // Hora inicio (HH:mm) — solo para planType "horario"
   endTime          String? // Hora fin (HH:mm) — solo para planType "horario"
   createdAt        DateTime  @default(now())
@@ -88,11 +89,13 @@ model ClientMembership {
 
   client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
   plan   Plan?  @relation(fields: [planId], references: [id])
+  sale   Sale?  @relation(fields: [saleId], references: [id])
   freezes MembershipFreeze[]
 
   @@index([clientId])
   @@index([status])
   @@index([planId])
+  @@index([saleId])
 
   @@map("ClientMembership")
 }
@@ -329,6 +332,7 @@ model Sale {
   lines       SaleLine[]
   payments    SalePayment[]
   receivables AccountReceivable[]
+  memberships ClientMembership[]
 
   @@map("Sale")
 }

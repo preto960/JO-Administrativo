@@ -218,6 +218,12 @@ export async function POST(
         })
         saleId = sale.id
 
+        // Link this Sale to the tiquetera membership
+        await db.clientMembership.update({
+          where: { id: membership.id },
+          data: { saleId: sale.id },
+        })
+
         // Update cash register: add CASH payments to physical balance (all non-credit cash payments)
         const creditCodeSet = new Set(pmList.filter((m: any) => m.isCredit).map((m: any) => m.code))
         const nonCreditCashAmount = allPayments

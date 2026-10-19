@@ -2094,14 +2094,14 @@ export function ClientsTable() {
                 <Card>
                   <CardContent className="p-3 text-center">
                     <p className="text-xs text-muted-foreground">Total Ventas</p>
-                    <p className="text-xl font-bold">{sales.length}</p>
+                    <p className="text-xl font-bold">{sales.filter(s => s.status !== 'anulada').length}</p>
                   </CardContent>
                 </Card>
                 <Card>
                   <CardContent className="p-3 text-center">
                     <p className="text-xs text-muted-foreground">Total Comprado</p>
                     <p className="text-xl font-bold">
-                      {fmt(sales.reduce((s, sale) => s + sale.total, 0))}
+                      {fmt(sales.filter(s => s.status !== 'anulada').reduce((s, sale) => s + sale.total, 0))}
                     </p>
                   </CardContent>
                 </Card>
@@ -2130,38 +2130,63 @@ export function ClientsTable() {
                         </TableHeader>
                         <TableBody>
                           {sales.map((sale) => {
-                            const isCredit = sale.payments.some(p => {
+                            const isAnulled = sale.status === 'anulada'
+                            const isCredit = !isAnulled && (sale.payments.some(p => {
                               const pm = paymentMethods.find(m => m.code === p.method)
                               return pm?.isCredit
-                            }) || sale.receivables.some(r => r.status === 'pendiente' || r.status === 'parcial')
+                            }) || sale.receivables.some(r => r.status === 'pendiente' || r.status === 'parcial'))
+                            // For membership/tiquetera sales (no lines), show plan info
+                            const linkedMembership = sale.lines.length === 0 && (sale as any).memberships?.length > 0 ? (sale as any).memberships[0] : null
+                            const planLabel = linkedMembership
+                              ? linkedMembership.planType === 'tickets' ? 'Tiquetera' : 'Membresía'
+                              : null
                             return (
-                              <TableRow key={sale.id}>
+                              <TableRow key={sale.id} className={isAnulled ? 'opacity-50' : ''}>
                                 <TableCell className="text-xs font-mono whitespace-nowrap">
                                   {sale.id.slice(0, 8)}
                                 </TableCell>
-                                <TableCell className="text-xs whitespace-nowrap pr-4">
+                                <TableCell className={`text-xs whitespace-nowrap pr-4 ${isAnulled ? 'line-through text-muted-foreground' : ''}`}>
                                   {new Date(sale.date).toLocaleDateString('es-VE')}
                                 </TableCell>
                                 <TableCell className="hidden md:table-cell">
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    className="h-6 px-2 text-xs text-muted-foreground hover:text-primary gap-1"
-                                    title="Ver productos"
-                                    onClick={() => setDetailSale(sale)}
-                                  >
-                                    <Eye className="h-3 w-3" />
-                                    {sale.lines.length}
-                                  </Button>
+                                  {sale.lines.length > 0 ? (
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-6 px-2 text-xs text-muted-foreground hover:text-primary gap-1"
+                                      title="Ver productos"
+                                      onClick={() => setDetailSale(sale)}
+                                    >
+                                      <Eye className="h-3 w-3" />
+                                      {sale.lines.length}
+                                    </Button>
+                                  ) : linkedMembership ? (
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-6 px-2 text-xs text-muted-foreground hover:text-primary gap-1"
+                                      title={`Ver ${planLabel}`}
+                                      onClick={() => setDetailSale(sale)}
+                                    >
+                                      <Eye className="h-3 w-3" />
+                                      <span className="text-primary/80">{linkedMembership.plan?.name || linkedMembership.tarifa || planLabel}</span>
+                                    </Button>
+                                  ) : (
+                                    <span className="text-xs text-muted-foreground">—</span>
+                                  )}
                                 </TableCell>
-                                <TableCell className="text-sm font-medium text-right whitespace-nowrap">
+                                <TableCell className={`text-sm font-medium text-right whitespace-nowrap ${isAnulled ? 'line-through text-muted-foreground' : ''}`}>
                                   {fmt(sale.total)}
                                 </TableCell>
                                 <TableCell className="text-xs hidden lg:table-cell">
                                   {sale.payments.map(p => p.method).join(', ') || '—'}
                                 </TableCell>
                                 <TableCell>
-                                  {isCredit ? (
+                                  {isAnulled ? (
+                                    <Badge variant="outline" className="text-red-500 border-red-300">
+                                      Anulada
+                                    </Badge>
+                                  ) : isCredit ? (
                                     <Badge variant="outline" className="text-amber-600 border-amber-300">
                                       {sale.receivables[0]?.pendingBalance > 0
                                         ? `Pendiente: ${fmt(sale.receivables[0].pendingBalance)}`
@@ -2310,7 +2335,9 @@ export function ClientsTable() {
           <DialogHeader>
             <DialogTitle className="text-base flex items-center gap-2">
               <Receipt className="h-4 w-4" />
-              Productos — Factura {detailSale?.id.slice(0, 8)}
+              {detailSale && detailSale.lines.length === 0 && (detailSale as any).memberships?.length > 0
+                ? `${(detailSale as any).memberships[0].planType === 'tickets' ? 'Tiquetera' : 'Membresía'} — Factura ${detailSale.id.slice(0, 8)}`
+                : `Productos — Factura ${detailSale?.id.slice(0, 8)}`}
             </DialogTitle>
             <DialogDescription>
               {detailSale ? new Date(detailSale.date).toLocaleDateString('es-VE', { day: '2-digit', month: 'long', year: 'numeric' }) : ''}
@@ -2318,36 +2345,79 @@ export function ClientsTable() {
           </DialogHeader>
           {detailSale && (
             <div className="space-y-3">
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Producto</TableHead>
-                      <TableHead className="text-center">Cant.</TableHead>
-                      <TableHead className="text-right">Precio</TableHead>
-                      <TableHead className="text-right">Subtotal</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {detailSale.lines.map((line, i) => (
-                      <TableRow key={i}>
-                        <TableCell className="text-sm font-medium">{line.product.name}</TableCell>
-                        <TableCell className="text-sm text-center">{line.quantity}</TableCell>
-                        <TableCell className="text-sm text-right">{fmt(line.unitPrice)}</TableCell>
-                        <TableCell className="text-sm text-right font-medium">{fmt(line.lineTotal)}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-              <div className="flex items-center justify-between px-1">
-                <span className="text-sm text-muted-foreground">
-                  {detailSale.lines.length} producto{detailSale.lines.length !== 1 ? 's' : ''}
-                </span>
-                <span className="text-base font-bold">
-                  Total: {fmt(detailSale.total)}
-                </span>
-              </div>
+              {detailSale.lines.length > 0 ? (
+                <>
+                  <div className="rounded-md border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Producto</TableHead>
+                          <TableHead className="text-center">Cant.</TableHead>
+                          <TableHead className="text-right">Precio</TableHead>
+                          <TableHead className="text-right">Subtotal</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {detailSale.lines.map((line, i) => (
+                          <TableRow key={i}>
+                            <TableCell className="text-sm font-medium">{line.product.name}</TableCell>
+                            <TableCell className="text-sm text-center">{line.quantity}</TableCell>
+                            <TableCell className="text-sm text-right">{fmt(line.unitPrice)}</TableCell>
+                            <TableCell className="text-sm text-right font-medium">{fmt(line.lineTotal)}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                  <div className="flex items-center justify-between px-1">
+                    <span className="text-sm text-muted-foreground">
+                      {detailSale.lines.length} producto{detailSale.lines.length !== 1 ? 's' : ''}
+                    </span>
+                    <span className="text-base font-bold">
+                      Total: {fmt(detailSale.total)}
+                    </span>
+                  </div>
+                </>
+              ) : (() => {
+                // Membership/tiquetera detail (no product lines)
+                const m = (detailSale as any).memberships?.[0]
+                const isTicket = m?.planType === 'tickets'
+                return (
+                  <div className="rounded-md border p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">{isTicket ? '🎟️ Tiquetera' : '📋 Membresía'}</span>
+                      <Badge variant="outline">{m?.plan?.name || m?.tarifa || 'Plan'}</Badge>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      {isTicket ? (
+                        <>
+                          <div><span className="text-muted-foreground">Tiquetes:</span> <span className="font-medium">{m?.ticketsRemaining ?? '—'}</span></div>
+                          <div><span className="text-muted-foreground">Duración:</span> <span className="font-medium">{m?.plan?.ticketDurationMonths ?? 2} meses</span></div>
+                        </>
+                      ) : (
+                        <>
+                          <div><span className="text-muted-foreground">Días restantes:</span> <span className="font-medium">{m?.daysRemaining ?? '—'}</span></div>
+                          <div><span className="text-muted-foreground">Tipo:</span> <span className="font-medium">{m?.planType || '—'}</span></div>
+                        </>
+                      )}
+                      {m?.startDate && (
+                        <div><span className="text-muted-foreground">Inicio:</span> <span className="font-medium">{new Date(m.startDate).toLocaleDateString('es-VE')}</span></div>
+                      )}
+                      {m?.endDate && (
+                        <div><span className="text-muted-foreground">Vencimiento:</span> <span className="font-medium">{new Date(m.endDate).toLocaleDateString('es-VE')}</span></div>
+                      )}
+                    </div>
+                    <div className="flex items-center justify-between pt-2 border-t">
+                      <span className="text-sm text-muted-foreground">
+                        {detailSale.status === 'anulada' ? 'Anulada' : m?.status || '—'}
+                      </span>
+                      <span className="text-base font-bold">
+                        Total: {fmt(detailSale.total)}
+                      </span>
+                    </div>
+                  </div>
+                )
+              })()}
               {detailSale.receivables.length > 0 && detailSale.receivables[0].pendingBalance > 0 && (
                 <div className="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-2 text-xs text-amber-700 dark:text-amber-400">
                   Saldo pendiente: {fmt(detailSale.receivables[0].pendingBalance)}

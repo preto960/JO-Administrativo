@@ -78,17 +78,26 @@ export async function DELETE(
 
     // Ejecutar todo en una transacción
     await db.$transaction(async (tx) => {
-      // Buscar membresía del cliente que fue creada/actualizada el día de la venta
-      const membership = await tx.clientMembership.findFirst({
+      // Buscar membresía vinculada por saleId (preferred) or fallback to date matching
+      let membership = await tx.clientMembership.findFirst({
         where: {
-          clientId: sale.clientId!,
-          paymentDate: {
-            gte: saleDayStart,
-            lt: saleDayEnd,
-          },
+          saleId: sale.id,
         },
-        orderBy: { createdAt: 'desc' },
       })
+
+      // Fallback: search by client + paymentDate if saleId link not yet established
+      if (!membership) {
+        membership = await tx.clientMembership.findFirst({
+          where: {
+            clientId: sale.clientId!,
+            paymentDate: {
+              gte: saleDayStart,
+              lt: saleDayEnd,
+            },
+          },
+          orderBy: { createdAt: 'desc' },
+        })
+      }
 
       // Eliminar membresía si existe
       if (membership) {
