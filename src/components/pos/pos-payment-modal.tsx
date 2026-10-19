@@ -75,6 +75,7 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
   const [clients, setClients] = useState<ClientOption[]>([])
   const [clientsLoading, setClientsLoading] = useState(false)
   const clientsReqId = useRef(0)
+  const clientSearchRef = useRef<HTMLDivElement | null>(null)
   const [selectedClient, setSelectedClient] = useState<ClientOption | null>(null)
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [clientSearch, setClientSearch] = useState('')
@@ -315,20 +316,27 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
                   <>
                     <Popover open={dropdownOpen && !selectedClient} onOpenChange={setDropdownOpen}>
                       <PopoverAnchor asChild>
-                        <Input
-                          placeholder={selectedClient ? 'Cliente seleccionado' : 'Buscar por nombre, teléfono o email...'}
-                          value={clientSearch}
-                          onChange={e => setClientSearch(e.target.value)}
-                          onFocus={() => setDropdownOpen(true)}
-                          onKeyDown={e => { if (e.key === 'Escape') setDropdownOpen(false) }}
-                          disabled={!!selectedClient}
-                          className="text-sm cursor-pointer"
-                        />
+                        <div ref={clientSearchRef}>
+                          <Input
+                            placeholder={selectedClient ? 'Cliente seleccionado' : 'Buscar por nombre, teléfono o email...'}
+                            value={clientSearch}
+                            onChange={e => setClientSearch(e.target.value)}
+                            onPointerDown={() => setDropdownOpen(true)}
+                            onFocus={() => setDropdownOpen(true)}
+                            onKeyDown={e => { if (e.key === 'Escape') setDropdownOpen(false) }}
+                            disabled={!!selectedClient}
+                            className="text-sm cursor-pointer"
+                          />
+                        </div>
                       </PopoverAnchor>
                       <PopoverContent
                         align="start"
                         sideOffset={4}
                         onOpenAutoFocus={e => e.preventDefault()}
+                        onPointerDownOutside={e => {
+                          // Keep the dropdown open when the pointer down lands on the search input itself
+                          if (clientSearchRef.current?.contains(e.target as Node)) e.preventDefault()
+                        }}
                         className="w-[var(--radix-popover-trigger-width)] p-0"
                       >
                         <Command shouldFilter={false}>
