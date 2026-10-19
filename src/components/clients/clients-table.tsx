@@ -148,7 +148,7 @@ interface SaleRecord {
   branch: { name: string }
   payments: Array<{ method: string; amount: number; currency: { symbol: string } }>
   lines: Array<{ id: string; productId: string; product: { name: string }; quantity: number; unitPrice: number; lineTotal: number }>
-  receivables: Array<{ pendingBalance: number; status: string; dueDate: string | null }>
+  receivables: Array<{ amount: number; pendingBalance: number; status: string; dueDate: string | null }>
 }
 
 interface ClientPaymentRecord {
@@ -1007,7 +1007,7 @@ export function ClientsTable() {
       toast.success(`"${productName}" eliminado de la venta${result.stockRestored ? ' — stock restaurado' : ''}`)
       // Refresh the detail sale and the sales list
       if (detailSale) {
-        const refreshed = await api.get(`/api/sales/${saleId}`)
+        const refreshed = await api.get<SaleRecord>(`/api/sales/${saleId}`)
         setDetailSale(refreshed)
       }
       if (historyClient) {
@@ -2440,7 +2440,7 @@ export function ClientsTable() {
                 <>
                   {(() => {
                     const canDeleteLines = (user?.role === 'admin' || user?.role === 'gerente') && detailSale.status !== 'anulada'
-                    const hasPayments = detailSale.receivables.some(r => r.status === 'parcial' || r.status === 'pagada')
+                    const hasPayments = detailSale.receivables.some(r => r.amount - r.pendingBalance > 0.005)
                     return (
                     <div className="rounded-md border">
                       <Table>
@@ -2499,14 +2499,14 @@ export function ClientsTable() {
                     </span>
                   </div>
                   {/* Info: cannot delete lines because payments exist */}
-                  {(user?.role === 'admin' || user?.role === 'gerente') && detailSale.status !== 'anulada' && detailSale.receivables.some(r => r.status === 'parcial' || r.status === 'pagada') && (
+                  {(user?.role === 'admin' || user?.role === 'gerente') && detailSale.status !== 'anulada' && detailSale.receivables.some(r => r.amount - r.pendingBalance > 0.005) && (
                     <div className="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-2 text-xs text-amber-700 dark:text-amber-400 flex items-center gap-2">
                       <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
                       Para eliminar detalles, primero elimine los pagos realizados en la sección "Pagos Realizados".
                     </div>
                   )}
                   {/* Info: credit sale with pending balance */}
-                  {detailSale.receivables.length > 0 && detailSale.receivables[0].pendingBalance > 0 && !detailSale.receivables.some(r => r.status === 'parcial' || r.status === 'pagada') && (
+                  {detailSale.receivables.length > 0 && detailSale.receivables[0].pendingBalance > 0 && !detailSale.receivables.some(r => r.amount - r.pendingBalance > 0.005) && (
                     <div className="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-2 text-xs text-amber-700 dark:text-amber-400">
                       Venta a crédito — Saldo pendiente: {fmt(detailSale.receivables[0].pendingBalance)}
                       {detailSale.receivables[0].dueDate && ` — Vence: ${new Date(detailSale.receivables[0].dueDate).toLocaleDateString('es-VE')}`}

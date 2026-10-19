@@ -15,7 +15,7 @@ export async function GET(
         payments: { include: { currency: true } },
         lines: { include: { product: { select: { name: true } } } },
         branch: { select: { name: true } },
-        receivables: { select: { pendingBalance: true, status: true, dueDate: true } },
+        receivables: { select: { amount: true, pendingBalance: true, status: true, dueDate: true } },
         memberships: {
           include: { plan: { select: { name: true, planType: true } } },
           take: 1,
