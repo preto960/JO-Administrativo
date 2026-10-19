@@ -91,18 +91,19 @@ export async function GET(request: Request) {
         continue
       }
 
-      // Calculate correct endDate
-      const startDate = new Date(startRef)
-      const correctEndDate = new Date(startDate)
-      correctEndDate.setDate(correctEndDate.getDate() + durationDays)
+      // Calculate correct endDate — normalize to date-only (midnight) to avoid off-by-one
+      // from time components in paymentDate/startDate
+      const startDateRaw = new Date(startRef)
+      const startDate = new Date(startDateRaw.getFullYear(), startDateRaw.getMonth(), startDateRaw.getDate())
+      const correctEndDate = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate() + durationDays)
 
       const correctEndDateStr = correctEndDate.toISOString().split('T')[0]
       const currentEndDateStr = m.endDate ? new Date(m.endDate).toISOString().split('T')[0] : null
 
-      // Calculate correct daysRemaining
+      // Calculate correct daysRemaining (both dates are at midnight, so diff is exact)
       const todayDate = new Date(todayStr)
       const diffMs = correctEndDate.getTime() - todayDate.getTime()
-      const correctDaysRemaining = Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)))
+      const correctDaysRemaining = Math.max(0, Math.round(diffMs / (1000 * 60 * 60 * 24)))
 
       const isExpired = correctDaysRemaining <= 0
       const clientFullName = `${m.client.name}${m.client.lastName ? ' ' + m.client.lastName : ''}`
