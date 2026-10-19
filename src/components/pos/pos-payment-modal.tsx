@@ -34,6 +34,8 @@ import {
 import { toast } from 'sonner'
 import { useCurrency } from '@/hooks/use-currency'
 import { FALLBACK_METHODS } from '@/lib/payment-methods'
+import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
+import { Command, CommandList, CommandItem } from '@/components/ui/command'
 import { HybridPaymentSelector, type HybridPaymentEntry } from '@/components/shared/hybrid-payment-selector'
 
 interface PosPaymentModalProps { onClose: () => void }
@@ -311,32 +313,40 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
                 </div>
                 {!showNewClient ? (
                   <>
-                    <div className="relative">
-                      <Input
-                        placeholder={selectedClient ? 'Cliente seleccionado' : 'Buscar por nombre, teléfono o email...'}
-                        value={clientSearch}
-                        onChange={e => setClientSearch(e.target.value)}
-                        onFocus={() => setDropdownOpen(true)}
-                        onBlur={() => setTimeout(() => setDropdownOpen(false), 150)}
-                        onKeyDown={e => { if (e.key === 'Escape') setDropdownOpen(false) }}
-                        disabled={!!selectedClient}
-                        className="text-sm"
-                      />
-                      {dropdownOpen && !selectedClient && (
-                        <div className="absolute z-20 left-0 right-0 top-full mt-1 max-h-48 overflow-y-auto rounded-md border bg-background shadow-lg" onMouseDown={e => e.preventDefault()}>
-                          {clientsLoading ? (
-                            <p className="text-xs text-muted-foreground text-center py-3 flex items-center justify-center gap-1.5"><Loader2 className="h-3 w-3 animate-spin" /> Buscando clientes...</p>
-                          ) : clients.length > 0 ? clients.map(client => (
-                            <button key={client.id} type="button" className="w-full text-left px-3 py-2.5 text-sm transition-colors border-b last:border-b-0 flex items-center gap-2 hover:bg-muted/50" onClick={() => handleSelectClient(client)}>
-                              <User className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                              <span className={`truncate flex-1 ${client.deletedAt ? 'text-muted-foreground line-through decoration-muted-foreground/50' : ''}`}>{client.name}{client.lastName ? ` ${client.lastName}` : ''}</span>
-                              {client.deletedAt && <span className="text-[10px] uppercase font-semibold text-amber-600 dark:text-amber-400 border border-amber-300/60 dark:border-amber-700/60 rounded px-1 py-0.5 shrink-0">Inactivo</span>}
-                              {client.phone && <span className="text-xs text-muted-foreground shrink-0">{client.phone}</span>}
-                            </button>
-                          )) : <p className="text-xs text-muted-foreground text-center py-3">{clientSearch.trim() ? 'No se encontraron clientes para esa búsqueda' : 'No hay clientes registrados'}</p>}
-                        </div>
-                      )}
-                    </div>
+                    <Popover open={dropdownOpen && !selectedClient} onOpenChange={setDropdownOpen}>
+                      <PopoverAnchor asChild>
+                        <Input
+                          placeholder={selectedClient ? 'Cliente seleccionado' : 'Buscar por nombre, teléfono o email...'}
+                          value={clientSearch}
+                          onChange={e => setClientSearch(e.target.value)}
+                          onFocus={() => setDropdownOpen(true)}
+                          onKeyDown={e => { if (e.key === 'Escape') setDropdownOpen(false) }}
+                          disabled={!!selectedClient}
+                          className="text-sm cursor-pointer"
+                        />
+                      </PopoverAnchor>
+                      <PopoverContent
+                        align="start"
+                        sideOffset={4}
+                        onOpenAutoFocus={e => e.preventDefault()}
+                        className="w-[var(--radix-popover-trigger-width)] p-0"
+                      >
+                        <Command shouldFilter={false}>
+                          <CommandList className="max-h-48">
+                            {clientsLoading ? (
+                              <p className="text-xs text-muted-foreground text-center py-3 flex items-center justify-center gap-1.5"><Loader2 className="h-3 w-3 animate-spin" /> Buscando clientes...</p>
+                            ) : clients.length > 0 ? clients.map(client => (
+                              <CommandItem key={client.id} value={client.id} onSelect={() => handleSelectClient(client)} className="gap-2 py-2.5 text-sm cursor-pointer">
+                                <User className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                                <span className={`truncate flex-1 ${client.deletedAt ? 'text-muted-foreground line-through decoration-muted-foreground/50' : ''}`}>{client.name}{client.lastName ? ` ${client.lastName}` : ''}</span>
+                                {client.deletedAt && <span className="text-[10px] uppercase font-semibold text-amber-600 dark:text-amber-400 border border-amber-300/60 dark:border-amber-700/60 rounded px-1 py-0.5 shrink-0">Inactivo</span>}
+                                {client.phone && <span className="text-xs text-muted-foreground shrink-0">{client.phone}</span>}
+                              </CommandItem>
+                            )) : <p className="text-xs text-muted-foreground text-center py-3">{clientSearch.trim() ? 'No se encontraron clientes para esa búsqueda' : 'No hay clientes registrados'}</p>}
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
                     {selectedClient ? (
                       <div className="flex items-center gap-2.5 rounded-md border bg-primary/5 dark:bg-primary/10 p-2.5">
                         <div className="rounded-full bg-primary/10 dark:bg-primary/15 p-1.5 shrink-0"><User className="h-3.5 w-3.5 text-primary" /></div>
