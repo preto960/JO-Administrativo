@@ -14,15 +14,18 @@ function isValidPhone(phone: string): boolean {
   return /^\+?\d{7,}$/.test(phone.replace(/[\s\-()]/g, ''))
 }
 
-/** Calculate days remaining based on endDate vs today — date-only comparison to avoid timezone/DST off-by-one */
+/** Calculate days remaining based on endDate vs today.
+ *  Uses UTC date-string extraction (YYYY-MM-DD) to avoid ALL timezone/DST off-by-one issues.
+ *  Regardless of server timezone, both dates are compared by their calendar date in UTC. */
 function calcDaysRemaining(endDate: Date | null, today: Date): number {
   if (!endDate) return 0
-  // Normalize both dates to midnight in local time (year, month, day only)
-  const end = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate())
-  const now = new Date(today.getFullYear(), today.getMonth(), today.getDate())
-  const diff = end.getTime() - now.getTime()
-  const days = diff / (1000 * 60 * 60 * 24)
-  return Math.max(0, Math.round(days))
+  // Extract YYYY-MM-DD from both dates using UTC (toISOString is always UTC)
+  const endYMD = endDate.toISOString().slice(0, 10)
+  const nowYMD = today.toISOString().slice(0, 10)
+  // Parse at noon UTC (avoids any DST boundary issues) and compute diff
+  const end = new Date(`${endYMD}T12:00:00Z`)
+  const now = new Date(`${nowYMD}T12:00:00Z`)
+  return Math.max(0, Math.round((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)))
 }
 
 export async function GET(request: NextRequest) {

@@ -15,14 +15,13 @@ function getPlanDays(durationType: string, durationDays: number | null): number 
   }
 }
 
-/** Calculate days remaining — date-only comparison to avoid timezone/DST off-by-one */
+/** Calculate days remaining — uses UTC date-string extraction to avoid ALL timezone/DST off-by-one */
 function calcDaysRemaining(endDate: Date, today: Date): number {
-  // Normalize both dates to midnight in local time (year, month, day only)
-  const end = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate())
-  const now = new Date(today.getFullYear(), today.getMonth(), today.getDate())
-  const diff = end.getTime() - now.getTime()
-  const days = diff / (1000 * 60 * 60 * 24)
-  return Math.max(0, Math.round(days))
+  const endYMD = endDate.toISOString().slice(0, 10)
+  const nowYMD = today.toISOString().slice(0, 10)
+  const end = new Date(`${endYMD}T12:00:00Z`)
+  const now = new Date(`${nowYMD}T12:00:00Z`)
+  return Math.max(0, Math.round((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)))
 }
 
 /** Check if current time (in app timezone) is within the schedule range */
