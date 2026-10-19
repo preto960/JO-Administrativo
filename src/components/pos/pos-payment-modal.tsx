@@ -45,6 +45,7 @@ interface PaymentMethodItem {
 
 interface ClientOption {
   id: string; name: string; lastName: string | null; phone: string | null; email: string | null
+  deletedAt: string | null
 }
 
 const ICON_MAP: Record<string, LucideIcon> = {
@@ -58,7 +59,6 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
   const exchangeRate = useSetting('exchangeRate')
   const baseCurrencyId = useSetting('baseCurrencyId')
   const country = useSetting('country') || 'VE'
-  const businessType = useSetting('businessType')
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
   const [currencies, setCurrencies] = useState<{ id: string; code: string; symbol: string; isBase: boolean }[]>([])
@@ -110,7 +110,8 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
   }, [hybridPayments, isHybridMode, paymentMethods, total])
 
   useEffect(() => {
-    const clientsUrl = businessType === 'gym' ? '/api/clients?activeMembership=true' : '/api/clients'
+    // Credit sales can be assigned to any client, including inactive (soft-deleted) ones
+    const clientsUrl = '/api/clients?includeDeleted=true'
     Promise.all([
       api.get('/api/currencies'),
       api.get('/api/cash-register'),
@@ -129,7 +130,7 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
     }).catch(() => {
       setDbMethods(FALLBACK_METHODS)
     })
-  }, [country, businessType])
+  }, [country])
 
   const handleCreateClient = async () => {
     if (!newClientName.trim()) { toast.error('El nombre del cliente es obligatorio'); return }
@@ -275,7 +276,8 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
                       {filteredClients.length > 0 ? filteredClients.slice(0, 30).map(client => (
                         <button key={client.id} type="button" className={`w-full text-left px-3 py-2.5 text-sm transition-colors border-b last:border-b-0 flex items-center gap-2 ${clientId === client.id ? 'bg-primary/10 text-primary font-medium' : 'hover:bg-muted/50'}`} onClick={() => { setClientId(client.id); setClientSearch('') }}>
                           <User className={`h-3.5 w-3.5 shrink-0 ${clientId === client.id ? 'text-primary' : 'text-muted-foreground'}`} />
-                          <span className="truncate flex-1">{client.name}{client.lastName ? ` ${client.lastName}` : ''}</span>
+                          <span className={`truncate flex-1 ${client.deletedAt ? 'text-muted-foreground line-through decoration-muted-foreground/50' : ''}`}>{client.name}{client.lastName ? ` ${client.lastName}` : ''}</span>
+                          {client.deletedAt && <span className="text-[10px] uppercase font-semibold text-amber-600 dark:text-amber-400 border border-amber-300/60 dark:border-amber-700/60 rounded px-1 py-0.5 shrink-0">Inactivo</span>}
                           {client.phone && <span className="text-xs text-muted-foreground shrink-0">{client.phone}</span>}
                           {clientId === client.id && <span className="text-xs text-primary font-medium shrink-0">✓</span>}
                         </button>
