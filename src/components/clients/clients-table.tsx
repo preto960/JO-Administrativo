@@ -243,6 +243,13 @@ export function ClientsTable() {
   // Statement email
   const [sendingStatement, setSendingStatement] = useState<string | null>(null)
 
+  // Assign credit dialog
+  const [creditClient, setCreditClient] = useState<Client | null>(null)
+  const [creditAmount, setCreditAmount] = useState('')
+  const [creditDescription, setCreditDescription] = useState('')
+  const [creditDueDays, setCreditDueDays] = useState('30')
+  const [assigningCredit, setAssigningCredit] = useState(false)
+
   // Payment dialog
   const [paymentClient, setPaymentClient] = useState<Client | null>(null)
   const [paymentAmount, setPaymentAmount] = useState('')
@@ -871,6 +878,33 @@ export function ClientsTable() {
       toast.error('Error al cargar productos')
     } finally {
       setLoadingProducts(false)
+    }
+  }
+
+  const handleAssignCredit = async () => {
+    if (!creditClient) return
+    const amt = parseFloat(creditAmount)
+    if (!amt || amt <= 0) {
+      toast.error('Ingrese un monto válido')
+      return
+    }
+    setAssigningCredit(true)
+    try {
+      await api.post(`/api/clients/${creditClient.id}/assign-credit`, {
+        amount: amt,
+        description: creditDescription || undefined,
+        dueDateDays: parseInt(creditDueDays) || 30,
+      })
+      toast.success(`Crédito de ${fmt(amt)} asignado correctamente`)
+      setCreditClient(null)
+      setCreditAmount('')
+      setCreditDescription('')
+      setCreditDueDays('30')
+      fetchClients()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error al asignar crédito')
+    } finally {
+      setAssigningCredit(false)
     }
   }
 
@@ -1628,6 +1662,11 @@ export function ClientsTable() {
                               <XCircle className="mr-2 h-3.5 w-3.5" /> Cancelar Tiquetera
                             </DropdownMenuItem>
                           )}
+                          {canManage && (
+                            <DropdownMenuItem onClick={() => { setCreditClient(client); setCreditAmount(''); setCreditDescription(''); setCreditDueDays('30') }}>
+                              <CreditCard className="mr-2 h-3.5 w-3.5" /> Asignar Crédito
+                            </DropdownMenuItem>
+                          )}
                           <DropdownMenuItem onClick={() => handleDownloadStatement(client)}>
                             <FileText className="mr-2 h-3.5 w-3.5" /> Estado de Cuenta (PDF)
                           </DropdownMenuItem>
@@ -1681,12 +1720,23 @@ export function ClientsTable() {
                       )}
                     </>
                   )}
-                  {client.deletedAt && canManage && (
+                  {client.deletedAt && (
                     <>
-                      <div className="flex-1" />
-                      <Button size="sm" variant="outline" className="h-7 text-xs" title="Reactivar cliente" onClick={() => handleReactivate(client)}>
-                        <Eye className="mr-1 h-3 w-3" /> Reactivar
-                      </Button>
+                      {client.pendingBalance > 0 && (
+                        <Button size="sm" variant="ghost" className="h-7 text-xs text-primary" title="Cobrar deuda" onClick={() => openPayment(client)}>
+                          <DollarSign className="mr-1 h-3 w-3" /> Cobrar
+                        </Button>
+                      )}
+                      {canManage && (
+                        <Button size="sm" variant="ghost" className="h-7 text-xs text-amber-600" title="Asignar Crédito" onClick={() => { setCreditClient(client); setCreditAmount(''); setCreditDescription(''); setCreditDueDays('30') }}>
+                          <CreditCard className="mr-1 h-3 w-3" /> Crédito
+                        </Button>
+                      )}
+                      {canManage && (
+                        <Button size="sm" variant="outline" className="h-7 text-xs" title="Reactivar cliente" onClick={() => handleReactivate(client)}>
+                          <Eye className="mr-1 h-3 w-3" /> Reactivar
+                        </Button>
+                      )}
                     </>
                   )}
                 </div>
@@ -2426,6 +2476,68 @@ export function ClientsTable() {
               )}
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Assign Credit Dialog */}
+      <Dialog open={!!creditClient} onOpenChange={(open) => { if (!open) setCreditClient(null) }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CreditCard className="h-4 w-4" />
+              Asignar Crédito
+            </DialogTitle>
+            <DialogDescription>
+              {creditClient ? `Crear cuenta por cobrar para ${creditClient.name}${creditClient.lastName ? ' ' + creditClient.lastName : ''}` : ''}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Monto</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                className="w-full rounded-md border px-3 py-2 text-sm"
+                placeholder="0.00"
+                value={creditAmount}
+                onChange={(e) => setCreditAmount(e.target.value)}
+                autoFocus
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Descripción (opcional)</label>
+              <input
+                type="text"
+                className="w-full rounded-md border px-3 py-2 text-sm"
+                placeholder="Ej: Deuda previa, Crédito manual..."
+                value={creditDescription}
+                onChange={(e) => setCreditDescription(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Días hasta vencimiento</label>
+              <input
+                type="number"
+                min="1"
+                className="w-full rounded-md border px-3 py-2 text-sm"
+                value={creditDueDays}
+                onChange={(e) => setCreditDueDays(e.target.value)}
+              />
+            </div>
+            <div className="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-2 text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2">
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+              <span>Se creará una cuenta por cobrar por el monto indicado. El cliente podrá pagarla desde la opción "Cobrar".</span>
+            </div>
+            <Button
+              className="w-full bg-amber-600 hover:bg-amber-700 text-white"
+              onClick={handleAssignCredit}
+              disabled={assigningCredit || !creditAmount || parseFloat(creditAmount) <= 0}
+            >
+              {assigningCredit ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CreditCard className="mr-2 h-4 w-4" />}
+              {assigningCredit ? 'Asignando...' : 'Asignar Crédito'}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 
