@@ -2438,48 +2438,58 @@ export function ClientsTable() {
             <div className="space-y-3">
               {detailSale.lines.length > 0 ? (
                 <>
-                  <div className="rounded-md border">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Producto</TableHead>
-                          <TableHead className="text-center">Cant.</TableHead>
-                          <TableHead className="text-right">Precio</TableHead>
-                          <TableHead className="text-right">Subtotal</TableHead>
-                          {(user?.role === 'admin' || user?.role === 'gerente') && detailSale.status !== 'anulada' && !detailSale.receivables.some(r => r.status === 'parcial' || r.status === 'pagada') && (
-                            <TableHead className="w-10"></TableHead>
-                          )}
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {detailSale.lines.map((line, i) => (
-                          <TableRow key={line.id || i}>
-                            <TableCell className="text-sm font-medium">{line.product.name}</TableCell>
-                            <TableCell className="text-sm text-center">{line.quantity}</TableCell>
-                            <TableCell className="text-sm text-right">{fmt(line.unitPrice)}</TableCell>
-                            <TableCell className="text-sm text-right font-medium">{fmt(line.lineTotal)}</TableCell>
-                            {(user?.role === 'admin' || user?.role === 'gerente') && detailSale.status !== 'anulada' && !detailSale.receivables.some(r => r.status === 'parcial' || r.status === 'pagada') && (
-                              <TableCell>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="h-7 w-7 p-0 text-red-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40"
-                                  title="Quitar detalle y restaurar stock"
-                                  disabled={deletingLineId === line.id || detailSale.lines.length <= 1}
-                                  onClick={() => handleDeleteSaleLine(detailSale.id, line.id, line.product.name)}
-                                >
-                                  {deletingLineId === line.id
-                                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                    : <X className="h-3.5 w-3.5" />
-                                  }
-                                </Button>
-                              </TableCell>
+                  {(() => {
+                    const canDeleteLines = (user?.role === 'admin' || user?.role === 'gerente') && detailSale.status !== 'anulada'
+                    const hasPayments = detailSale.receivables.some(r => r.status === 'parcial' || r.status === 'pagada')
+                    return (
+                    <div className="rounded-md border">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Producto</TableHead>
+                            <TableHead className="text-center">Cant.</TableHead>
+                            <TableHead className="text-right">Precio</TableHead>
+                            <TableHead className="text-right">Subtotal</TableHead>
+                            {canDeleteLines && (
+                              <TableHead className="w-10"></TableHead>
                             )}
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
+                        </TableHeader>
+                        <TableBody>
+                          {detailSale.lines.map((line, i) => (
+                            <TableRow key={line.id || i}>
+                              <TableCell className="text-sm font-medium">{line.product.name}</TableCell>
+                              <TableCell className="text-sm text-center">{line.quantity}</TableCell>
+                              <TableCell className="text-sm text-right">{fmt(line.unitPrice)}</TableCell>
+                              <TableCell className="text-sm text-right font-medium">{fmt(line.lineTotal)}</TableCell>
+                              {canDeleteLines && (
+                                <TableCell>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-7 w-7 p-0 text-red-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 disabled:opacity-40"
+                                    title={hasPayments
+                                      ? 'Elimine los pagos realizados primero'
+                                      : detailSale.lines.length <= 1
+                                        ? 'Anule la venta completa en su lugar'
+                                        : 'Quitar detalle y restaurar stock'}
+                                    disabled={deletingLineId === line.id || detailSale.lines.length <= 1 || hasPayments}
+                                    onClick={() => handleDeleteSaleLine(detailSale.id, line.id, line.product.name)}
+                                  >
+                                    {deletingLineId === line.id
+                                      ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                      : <Trash2 className="h-3.5 w-3.5" />
+                                    }
+                                  </Button>
+                                </TableCell>
+                              )}
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                    )
+                  })()}
                   <div className="flex items-center justify-between px-1">
                     <span className="text-sm text-muted-foreground">
                       {detailSale.lines.length} producto{detailSale.lines.length !== 1 ? 's' : ''}
