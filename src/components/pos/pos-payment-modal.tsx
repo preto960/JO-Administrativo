@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { usePosStore } from '@/stores/use-pos-store'
 import { useAuth } from '@/hooks/use-auth'
 import { useSetting } from '@/stores/use-app-store'
@@ -71,6 +71,8 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
 
   // Client selection (credit only)
   const [clients, setClients] = useState<ClientOption[]>([])
+  const [clientsLoading, setClientsLoading] = useState(false)
+  const clientsReqId = useRef(0)
   const [clientSearch, setClientSearch] = useState('')
   const [showNewClient, setShowNewClient] = useState(false)
   const [newClientName, setNewClientName] = useState('')
@@ -93,11 +95,6 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
   // Check if credit is selected (single mode only — credit not allowed in hybrid)
   const isCreditSelected = !isHybridMode && paymentMethods.find(pm => pm.code === hybridPayments[0]?.method)?.isCredit
   const showClientSelector = isCreditSelected
-  const filteredClients = useMemo(() => {
-    if (!clientSearch.trim()) return clients
-    const q = clientSearch.toLowerCase()
-    return clients.filter(c => c.name.toLowerCase().includes(q) || (c.phone && c.phone.includes(q)) || (c.email && c.email.toLowerCase().includes(q)))
-  }, [clients, clientSearch])
 
   // Change calculation (only for cash in single mode)
   const changeAmount = useMemo(() => {
@@ -110,18 +107,14 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
   }, [hybridPayments, isHybridMode, paymentMethods, total])
 
   useEffect(() => {
-    // Credit sales can be assigned to any client, including inactive (soft-deleted) ones
-    const clientsUrl = '/api/clients?includeDeleted=true'
     Promise.all([
-      api.get('/api/currencies'),
-      api.get('/api/cash-register'),
-      api.get(clientsUrl),
+      api.get<{ id: string; code: string; symbol: string; isBase: boolean }[]>('/api/currencies'),
+      api.get<{ id: string; status: string }[]>('/api/cash-register'),
       api.get(`/api/payment-methods?country=${country}&context=pos`),
-    ]).then(([currencies, registers, clients, methods]) => {
+    ]).then(([currencies, registers, methods]) => {
       setCurrencies(currencies)
-      const openReg = registers?.find((r: any) => r.status === 'abierta')
+      const openReg = registers?.find(r => r.status === 'abierta')
       if (openReg) setOpenCashRegId(openReg.id)
-      if (Array.isArray(clients)) setClients(clients)
       if (Array.isArray(methods) && methods.length > 0) {
         setDbMethods(methods)
       } else {
@@ -131,6 +124,28 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
       setDbMethods(FALLBACK_METHODS)
     })
   }, [country])
+
+  // Server-side client search, loaded on demand when credit is selected.
+  // Credit sales can be assigned to any client, including inactive (soft-deleted) ones.
+  useEffect(() => {
+    if (!showClientSelector) return
+    const q = clientSearch.trim()
+    const timer = setTimeout(() => {
+      const reqId = ++clientsReqId.current
+      setClientsLoading(true)
+      const params = new URLSearchParams({ includeDeleted: 'true', light: 'true', take: '30' })
+      if (q) params.set('search', q)
+      api.get<ClientOption[]>(`/api/clients?${params}`).then(res => {
+        if (reqId !== clientsReqId.current) return
+        setClients(Array.isArray(res) ? res : [])
+      }).catch(() => {
+        if (reqId === clientsReqId.current) setClients([])
+      }).finally(() => {
+        if (reqId === clientsReqId.current) setClientsLoading(false)
+      })
+    }, q ? 300 : 0)
+    return () => clearTimeout(timer)
+  }, [showClientSelector, clientSearch])
 
   const handleCreateClient = async () => {
     if (!newClientName.trim()) { toast.error('El nombre del cliente es obligatorio'); return }
@@ -273,7 +288,9 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
                   <>
                     <Input placeholder="Buscar por nombre, teléfono o email..." value={clientSearch} onChange={e => setClientSearch(e.target.value)} className="text-sm" />
                     <div className="max-h-48 overflow-y-auto rounded-md border">
-                      {filteredClients.length > 0 ? filteredClients.slice(0, 30).map(client => (
+                      {clientsLoading ? (
+                        <p className="text-xs text-muted-foreground text-center py-3 flex items-center justify-center gap-1.5"><Loader2 className="h-3 w-3 animate-spin" /> Buscando clientes...</p>
+                      ) : clients.length > 0 ? clients.map(client => (
                         <button key={client.id} type="button" className={`w-full text-left px-3 py-2.5 text-sm transition-colors border-b last:border-b-0 flex items-center gap-2 ${clientId === client.id ? 'bg-primary/10 text-primary font-medium' : 'hover:bg-muted/50'}`} onClick={() => { setClientId(client.id); setClientSearch('') }}>
                           <User className={`h-3.5 w-3.5 shrink-0 ${clientId === client.id ? 'text-primary' : 'text-muted-foreground'}`} />
                           <span className={`truncate flex-1 ${client.deletedAt ? 'text-muted-foreground line-through decoration-muted-foreground/50' : ''}`}>{client.name}{client.lastName ? ` ${client.lastName}` : ''}</span>
@@ -281,7 +298,7 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
                           {client.phone && <span className="text-xs text-muted-foreground shrink-0">{client.phone}</span>}
                           {clientId === client.id && <span className="text-xs text-primary font-medium shrink-0">✓</span>}
                         </button>
-                      )) : <p className="text-xs text-muted-foreground text-center py-3">No se encontraron clientes</p>}
+                      )) : <p className="text-xs text-muted-foreground text-center py-3">{clientSearch.trim() ? 'No se encontraron clientes para esa búsqueda' : 'No hay clientes registrados'}</p>}
                     </div>
                     {!clientId && <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1"><AlertTriangle className="h-3 w-3 shrink-0" /> Seleccione un cliente para vender a crédito</p>}
                   </>

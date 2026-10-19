@@ -34,6 +34,8 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('search') || ''
     const includeDeleted = searchParams.get('includeDeleted') === 'true'
     const activeMembership = searchParams.get('activeMembership') === 'true'
+    const light = searchParams.get('light') === 'true'
+    const take = Number(searchParams.get('take')) || undefined
 
     const where: Record<string, unknown> = {}
     if (!includeDeleted) {
@@ -46,16 +48,28 @@ export async function GET(request: NextRequest) {
     }
     if (search) {
       where.OR = [
-        { name: { contains: search } },
-        { phone: { contains: search } },
-        { email: { contains: search } },
-        { cedula: { contains: search } },
-        { lastName: { contains: search } },
+        { name: { contains: search, mode: 'insensitive' } },
+        { phone: { contains: search, mode: 'insensitive' } },
+        { email: { contains: search, mode: 'insensitive' } },
+        { cedula: { contains: search, mode: 'insensitive' } },
+        { lastName: { contains: search, mode: 'insensitive' } },
       ]
+    }
+
+    // Lightweight mode for selectors (e.g. POS credit): only basic fields, no joins/computed balances
+    if (light) {
+      const lightClients = await db.client.findMany({
+        where,
+        select: { id: true, name: true, lastName: true, phone: true, email: true, deletedAt: true },
+        orderBy: { name: 'asc' },
+        take,
+      })
+      return NextResponse.json(lightClients)
     }
 
     const clients = await db.client.findMany({
       where,
+      take,
       include: {
         _count: { select: { sales: true } },
         receivables: {
