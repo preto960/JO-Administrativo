@@ -14,11 +14,13 @@ function isValidPhone(phone: string): boolean {
   return /^\+?\d{7,}$/.test(phone.replace(/[\s\-()]/g, ''))
 }
 
-/** Calculate days remaining based on endDate vs today */
+/** Calculate days remaining based on endDate vs today — date-only comparison to avoid timezone/DST off-by-one */
 function calcDaysRemaining(endDate: Date | null, today: Date): number {
   if (!endDate) return 0
-  const end = new Date(endDate)
-  const diff = end.getTime() - today.getTime()
+  // Normalize both dates to midnight in local time (year, month, day only)
+  const end = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate())
+  const now = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+  const diff = end.getTime() - now.getTime()
   const days = diff / (1000 * 60 * 60 * 24)
   return Math.max(0, Math.round(days))
 }

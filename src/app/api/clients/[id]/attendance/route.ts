@@ -15,9 +15,12 @@ function getPlanDays(durationType: string, durationDays: number | null): number 
   }
 }
 
+/** Calculate days remaining — date-only comparison to avoid timezone/DST off-by-one */
 function calcDaysRemaining(endDate: Date, today: Date): number {
-  const end = new Date(endDate)
-  const diff = end.getTime() - today.getTime()
+  // Normalize both dates to midnight in local time (year, month, day only)
+  const end = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate())
+  const now = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+  const diff = end.getTime() - now.getTime()
   const days = diff / (1000 * 60 * 60 * 24)
   return Math.max(0, Math.round(days))
 }
