@@ -2165,11 +2165,11 @@ export function ClientsTable() {
                                       size="sm"
                                       variant="ghost"
                                       className="h-6 px-2 text-xs text-muted-foreground hover:text-primary gap-1"
-                                      title={`Ver ${planLabel}`}
+                                      title={`Ver ${planLabel}: ${linkedMembership.plan?.name || linkedMembership.tarifa || ''}`}
                                       onClick={() => setDetailSale(sale)}
                                     >
                                       <Eye className="h-3 w-3" />
-                                      <span className="text-primary/80">{linkedMembership.plan?.name || linkedMembership.tarifa || planLabel}</span>
+                                      1
                                     </Button>
                                   ) : (
                                     <span className="text-xs text-muted-foreground">—</span>
