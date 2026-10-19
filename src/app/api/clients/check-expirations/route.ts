@@ -26,16 +26,17 @@ export async function GET() {
     })
 
     for (const m of expiredByDate) {
-      // Skip tickets plans — they expire when tickets reach 0, not by date
+      // Tiqueteras (tickets) now also expire by date based on ticketDurationMonths
+      // Gym plans (dias/horario) expire by date as before
       const planType = m.planType || m.plan?.planType || 'dias'
-      if (planType === 'tickets') continue
 
       await db.clientMembership.update({
         where: { id: m.id },
         data: {
           status: 'Vencido',
           daysRemaining: 0,
-          // Do NOT reset ticketsRemaining — tiquetera is independent
+          // For tickets, also zero out remaining tickets since the validity period ended
+          ticketsRemaining: planType === 'tickets' ? 0 : undefined,
         },
       })
 
