@@ -135,11 +135,11 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
   useEffect(() => {
     if (!showClientSelector) return
     const q = clientSearch.trim()
+    if (!q) { setClients([]); setClientsLoading(false); return }
     const timer = setTimeout(() => {
       const reqId = ++clientsReqId.current
       setClientsLoading(true)
-      const params = new URLSearchParams({ includeDeleted: 'true', light: 'true', take: '30' })
-      if (q) params.set('search', q)
+      const params = new URLSearchParams({ includeDeleted: 'true', light: 'true', take: '30', search: q })
       api.get<ClientOption[]>(`/api/clients?${params}`).then(res => {
         if (reqId !== clientsReqId.current) return
         setClients(Array.isArray(res) ? res : [])
@@ -148,7 +148,7 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
       }).finally(() => {
         if (reqId === clientsReqId.current) setClientsLoading(false)
       })
-    }, q ? 300 : 0)
+    }, 300)
     return () => clearTimeout(timer)
   }, [showClientSelector, clientSearch])
 
@@ -318,11 +318,11 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
                       <PopoverAnchor asChild>
                         <div ref={clientSearchRef}>
                           <Input
-                            placeholder={selectedClient ? 'Cliente seleccionado' : 'Buscar por nombre, teléfono o email...'}
+                            placeholder={selectedClient ? 'Cliente seleccionado' : 'Escriba para buscar por nombre, teléfono o email...'}
                             value={clientSearch}
-                            onChange={e => setClientSearch(e.target.value)}
-                            onPointerDown={() => setDropdownOpen(true)}
-                            onFocus={() => setDropdownOpen(true)}
+                            onChange={e => { setClientSearch(e.target.value); setDropdownOpen(!!e.target.value.trim()) }}
+                            onPointerDown={() => { if (clientSearch.trim()) setDropdownOpen(true) }}
+                            onFocus={() => { if (clientSearch.trim()) setDropdownOpen(true) }}
                             onKeyDown={e => { if (e.key === 'Escape') setDropdownOpen(false) }}
                             disabled={!!selectedClient}
                             className="text-sm cursor-pointer"
@@ -335,12 +335,24 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
                         onOpenAutoFocus={e => e.preventDefault()}
                         onPointerDownOutside={e => {
                           // Keep the dropdown open when the pointer down lands on the search input itself
-                          if (clientSearchRef.current?.contains(e.target as Node)) e.preventDefault()
+                          if (clientSearchRef.current?.contains(e.detail.originalEvent.target as Node)) e.preventDefault()
+                        }}
+                        onFocusOutside={e => {
+                          // The input keeps focus while the dropdown is open; don't treat it as outside focus
+                          if (clientSearchRef.current?.contains(e.detail.originalEvent.target as Node)) e.preventDefault()
                         }}
                         className="w-[var(--radix-popover-trigger-width)] p-0"
                       >
                         <Command shouldFilter={false}>
-                          <CommandList className="max-h-48">
+                          <CommandList
+                            className="max-h-48"
+                            onWheel={e => {
+                              // The modal dialog's scroll lock blocks native wheel over the portaled list
+                              if (e.defaultPrevented && e.currentTarget.scrollHeight > e.currentTarget.clientHeight) {
+                                e.currentTarget.scrollTop += e.deltaY
+                              }
+                            }}
+                          >
                             {clientsLoading ? (
                               <p className="text-xs text-muted-foreground text-center py-3 flex items-center justify-center gap-1.5"><Loader2 className="h-3 w-3 animate-spin" /> Buscando clientes...</p>
                             ) : clients.length > 0 ? clients.map(client => (
