@@ -2356,7 +2356,7 @@ export function ClientsTable() {
                                       <Trash2 className="h-3.5 w-3.5" />
                                     </Button>
                                   )}
-                                  {canManage && sale.status !== 'anulada' && sale.receivables.length > 0 && !sale.receivables.some(r => r.amount - r.pendingBalance > 0.005) && (
+                                  {canManage && sale.status !== 'anulada' && sale.receivables.length > 0 && !sale.receivables.some(r => (r.amount ?? 0) - r.pendingBalance > 0.005) && (
                                     <Button
                                       size="sm"
                                       variant="ghost"
@@ -2482,7 +2482,7 @@ export function ClientsTable() {
                 <>
                   {(() => {
                     const canDeleteLines = (user?.role === 'admin' || user?.role === 'gerente') && detailSale.status !== 'anulada'
-                    const hasPayments = detailSale.receivables.some(r => r.amount - r.pendingBalance > 0.005)
+                    const hasPayments = detailSale.receivables.some(r => (r.amount ?? 0) - r.pendingBalance > 0.005)
                     return (
                     <div className="rounded-md border">
                       <Table>
@@ -2541,14 +2541,14 @@ export function ClientsTable() {
                     </span>
                   </div>
                   {/* Info: cannot delete lines because payments exist */}
-                  {(user?.role === 'admin' || user?.role === 'gerente') && detailSale.status !== 'anulada' && detailSale.receivables.some(r => r.amount - r.pendingBalance > 0.005) && (
+                  {(user?.role === 'admin' || user?.role === 'gerente') && detailSale.status !== 'anulada' && detailSale.receivables.some(r => (r.amount ?? 0) - r.pendingBalance > 0.005) && (
                     <div className="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-2 text-xs text-amber-700 dark:text-amber-400 flex items-center gap-2">
                       <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
                       Para eliminar detalles, primero elimine los pagos realizados en la sección "Pagos Realizados".
                     </div>
                   )}
                   {/* Info: credit sale with pending balance */}
-                  {detailSale.receivables.length > 0 && detailSale.receivables[0].pendingBalance > 0 && !detailSale.receivables.some(r => r.amount - r.pendingBalance > 0.005) && (
+                  {detailSale.receivables.length > 0 && detailSale.receivables[0].pendingBalance > 0 && !detailSale.receivables.some(r => (r.amount ?? 0) - r.pendingBalance > 0.005) && (
                     <div className="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-2 text-xs text-amber-700 dark:text-amber-400">
                       Venta a crédito — Saldo pendiente: {fmt(detailSale.receivables[0].pendingBalance)}
                       {detailSale.receivables[0].dueDate && ` — Vence: ${new Date(detailSale.receivables[0].dueDate).toLocaleDateString('es-VE')}`}
