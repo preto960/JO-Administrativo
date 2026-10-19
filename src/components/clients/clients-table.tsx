@@ -227,6 +227,7 @@ export function ClientsTable() {
   const [clientPayments, setClientPayments] = useState<ClientPaymentRecord[]>([])
   const [loadingPayments, setLoadingPayments] = useState(false)
   const [deletingPaymentId, setDeletingPaymentId] = useState<string | null>(null)
+  const [deletePaymentTarget, setDeletePaymentTarget] = useState<{ paymentId: string; amount: number } | null>(null)
 
   // Remove debt: open dialog to select which debt
   const [removeDebtClient, setRemoveDebtClient] = useState<Client | null>(null)
@@ -960,13 +961,12 @@ export function ClientsTable() {
 
   const handleDeletePayment = async (paymentId: string, amount: number) => {
     if (!historyClient) return
-    if (!window.confirm(`¿Eliminar este cobro de ${fmt(amount)}? La deuda será restaurada.`)) return
     setDeletingPaymentId(paymentId)
     try {
       await api.del(`/api/clients/${historyClient.id}/payments/${paymentId}`)
       toast.success(`Pago de ${fmt(amount)} eliminado. Deuda restaurada.`)
-      // Refresh payments list, sales, and client list
       setClientPayments(prev => prev.filter(p => p.id !== paymentId))
+      setDeletePaymentTarget(null)
       fetchClients()
       // Reload sales to update pending balance badges
       if (historyClient) {
@@ -2380,7 +2380,7 @@ export function ClientsTable() {
                                       className="h-7 w-7 p-0 text-red-400 hover:text-red-600"
                                       title="Eliminar pago y restaurar deuda"
                                       disabled={deletingPaymentId === payment.id}
-                                      onClick={() => handleDeletePayment(payment.id, payment.amount)}
+                                      onClick={() => setDeletePaymentTarget({ paymentId: payment.id, amount: payment.amount })}
                                     >
                                       {deletingPaymentId === payment.id
                                         ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -3390,6 +3390,7 @@ export function ClientsTable() {
       </Dialog>
 
       {/* Delete Confirmation Dialog */}
+      {/* Delete Client Confirmation */}
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}>
         <AlertDialogContent size="sm">
           <AlertDialogHeader>
@@ -3402,6 +3403,36 @@ export function ClientsTable() {
             <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
             <AlertDialogAction variant="destructive" onClick={handleConfirmDelete} disabled={deleting}>
               {deleting ? 'Inactivando...' : 'Inactivar'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete Payment Confirmation */}
+      <AlertDialog open={!!deletePaymentTarget} onOpenChange={(open) => { if (!open) setDeletePaymentTarget(null) }}>
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-red-600">
+              <Trash2 className="h-5 w-5" />
+              Eliminar Cobro
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              ¿Estás seguro de que deseas eliminar este cobro de <b className="text-red-600">{deletePaymentTarget ? fmt(deletePaymentTarget.amount) : ''}</b>?
+              La deuda será restaurada.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={!!deletingPaymentId}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={!!deletingPaymentId}
+              onClick={() => {
+                if (deletePaymentTarget) {
+                  handleDeletePayment(deletePaymentTarget.paymentId, deletePaymentTarget.amount)
+                }
+              }}
+            >
+              {deletingPaymentId ? 'Eliminando...' : 'Eliminar'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
