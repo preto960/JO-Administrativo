@@ -2183,7 +2183,15 @@ export function ClientsTable() {
 
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm">Detalle de Ventas</CardTitle>
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-sm">Detalle de Ventas</CardTitle>
+                    <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
+                      <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500" /> Completada</span>
+                      <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-500" /> Crédito</span>
+                      <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-400" /> Parcial</span>
+                      <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500" /> Anulada</span>
+                    </div>
+                  </div>
                 </CardHeader>
                 <CardContent className="p-0">
                   {sales.length === 0 ? (
@@ -2257,19 +2265,28 @@ export function ClientsTable() {
                                 </TableCell>
                                 <TableCell>
                                   {isAnulled ? (
-                                    <Badge variant="outline" className="text-red-500 border-red-300">
-                                      Anulada
-                                    </Badge>
+                                    <span className="inline-flex items-center gap-1.5" title="Anulada">
+                                      <span className="w-2.5 h-2.5 rounded-full bg-red-500 shrink-0" />
+                                    </span>
                                   ) : isCredit ? (
-                                    <Badge variant="outline" className="text-amber-600 border-amber-300">
-                                      {sale.receivables[0]?.pendingBalance > 0
-                                        ? `Pendiente: ${fmt(sale.receivables[0].pendingBalance)}`
-                                        : 'Credito'}
-                                    </Badge>
+                                    <span
+                                      className="inline-flex items-center gap-1.5"
+                                      title={sale.receivables[0]?.pendingBalance > 0
+                                        ? `Crédito pendiente: ${fmt(sale.receivables[0].pendingBalance)}`
+                                        : 'Crédito pagado'}
+                                    >
+                                      <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${
+                                        sale.receivables[0]?.pendingBalance > 0
+                                          ? sale.receivables[0]?.status === 'parcial'
+                                            ? 'bg-amber-400'
+                                            : 'bg-amber-500'
+                                          : 'bg-emerald-500'
+                                      }`} />
+                                    </span>
                                   ) : (
-                                    <Badge variant={sale.status === 'completada' ? 'default' : 'secondary'}>
-                                      {sale.status}
-                                    </Badge>
+                                    <span className="inline-flex items-center gap-1.5" title="Completada">
+                                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
+                                    </span>
                                   )}
                                 </TableCell>
                                 <TableCell>
@@ -2471,6 +2488,20 @@ export function ClientsTable() {
                       Total: {fmt(detailSale.total)}
                     </span>
                   </div>
+                  {/* Info: cannot delete lines because payments exist */}
+                  {(user?.role === 'admin' || user?.role === 'gerente') && detailSale.status !== 'anulada' && detailSale.receivables.some(r => r.status === 'parcial' || r.status === 'pagada') && (
+                    <div className="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-2 text-xs text-amber-700 dark:text-amber-400 flex items-center gap-2">
+                      <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                      Para eliminar detalles, primero elimine los pagos realizados en la sección "Pagos Realizados".
+                    </div>
+                  )}
+                  {/* Info: credit sale with pending balance */}
+                  {detailSale.receivables.length > 0 && detailSale.receivables[0].pendingBalance > 0 && !detailSale.receivables.some(r => r.status === 'parcial' || r.status === 'pagada') && (
+                    <div className="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-2 text-xs text-amber-700 dark:text-amber-400">
+                      Venta a crédito — Saldo pendiente: {fmt(detailSale.receivables[0].pendingBalance)}
+                      {detailSale.receivables[0].dueDate && ` — Vence: ${new Date(detailSale.receivables[0].dueDate).toLocaleDateString('es-VE')}`}
+                    </div>
+                  )}
                 </>
               ) : (() => {
                 // Membership/tiquetera detail (no product lines)

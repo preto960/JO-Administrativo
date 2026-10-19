@@ -275,12 +275,13 @@ export async function POST(request: NextRequest) {
       const creditPayments = payments.filter((p: { method: string }) => creditCodes.has(p.method))
       for (const cp of creditPayments) {
         if (clientId) {
+          const roundedAmount = Math.round(cp.amount * 100) / 100
           await tx.accountReceivable.create({
             data: {
               clientId,
               saleId: newSale.id,
-              amount: cp.amount,
-              pendingBalance: cp.amount,
+              amount: roundedAmount,
+              pendingBalance: roundedAmount,
               status: 'pendiente',
               currencyId: refCurrency?.id || '',
               createdById: userId,
