@@ -42,7 +42,7 @@ export async function POST(
     const { id } = await params
     const sale = await db.sale.findUnique({
       where: { id },
-      include: { lines: true, payments: true },
+      include: { lines: true, payments: true, receivables: true },
     })
 
     if (!sale) {
@@ -51,6 +51,12 @@ export async function POST(
 
     if (sale.status === 'anulada') {
       return NextResponse.json({ error: 'La venta ya fue anulada' }, { status: 400 })
+    }
+
+    // Check if sale has receivables with actual payments made
+    const hasPaidReceivable = sale.receivables.some(r => r.amount - r.pendingBalance > 0.005)
+    if (hasPaidReceivable) {
+      return NextResponse.json({ error: 'No se puede anular una venta a crédito que ya tiene pagos realizados. Elimine los pagos primero.' }, { status: 400 })
     }
 
     const updatedSale = await db.$transaction(async (tx) => {
@@ -63,6 +69,16 @@ export async function POST(
           await tx.inventory.update({
             where: { id: inventory.id },
             data: { stock: { increment: line.quantity } },
+          })
+        }
+      }
+
+      // Cancel receivables (client pendingBalance is computed from receivables, no need to update)
+      for (const rec of sale.receivables) {
+        if (rec.status === 'pendiente' || rec.status === 'parcial') {
+          await tx.accountReceivable.update({
+            where: { id: rec.id },
+            data: { status: 'cancelada', pendingBalance: 0 },
           })
         }
       }

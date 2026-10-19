@@ -238,6 +238,10 @@ export function ClientsTable() {
   const [deleteRenewalTarget, setDeleteRenewalTarget] = useState<SaleRecord | null>(null)
   const [deletingRenewal, setDeletingRenewal] = useState(false)
 
+  // Annul sale (admin/gerente)
+  const [annulSaleTarget, setAnnulSaleTarget] = useState<SaleRecord | null>(null)
+  const [annullingSale, setAnnullingSale] = useState(false)
+
   // Sale lines detail modal
   const [detailSale, setDetailSale] = useState<SaleRecord | null>(null)
   const [deletingLineId, setDeletingLineId] = useState<string | null>(null)
@@ -997,6 +1001,33 @@ export function ClientsTable() {
       toast.error(msg)
     } finally {
       setDeletingRenewal(false)
+    }
+  }
+
+  const handleAnnulSale = async () => {
+    if (!annulSaleTarget || !historyClient) return
+    setAnnullingSale(true)
+    try {
+      await api.post(`/api/sales/${annulSaleTarget.id}`, {})
+      toast.success(`Venta anulada correctamente — stock restaurado`)
+      setAnnulSaleTarget(null)
+      // Refresh sales, client list and payments
+      const salesData = await api.get<{ sales: SaleRecord[] }>(`/api/clients/${historyClient.id}/sales`)
+      setSales(salesData.sales)
+      fetchClients()
+      // Refresh payments list
+      setClientPayments([])
+      setLoadingPayments(true)
+      try {
+        const paymentsData = await api.get<ClientPaymentRecord[]>(`/api/clients/${historyClient.id}/payments`)
+        setClientPayments(paymentsData)
+      } catch { /* ignore */ }
+      setLoadingPayments(false)
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Error al anular la venta'
+      toast.error(msg)
+    } finally {
+      setAnnullingSale(false)
     }
   }
 
@@ -2325,6 +2356,17 @@ export function ClientsTable() {
                                       <Trash2 className="h-3.5 w-3.5" />
                                     </Button>
                                   )}
+                                  {canManage && sale.status !== 'anulada' && sale.receivables.length > 0 && !sale.receivables.some(r => r.amount - r.pendingBalance > 0.005) && (
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/40"
+                                      title="Anular venta a crédito"
+                                      onClick={() => setAnnulSaleTarget(sale)}
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </Button>
+                                  )}
                                   </div>
                                 </TableCell>
                               </TableRow>
@@ -3608,6 +3650,48 @@ export function ClientsTable() {
             <AlertDialogCancel disabled={deletingRenewal}>Cancelar</AlertDialogCancel>
             <AlertDialogAction variant="destructive" onClick={handleDeleteRenewal} disabled={deletingRenewal}>
               {deletingRenewal ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Eliminando...</> : 'Eliminar Renovación'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Annul Sale Confirmation (Admin/Gerente) */}
+      <AlertDialog open={!!annulSaleTarget} onOpenChange={(open) => { if (!open) setAnnulSaleTarget(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-red-500" />
+              Anular Venta a Crédito
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                <p>
+                  ¿Estás seguro de anular esta venta? Se realizará lo siguiente:
+                </p>
+                <ul className="list-disc list-inside text-sm space-y-1">
+                  <li>Se restaurará el stock de los productos vendidos</li>
+                  <li>Se cancelará la cuenta por cobrar pendiente</li>
+                  <li>Se ajustará el saldo pendiente del cliente</li>
+                  <li>La venta quedará marcada como <b>anulada</b></li>
+                </ul>
+                {annulSaleTarget && (
+                  <div className="mt-3 p-3 bg-red-50 dark:bg-red-950/30 rounded-lg border border-red-200 dark:border-red-800">
+                    <p className="text-sm"><span className="font-medium">Factura:</span> {annulSaleTarget.id.slice(0, 8)}</p>
+                    <p className="text-sm"><span className="font-medium">Cliente:</span> {historyClient?.name} {historyClient?.lastName || ''}</p>
+                    <p className="text-sm"><span className="font-medium">Monto:</span> {fmt(annulSaleTarget.total)}</p>
+                    <p className="text-sm"><span className="font-medium">Fecha:</span> {new Date(annulSaleTarget.date).toLocaleDateString('es-VE')}</p>
+                  </div>
+                )}
+                <p className="text-red-600 dark:text-red-400 font-medium text-sm mt-2">
+                  Esta acción no se puede deshacer.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={annullingSale}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" onClick={handleAnnulSale} disabled={annullingSale}>
+              {annullingSale ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Anulando...</> : 'Anular Venta'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
