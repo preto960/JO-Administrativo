@@ -145,8 +145,12 @@ export async function PUT(
       },
     })
 
-    // Update inventory if stock or minStock provided
+    // Update inventory if stock or minStock provided (stock changes require admin role)
     if (body.initialStock !== undefined || body.minStock !== undefined || body.branchPrice !== undefined) {
+      // Only admins can modify stock (initialStock), but minStock and branchPrice are allowed for all managers
+      if (body.initialStock !== undefined && auth.role !== 'admin') {
+        return NextResponse.json({ error: 'Solo los administradores pueden modificar el stock' }, { status: 403 })
+      }
       const branchId = body.branchId || await resolveBranchId()
       const inventory = await db.inventory.findFirst({
         where: { productId: id, branchId },
@@ -173,8 +177,11 @@ export async function PUT(
       }
     }
 
-    // Feature #8: Handle additional stock with audit trail
+    // Feature #8: Handle additional stock with audit trail (admin only)
     if (body.stockAdd !== undefined && body.stockAdd > 0) {
+      if (auth.role !== 'admin') {
+        return NextResponse.json({ error: 'Solo los administradores pueden agregar stock' }, { status: 403 })
+      }
       const branchId = body.branchId || await resolveBranchId()
       const inventory = await db.inventory.findFirst({
         where: { productId: id, branchId },

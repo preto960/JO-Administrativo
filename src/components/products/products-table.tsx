@@ -102,6 +102,7 @@ export function ProductsTable() {
   const { permissions } = useAuth()
   const canManage = permissions.canManageProducts
   const canSeeCost = permissions.role === 'admin' || permissions.role === 'gerente'
+  const isAdmin = permissions.role === 'admin'
   const { multiEnabled, refCode, sym: currencySym, fmt: fmtCurrency } = useCurrency()
   const selectedBranchId = useAppStore((s) => s.selectedBranchId)
   const branches = useAppStore((s) => s.branches)
@@ -885,7 +886,7 @@ export function ProductsTable() {
             )}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="pstock">Stock Inicial {editProduct ? <span className="text-xs text-muted-foreground font-normal">(solo lectura)</span> : null}</Label>
+                <Label htmlFor="pstock">Stock Inicial {editProduct && !isAdmin ? <span className="text-xs text-muted-foreground font-normal">(solo lectura)</span> : null}</Label>
                 <Input
                   id="pstock"
                   type="number"
@@ -894,8 +895,8 @@ export function ProductsTable() {
                   value={formStock}
                   onChange={(e) => setFormStock(e.target.value)}
                   placeholder="0"
-                  disabled={!!editProduct}
-                  className={editProduct ? 'bg-muted' : ''}
+                  disabled={!!editProduct && !isAdmin}
+                  className={editProduct && !isAdmin ? 'bg-muted' : ''}
                 />
               </div>
               <div className="space-y-2">
@@ -911,8 +912,8 @@ export function ProductsTable() {
                 />
               </div>
             </div>
-            {/* Feature #8: Additional stock for existing products */}
-            {editProduct && (
+            {/* Feature #8: Additional stock for existing products — admin only */}
+            {editProduct && isAdmin && (
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="pstockadd">Agregar al Stock</Label>
