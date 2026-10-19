@@ -347,10 +347,12 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
                           <CommandList
                             className="max-h-48"
                             onWheel={e => {
-                              // The modal dialog's scroll lock blocks native wheel over the portaled list
-                              if (e.defaultPrevented && e.currentTarget.scrollHeight > e.currentTarget.clientHeight) {
-                                e.currentTarget.scrollTop += e.deltaY
-                              }
+                              // The dialog's scroll lock prevents native wheel over the portaled list
+                              // (it runs at document level, after React sees the event), so scroll manually
+                              const el = e.currentTarget
+                              if (el.scrollHeight <= el.clientHeight) return
+                              const dy = e.deltaMode === 1 ? e.deltaY * 40 : e.deltaY
+                              el.scrollTop += dy
                             }}
                           >
                             {clientsLoading ? (
