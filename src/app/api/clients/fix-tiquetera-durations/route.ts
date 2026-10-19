@@ -69,8 +69,9 @@ export async function GET(request: Request) {
       const durationMonths = m.plan?.ticketDurationMonths || 2
       const durationDays = durationMonths * 30
 
-      // Use paymentDate as the start reference, fallback to startDate
-      const startRef = m.paymentDate || m.startDate
+      // Use startDate (app-local date) as the start reference, fallback to paymentDate
+      // startDate is preferred because paymentDate may be off by 1 day due to UTC timezone shift
+      const startRef = m.startDate || m.paymentDate
       if (!startRef) {
         results.push({
           membershipId: m.id,

@@ -156,7 +156,7 @@ export async function POST(
         planId: plan.id,
         planType: 'tickets',
         tarifa: plan.name,
-        paymentDate: new Date(),
+        paymentDate: today,   // Use app-local date (e.g. Venezuela), not UTC new Date()
         ticketsRemaining: ticketCount,
         startDate: today,
         endDate: ticketEndDate,

@@ -186,7 +186,7 @@ export async function POST(
       planId: plan.id,
       planType,
       tarifa: plan.name,
-      paymentDate: new Date(),
+      paymentDate: today,   // Use app-local date (e.g. Venezuela), not UTC new Date()
       // Reset tickets to 0 if changing FROM tickets TO another type
       ticketsRemaining: planType === 'tickets' ? ticketCount : 0,
       startTime: planType === 'horario' ? plan.startTime : null,
