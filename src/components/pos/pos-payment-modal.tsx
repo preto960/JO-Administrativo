@@ -29,7 +29,7 @@ import {
 import {
   Banknote, CreditCard, ArrowLeftRight, Clock, Smartphone,
   CircleDollarSign, CheckCircle2, Loader2, AlertTriangle,
-  UserPlus, User, type LucideIcon,
+  UserPlus, User, X, type LucideIcon,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useCurrency } from '@/hooks/use-currency'
@@ -73,6 +73,8 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
   const [clients, setClients] = useState<ClientOption[]>([])
   const [clientsLoading, setClientsLoading] = useState(false)
   const clientsReqId = useRef(0)
+  const [selectedClient, setSelectedClient] = useState<ClientOption | null>(null)
+  const [dropdownOpen, setDropdownOpen] = useState(false)
   const [clientSearch, setClientSearch] = useState('')
   const [showNewClient, setShowNewClient] = useState(false)
   const [newClientName, setNewClientName] = useState('')
@@ -147,12 +149,35 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
     return () => clearTimeout(timer)
   }, [showClientSelector, clientSearch])
 
+  // Resolve the name of a client chosen before the modal opened (e.g. restored paused sale)
+  useEffect(() => {
+    if (!showClientSelector || !clientId || selectedClient?.id === clientId) return
+    let cancelled = false
+    api.get<ClientOption | null>(`/api/clients?light=true&id=${clientId}`).then(res => {
+      if (!cancelled && res && res.id) setSelectedClient(res)
+    }).catch(() => {})
+    return () => { cancelled = true }
+  }, [showClientSelector, clientId, selectedClient?.id])
+
+  const handleSelectClient = (client: ClientOption) => {
+    setSelectedClient(client)
+    setClientId(client.id)
+    setClientSearch('')
+    setDropdownOpen(false)
+  }
+
+  const handleClearClient = () => {
+    setSelectedClient(null)
+    setClientId(null)
+  }
+
   const handleCreateClient = async () => {
     if (!newClientName.trim()) { toast.error('El nombre del cliente es obligatorio'); return }
     setCreatingClient(true)
     try {
       const newClient = await api.post<ClientOption>('/api/clients', { name: newClientName.trim(), phone: newClientPhone.trim() || undefined, email: newClientEmail.trim() || undefined })
       setClients(prev => [...prev, newClient])
+      setSelectedClient(newClient)
       setClientId(newClient.id)
       setShowNewClient(false); setNewClientName(''); setNewClientPhone(''); setNewClientEmail('')
       toast.success(`Cliente "${newClient.name}" creado`)
@@ -278,7 +303,7 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <Label className="text-sm font-medium flex items-center gap-1.5"><User className="h-3.5 w-3.5" /> Cliente</Label>
-                  {!showNewClient && (
+                  {!showNewClient && !selectedClient && (
                     <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs text-primary hover:text-primary hover:bg-primary/10" onClick={() => setShowNewClient(true)}>
                       <UserPlus className="h-3 w-3 mr-1" /> Nuevo cliente
                     </Button>
@@ -286,21 +311,47 @@ export function PosPaymentModal({ onClose }: PosPaymentModalProps) {
                 </div>
                 {!showNewClient ? (
                   <>
-                    <Input placeholder="Buscar por nombre, teléfono o email..." value={clientSearch} onChange={e => setClientSearch(e.target.value)} className="text-sm" />
-                    <div className="max-h-48 overflow-y-auto rounded-md border">
-                      {clientsLoading ? (
-                        <p className="text-xs text-muted-foreground text-center py-3 flex items-center justify-center gap-1.5"><Loader2 className="h-3 w-3 animate-spin" /> Buscando clientes...</p>
-                      ) : clients.length > 0 ? clients.map(client => (
-                        <button key={client.id} type="button" className={`w-full text-left px-3 py-2.5 text-sm transition-colors border-b last:border-b-0 flex items-center gap-2 ${clientId === client.id ? 'bg-primary/10 text-primary font-medium' : 'hover:bg-muted/50'}`} onClick={() => { setClientId(client.id); setClientSearch('') }}>
-                          <User className={`h-3.5 w-3.5 shrink-0 ${clientId === client.id ? 'text-primary' : 'text-muted-foreground'}`} />
-                          <span className={`truncate flex-1 ${client.deletedAt ? 'text-muted-foreground line-through decoration-muted-foreground/50' : ''}`}>{client.name}{client.lastName ? ` ${client.lastName}` : ''}</span>
-                          {client.deletedAt && <span className="text-[10px] uppercase font-semibold text-amber-600 dark:text-amber-400 border border-amber-300/60 dark:border-amber-700/60 rounded px-1 py-0.5 shrink-0">Inactivo</span>}
-                          {client.phone && <span className="text-xs text-muted-foreground shrink-0">{client.phone}</span>}
-                          {clientId === client.id && <span className="text-xs text-primary font-medium shrink-0">✓</span>}
-                        </button>
-                      )) : <p className="text-xs text-muted-foreground text-center py-3">{clientSearch.trim() ? 'No se encontraron clientes para esa búsqueda' : 'No hay clientes registrados'}</p>}
+                    <div className="relative">
+                      <Input
+                        placeholder={selectedClient ? 'Cliente seleccionado' : 'Buscar por nombre, teléfono o email...'}
+                        value={clientSearch}
+                        onChange={e => setClientSearch(e.target.value)}
+                        onFocus={() => setDropdownOpen(true)}
+                        onBlur={() => setTimeout(() => setDropdownOpen(false), 150)}
+                        onKeyDown={e => { if (e.key === 'Escape') setDropdownOpen(false) }}
+                        disabled={!!selectedClient}
+                        className="text-sm"
+                      />
+                      {dropdownOpen && !selectedClient && (
+                        <div className="absolute z-20 left-0 right-0 top-full mt-1 max-h-48 overflow-y-auto rounded-md border bg-background shadow-lg" onMouseDown={e => e.preventDefault()}>
+                          {clientsLoading ? (
+                            <p className="text-xs text-muted-foreground text-center py-3 flex items-center justify-center gap-1.5"><Loader2 className="h-3 w-3 animate-spin" /> Buscando clientes...</p>
+                          ) : clients.length > 0 ? clients.map(client => (
+                            <button key={client.id} type="button" className="w-full text-left px-3 py-2.5 text-sm transition-colors border-b last:border-b-0 flex items-center gap-2 hover:bg-muted/50" onClick={() => handleSelectClient(client)}>
+                              <User className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                              <span className={`truncate flex-1 ${client.deletedAt ? 'text-muted-foreground line-through decoration-muted-foreground/50' : ''}`}>{client.name}{client.lastName ? ` ${client.lastName}` : ''}</span>
+                              {client.deletedAt && <span className="text-[10px] uppercase font-semibold text-amber-600 dark:text-amber-400 border border-amber-300/60 dark:border-amber-700/60 rounded px-1 py-0.5 shrink-0">Inactivo</span>}
+                              {client.phone && <span className="text-xs text-muted-foreground shrink-0">{client.phone}</span>}
+                            </button>
+                          )) : <p className="text-xs text-muted-foreground text-center py-3">{clientSearch.trim() ? 'No se encontraron clientes para esa búsqueda' : 'No hay clientes registrados'}</p>}
+                        </div>
+                      )}
                     </div>
-                    {!clientId && <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1"><AlertTriangle className="h-3 w-3 shrink-0" /> Seleccione un cliente para vender a crédito</p>}
+                    {selectedClient ? (
+                      <div className="flex items-center gap-2.5 rounded-md border bg-primary/5 dark:bg-primary/10 p-2.5">
+                        <div className="rounded-full bg-primary/10 dark:bg-primary/15 p-1.5 shrink-0"><User className="h-3.5 w-3.5 text-primary" /></div>
+                        <div className="min-w-0 flex-1">
+                          <p className={`text-sm font-medium truncate ${selectedClient.deletedAt ? 'line-through decoration-muted-foreground/50' : ''}`}>{selectedClient.name}{selectedClient.lastName ? ` ${selectedClient.lastName}` : ''}</p>
+                          {selectedClient.phone && <p className="text-xs text-muted-foreground truncate">{selectedClient.phone}</p>}
+                        </div>
+                        {selectedClient.deletedAt && <span className="text-[10px] uppercase font-semibold text-amber-600 dark:text-amber-400 border border-amber-300/60 dark:border-amber-700/60 rounded px-1 py-0.5 shrink-0">Inactivo</span>}
+                        <button type="button" className="rounded-full p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors shrink-0" onClick={handleClearClient} aria-label="Quitar cliente seleccionado">
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1"><AlertTriangle className="h-3 w-3 shrink-0" /> Seleccione un cliente para vender a crédito</p>
+                    )}
                   </>
                 ) : (
                   <div className="space-y-2 rounded-md border p-3 bg-muted/30">

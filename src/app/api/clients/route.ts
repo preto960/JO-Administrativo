@@ -58,6 +58,14 @@ export async function GET(request: NextRequest) {
 
     // Lightweight mode for selectors (e.g. POS credit): only basic fields, no joins/computed balances
     if (light) {
+      const lightId = searchParams.get('id')
+      if (lightId) {
+        const one = await db.client.findUnique({
+          where: { id: lightId },
+          select: { id: true, name: true, lastName: true, phone: true, email: true, deletedAt: true },
+        })
+        return NextResponse.json(one)
+      }
       const lightClients = await db.client.findMany({
         where,
         select: { id: true, name: true, lastName: true, phone: true, email: true, deletedAt: true },
