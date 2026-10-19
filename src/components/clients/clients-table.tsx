@@ -147,7 +147,7 @@ interface SaleRecord {
   user: { name: string }
   branch: { name: string }
   payments: Array<{ method: string; amount: number; currency: { symbol: string } }>
-  lines: Array<{ product: { name: string }; quantity: number; unitPrice: number; lineTotal: number }>
+  lines: Array<{ id: string; productId: string; product: { name: string }; quantity: number; unitPrice: number; lineTotal: number }>
   receivables: Array<{ pendingBalance: number; status: string; dueDate: string | null }>
 }
 
@@ -239,6 +239,7 @@ export function ClientsTable() {
 
   // Sale lines detail modal
   const [detailSale, setDetailSale] = useState<SaleRecord | null>(null)
+  const [deletingLineId, setDeletingLineId] = useState<string | null>(null)
 
   // Statement email
   const [sendingStatement, setSendingStatement] = useState<string | null>(null)
@@ -996,6 +997,29 @@ export function ClientsTable() {
       toast.error(msg)
     } finally {
       setDeletingRenewal(false)
+    }
+  }
+
+  const handleDeleteSaleLine = async (saleId: string, lineId: string, productName: string) => {
+    setDeletingLineId(lineId)
+    try {
+      const result = await api.del<{ message: string; newTotal: number; stockRestored: boolean }>(`/api/sales/${saleId}/lines/${lineId}`)
+      toast.success(`"${productName}" eliminado de la venta${result.stockRestored ? ' — stock restaurado' : ''}`)
+      // Refresh the detail sale and the sales list
+      if (detailSale) {
+        const refreshed = await api.get(`/api/sales/${saleId}`)
+        setDetailSale(refreshed)
+      }
+      if (historyClient) {
+        const salesData = await api.get<{ sales: SaleRecord[] }>(`/api/clients/${historyClient.id}/sales`)
+        setSales(salesData.sales)
+      }
+      fetchClients()
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Error al eliminar detalle'
+      toast.error(msg)
+    } finally {
+      setDeletingLineId(null)
     }
   }
 
@@ -2405,15 +2429,35 @@ export function ClientsTable() {
                           <TableHead className="text-center">Cant.</TableHead>
                           <TableHead className="text-right">Precio</TableHead>
                           <TableHead className="text-right">Subtotal</TableHead>
+                          {(user?.role === 'admin' || user?.role === 'gerente') && detailSale.status !== 'anulada' && (
+                            <TableHead className="w-10"></TableHead>
+                          )}
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {detailSale.lines.map((line, i) => (
-                          <TableRow key={i}>
+                          <TableRow key={line.id || i}>
                             <TableCell className="text-sm font-medium">{line.product.name}</TableCell>
                             <TableCell className="text-sm text-center">{line.quantity}</TableCell>
                             <TableCell className="text-sm text-right">{fmt(line.unitPrice)}</TableCell>
                             <TableCell className="text-sm text-right font-medium">{fmt(line.lineTotal)}</TableCell>
+                            {(user?.role === 'admin' || user?.role === 'gerente') && detailSale.status !== 'anulada' && (
+                              <TableCell>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-7 w-7 p-0 text-red-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40"
+                                  title="Quitar detalle y restaurar stock"
+                                  disabled={deletingLineId === line.id || detailSale.lines.length <= 1}
+                                  onClick={() => handleDeleteSaleLine(detailSale.id, line.id, line.product.name)}
+                                >
+                                  {deletingLineId === line.id
+                                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                    : <X className="h-3.5 w-3.5" />
+                                  }
+                                </Button>
+                              </TableCell>
+                            )}
                           </TableRow>
                         ))}
                       </TableBody>
