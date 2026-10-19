@@ -2429,7 +2429,7 @@ export function ClientsTable() {
                           <TableHead className="text-center">Cant.</TableHead>
                           <TableHead className="text-right">Precio</TableHead>
                           <TableHead className="text-right">Subtotal</TableHead>
-                          {(user?.role === 'admin' || user?.role === 'gerente') && detailSale.status !== 'anulada' && (
+                          {(user?.role === 'admin' || user?.role === 'gerente') && detailSale.status !== 'anulada' && !detailSale.receivables.some(r => r.status === 'parcial' || r.status === 'pagada') && (
                             <TableHead className="w-10"></TableHead>
                           )}
                         </TableRow>
@@ -2441,7 +2441,7 @@ export function ClientsTable() {
                             <TableCell className="text-sm text-center">{line.quantity}</TableCell>
                             <TableCell className="text-sm text-right">{fmt(line.unitPrice)}</TableCell>
                             <TableCell className="text-sm text-right font-medium">{fmt(line.lineTotal)}</TableCell>
-                            {(user?.role === 'admin' || user?.role === 'gerente') && detailSale.status !== 'anulada' && (
+                            {(user?.role === 'admin' || user?.role === 'gerente') && detailSale.status !== 'anulada' && !detailSale.receivables.some(r => r.status === 'parcial' || r.status === 'pagada') && (
                               <TableCell>
                                 <Button
                                   size="sm"

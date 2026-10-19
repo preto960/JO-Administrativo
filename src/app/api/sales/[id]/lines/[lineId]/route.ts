@@ -39,6 +39,14 @@ export async function DELETE(
       return NextResponse.json({ error: 'No se puede modificar una venta anulada' }, { status: 400 })
     }
 
+    // Check if sale has receivables with payments made (parcial or pagada)
+    const receivableWithPayments = await db.accountReceivable.findFirst({
+      where: { saleId, status: { in: ['parcial', 'pagada'] } },
+    })
+    if (receivableWithPayments) {
+      return NextResponse.json({ error: 'No se puede eliminar detalles de una venta a crédito que ya tiene pagos realizados. Elimine los pagos primero.' }, { status: 400 })
+    }
+
     if (sale.lines.length === 0) {
       return NextResponse.json({ error: 'Detalle de venta no encontrado' }, { status: 404 })
     }
