@@ -72,15 +72,11 @@ export async function GET(request: NextRequest) {
       orderBy: { name: 'asc' },
     })
 
-    const creditSaleIds = (await db.accountReceivable.findMany({
-      where: { sale: { date: { gte: utcStart, lte: utcEnd } } },
-      select: { saleId: true },
-    })).map(r => r.saleId)
-
+    // Credit sales COUNT toward the seller's targets: the seller made the sale,
+    // even if the money arrives later as receivable collections.
     const baseSaleWhere = {
       status: 'completada' as const,
       date: { gte: utcStart, lte: utcEnd },
-      ...(creditSaleIds.length > 0 ? { id: { notIn: creditSaleIds } } : {}),
       ...(branchId ? { branchId } : {}),
     }
 
@@ -95,34 +91,22 @@ export async function GET(request: NextRequest) {
       })
       const dailySales = Math.round((dailySalesAgg._sum.total || 0) * 100) / 100
 
-      const weekCreditSaleIds = (await db.accountReceivable.findMany({
-        where: { sale: { date: { gte: weekStartUtc, lte: weekEndUtc } } },
-        select: { saleId: true },
-      })).map(r => r.saleId)
-
       const weeklySalesAgg = await db.sale.aggregate({
         where: {
           status: 'completada',
           userId: cashier.id,
           date: { gte: weekStartUtc, lte: weekEndUtc },
-          ...(weekCreditSaleIds.length > 0 ? { id: { notIn: weekCreditSaleIds } } : {}),
           ...(branchId ? { branchId } : {}),
         },
         _sum: { total: true },
       })
       const weeklySales = Math.round((weeklySalesAgg._sum.total || 0) * 100) / 100
 
-      const monthCreditSaleIds = (await db.accountReceivable.findMany({
-        where: { sale: { date: { gte: monthStartUtc, lte: monthEndUtc } } },
-        select: { saleId: true },
-      })).map(r => r.saleId)
-
       const monthlySalesAgg = await db.sale.aggregate({
         where: {
           status: 'completada',
           userId: cashier.id,
           date: { gte: monthStartUtc, lte: monthEndUtc },
-          ...(monthCreditSaleIds.length > 0 ? { id: { notIn: monthCreditSaleIds } } : {}),
           ...(branchId ? { branchId } : {}),
         },
         _sum: { total: true },
