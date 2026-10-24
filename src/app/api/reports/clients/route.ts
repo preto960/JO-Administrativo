@@ -24,6 +24,7 @@ export async function GET(request: NextRequest) {
   const dateFrom = searchParams.get('dateFrom') || undefined
   const dateTo = searchParams.get('dateTo') || undefined
   const planType = searchParams.get('planType') || undefined
+  const planId = searchParams.get('planId') || undefined
   const branchId = searchParams.get('branchId') || undefined
 
   // Pagination
@@ -46,7 +47,9 @@ export async function GET(request: NextRequest) {
     if (promotionName) {
       where.push({ promotionName })
     }
-    if (planType) {
+    if (planId) {
+      where.push({ memberships: { some: { planId } } })
+    } else if (planType) {
       where.push({ memberships: { some: { planType } } })
     }
     if (status) {
@@ -103,7 +106,7 @@ export async function GET(request: NextRequest) {
           limit,
           totalPages: 0,
           data: [],
-          filtros: { source, createdBy, status, agreementName, promotionName, dateFrom, dateTo, planType, branchId },
+          filtros: { source, createdBy, status, agreementName, promotionName, dateFrom, dateTo, planType, planId, branchId },
         })
       }
       where.push({ id: { in: clientIds } })
@@ -261,7 +264,7 @@ export async function GET(request: NextRequest) {
       limit,
       totalPages,
       data,
-      filtros: { source, createdBy, status, agreementName, promotionName, dateFrom, dateTo, planType, branchId },
+      filtros: { source, createdBy, status, agreementName, promotionName, dateFrom, dateTo, planType, planId, branchId },
     })
   } catch (error) {
     console.error('[ClientsReport GET]', error)

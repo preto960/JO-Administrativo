@@ -25,6 +25,7 @@ export async function GET(request: NextRequest) {
   const dateFrom = searchParams.get('dateFrom') || undefined
   const dateTo = searchParams.get('dateTo') || undefined
   const planType = searchParams.get('planType') || undefined
+  const planId = searchParams.get('planId') || undefined
   const branchId = searchParams.get('branchId') || undefined
 
   try {
@@ -36,6 +37,7 @@ export async function GET(request: NextRequest) {
       dateFrom,
       dateTo,
       planType,
+      planId,
       branchId,
     })
 
@@ -97,6 +99,7 @@ interface ClientReportData {
     dateFrom?: string
     dateTo?: string
     planType?: string
+    planId?: string
     branchId?: string
   }
 }
@@ -109,16 +112,18 @@ async function buildClientReportData(filters: {
   dateFrom?: string
   dateTo?: string
   planType?: string
+  planId?: string
   branchId?: string
 }): Promise<ClientReportData> {
-  const { source, status, agreementName, promotionName, dateFrom, dateTo, planType, branchId } = filters
+  const { source, status, agreementName, promotionName, dateFrom, dateTo, planType, planId, branchId } = filters
 
   const where: Record<string, unknown>[] = [{ deletedAt: null }]
 
   if (source) where.push({ source })
   if (agreementName) where.push({ agreementName })
   if (promotionName) where.push({ promotionName })
-  if (planType) where.push({ memberships: { some: { planType } } })
+  if (planId) where.push({ memberships: { some: { planId } } })
+  else if (planType) where.push({ memberships: { some: { planType } } })
   if (status) where.push({ memberships: { some: { status } } })
   if (branchId) {
     where.push({ sales: { some: { branchId } } })

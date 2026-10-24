@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { api } from '@/lib/api'
 import { toast } from 'sonner'
 import { useSetting } from '@/stores/use-app-store'
@@ -98,11 +98,12 @@ function membershipBadgeVariant(status: string) {
   }
 }
 
-const PLAN_TYPE_OPTIONS = [
-  { value: 'dias', label: 'Días' },
-  { value: 'horario', label: 'Horario' },
-  { value: 'tickets', label: 'Tiquetera' },
-]
+interface PlanOption {
+  id: string
+  name: string
+  active: boolean
+  planType: string
+}
 
 // ── Component ──────────────────────────────────────────────────────────────
 
@@ -110,9 +111,18 @@ export function ClientsReportTab() {
   // ── Filters ─────────────────────────────────────────────────────────────
   const appCountry = useSetting('country') || 'CO'
   const [status, setStatus] = useState('')
-  const [planType, setPlanType] = useState('')
+  const [planId, setPlanId] = useState('')
   const [dateFrom, setDateFrom] = useState(thirtyDaysAgoLocalISO(appCountry))
   const [dateTo, setDateTo] = useState(todayLocalISO(appCountry))
+
+  // ── Plans from API ──────────────────────────────────────────────────────
+  const [plans, setPlans] = useState<PlanOption[]>([])
+
+  useEffect(() => {
+    api.get<PlanOption[]>('/api/plans')
+      .then(data => setPlans(Array.isArray(data) ? data.filter(p => p.active) : []))
+      .catch(() => {})
+  }, [])
 
   // ── Data ─────────────────────────────────────────────────────────────────
   const [clients, setClients] = useState<ClientReport[]>([])
@@ -130,7 +140,7 @@ export function ClientsReportTab() {
     params.set('page', String(targetPage))
     params.set('limit', String(PAGE_SIZE))
     if (status) params.set('status', status)
-    if (planType) params.set('planType', planType)
+    if (planId) params.set('planId', planId)
     if (dateFrom) params.set('dateFrom', dateFrom)
     if (dateTo) params.set('dateTo', dateTo)
 
@@ -170,7 +180,7 @@ export function ClientsReportTab() {
   const handleDownloadPdf = () => {
     const params = new URLSearchParams()
     if (status) params.set('status', status)
-    if (planType) params.set('planType', planType)
+    if (planId) params.set('planId', planId)
     if (dateFrom) params.set('dateFrom', dateFrom)
     if (dateTo) params.set('dateTo', dateTo)
     window.open(`/api/reports/clients/pdf?${params.toString()}`, '_blank')
@@ -203,17 +213,17 @@ export function ClientsReportTab() {
             </Select>
           </div>
 
-          {/* Plan Type — loaded from API */}
+          {/* Plan — loaded from API */}
           <div className="space-y-2 col-span-2 sm:col-span-1">
-            <Label>Tipo de Plan</Label>
-            <Select value={planType} onValueChange={setPlanType}>
+            <Label>Plan</Label>
+            <Select value={planId} onValueChange={setPlanId}>
               <SelectTrigger>
                 <SelectValue placeholder="Todos los planes" />
               </SelectTrigger>
               <SelectContent>
-                {PLAN_TYPE_OPTIONS.map(t => (
-                  <SelectItem key={t.value} value={t.value}>
-                    {t.label}
+                {plans.map(p => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.name}
                   </SelectItem>
                 ))}
               </SelectContent>
