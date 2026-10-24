@@ -74,6 +74,7 @@ export interface CashCloseReport {
   salesByMethod: MethodBreakdown[]
   totalDiscounts: number
   discountCount: number
+  digitalCreditEntries: { client: string; method: string; amount: number; date: Date }[]
 }
 
 // ─── Colors ───────────────────────────────────────────────────────────────────
@@ -598,6 +599,75 @@ function drawExpenses(doc: jsPDF, report: CashCloseReport, startY: number, type:
   return (doc as any).lastAutoTable.finalY + 8
 }
 
+/**
+ * Cobros Digitales de Credito: per-payment detail of non-cash credit collections.
+ */
+function drawDigitalCreditPayments(doc: jsPDF, report: CashCloseReport, startY: number): number {
+  const items = report.digitalCreditEntries || []
+  if (items.length === 0) return startY
+  const symbol = cs(report.referenceCurrency)
+
+  let y = startY
+
+  // Section title with accent bar
+  doc.setFillColor(...C.amber)
+  doc.rect(36, y, 4, 14, 'F')
+  doc.setFontSize(12)
+  doc.setTextColor(...C.amber)
+  doc.setFont('helvetica', 'bold')
+  doc.text(`Cobros Digitales de Credito (${items.length})`, 46, y + 11)
+  y += 18
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const bodyRows: any[] = items.map(e => [
+    e.client,
+    e.method,
+    fmtDateShort(e.date),
+    `${symbol}${fmt(e.amount)}`,
+  ])
+
+  const total = items.reduce((s, e) => s + e.amount, 0)
+  bodyRows.push([
+    { content: 'TOTAL', styles: { fontStyle: 'bold' } },
+    { content: '', styles: {} },
+    { content: '', styles: {} },
+    { content: `${symbol}${fmt(total)}`, styles: { fontStyle: 'bold', textColor: C.amber } },
+  ])
+
+  autoTable(doc, {
+    startY: y,
+    theme: 'grid',
+    margin: { left: 36, right: 36 },
+    head: [['Cliente', 'Método', 'Fecha', 'Monto']],
+    body: bodyRows,
+    styles: {
+      fontSize: 8,
+      cellPadding: 3,
+    },
+    headStyles: {
+      fillColor: [180, 83, 9],
+      textColor: C.white,
+      fontStyle: 'bold',
+      fontSize: 8,
+    },
+    columnStyles: {
+      0: { fontStyle: 'normal', textColor: C.dark },
+      1: { textColor: C.gray, fontSize: 7 },
+      2: { halign: 'right', textColor: C.gray, fontSize: 7 },
+      3: { halign: 'right', fontStyle: 'bold', textColor: C.amber },
+    },
+    didParseCell: (data) => {
+      if (data.section === 'body' && data.row.index === bodyRows.length - 1) {
+        data.cell.styles.fillColor = C.yellowBg
+        data.cell.styles.fontStyle = 'bold'
+      }
+    },
+  })
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (doc as any).lastAutoTable.finalY + 8
+}
+
 function drawSalesDetail(doc: jsPDF, report: CashCloseReport, startY: number): number {
   if (report.sales.length === 0) return startY
 
@@ -787,6 +857,9 @@ export async function generateCashClosePDF(report: CashCloseReport): Promise<Buf
 
   // Other entries (not credit payments)
   y = drawExpenses(doc, report, y, 'entrada')
+
+  // Digital credit payments detail
+  y = drawDigitalCreditPayments(doc, report, y)
 
   // Sales detail
   y = drawSalesDetail(doc, report, y)
@@ -1055,6 +1128,9 @@ export async function generateMultiCashClosePDF(reports: CashCloseReport[]): Pro
     // Recaudado total
     y = drawRecaudadoTotal(doc, r, y)
 
+    // Digital credit payments detail
+    y = drawDigitalCreditPayments(doc, r, y)
+
     // Sales detail
     y = drawSalesDetail(doc, r, y)
   }
@@ -1219,6 +1295,22 @@ export async function buildReportFromRegister(
     creditPaymentsByMethod.push({ method, ...data })
   }
 
+  // ── 3b. Digital credit payments detail (non-cash 'Cobro credito:' movements) ──
+  // Concept format: "Cobro credito: Client Name (Method Name)"
+  const digitalCreditEntries: { client: string; method: string; amount: number; date: Date }[] = []
+  for (const m of register.movements) {
+    if (m.type !== 'entrada' || !m.concept.startsWith('Cobro credito:')) continue
+    const match = m.concept.match(/\((.+?)\)\s*$/)
+    const methodName = match ? match[1].trim() : 'Otro'
+    const pm = pmList.find(p => p.name === methodName)
+    if (pm?.isCash) continue
+    const client = m.concept
+      .replace(/^Cobro credito:\s*/, '')
+      .replace(/\s*\((.+?)\)\s*$/, '')
+      .trim()
+    digitalCreditEntries.push({ client: client || '—', method: pm?.name || methodName, amount: m.amount, date: m.createdAt })
+  }
+
   // ── 4. Other entries (movements that are NOT credit payments) ──
   const otherEntries = register.movements
     .filter(m => m.type === 'entrada' && !m.concept.startsWith('Cobro credito:'))
@@ -1286,5 +1378,6 @@ export async function buildReportFromRegister(
     salesByMethod,
     totalDiscounts,
     discountCount,
+    digitalCreditEntries,
   }
 }
