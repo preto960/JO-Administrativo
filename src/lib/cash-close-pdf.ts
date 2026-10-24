@@ -374,6 +374,17 @@ function drawCashSummary(doc: jsPDF, report: CashCloseReport, startY: number): n
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   y = (doc as any).lastAutoTable.finalY + 8
 
+  // Digital credit collections note — informative, NOT part of physical cash above
+  const totalCreditCollected = report.creditPaymentsByMethod.reduce((s, m) => s + m.amount, 0)
+  const digitalCreditCollected = Math.round((totalCreditCollected - report.cashCreditPayments) * 100) / 100
+  if (digitalCreditCollected > 0) {
+    doc.setFontSize(9)
+    doc.setTextColor(...C.amber)
+    doc.setFont('helvetica', 'italic')
+    doc.text(`+ Cobrado por medios digitales (no incluido en el efectivo): ${symbol}${fmt(digitalCreditCollected)}`, 46, y)
+    y += 6
+  }
+
   return y
 }
 
