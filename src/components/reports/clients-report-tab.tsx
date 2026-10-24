@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { api } from '@/lib/api'
 import { toast } from 'sonner'
 import { useSetting } from '@/stores/use-app-store'
@@ -63,13 +63,6 @@ interface ClientReportAPIItem {
   totalAsistencias: number
 }
 
-interface PlanOption {
-  id: string
-  name: string
-  active: boolean
-  planType: string
-}
-
 // ── Helpers ──────────────────────────────────────────────────────────────
 
 function todayLocalISO(country: string): string {
@@ -96,16 +89,20 @@ const PAGE_SIZE = 10
 
 function membershipBadgeVariant(status: string) {
   switch (status) {
-    case 'activa':
+    case 'Activo':
       return 'default' as const
-    case 'vencida':
+    case 'Vencido':
       return 'destructive' as const
-    case 'pendiente':
-      return 'secondary' as const
     default:
       return 'outline' as const
   }
 }
+
+const PLAN_TYPE_OPTIONS = [
+  { value: 'dias', label: 'Días' },
+  { value: 'horario', label: 'Horario' },
+  { value: 'tickets', label: 'Tiquetera' },
+]
 
 // ── Component ──────────────────────────────────────────────────────────────
 
@@ -116,15 +113,6 @@ export function ClientsReportTab() {
   const [planType, setPlanType] = useState('')
   const [dateFrom, setDateFrom] = useState(thirtyDaysAgoLocalISO(appCountry))
   const [dateTo, setDateTo] = useState(todayLocalISO(appCountry))
-
-  // ── Plans from API ──────────────────────────────────────────────────────
-  const [plans, setPlans] = useState<PlanOption[]>([])
-
-  useEffect(() => {
-    api.get<PlanOption[]>('/api/plans')
-      .then(data => setPlans(Array.isArray(data) ? data.filter(p => p.active) : []))
-      .catch(() => {})
-  }, [])
 
   // ── Data ─────────────────────────────────────────────────────────────────
   const [clients, setClients] = useState<ClientReport[]>([])
@@ -140,7 +128,7 @@ export function ClientsReportTab() {
     setLoading(true)
     const params = new URLSearchParams()
     params.set('page', String(targetPage))
-    params.set('pageSize', String(PAGE_SIZE))
+    params.set('limit', String(PAGE_SIZE))
     if (status) params.set('status', status)
     if (planType) params.set('planType', planType)
     if (dateFrom) params.set('dateFrom', dateFrom)
@@ -209,10 +197,8 @@ export function ClientsReportTab() {
                 <SelectValue placeholder="Todos los estados" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="activa">Activa</SelectItem>
-                <SelectItem value="vencida">Vencida</SelectItem>
-                <SelectItem value="pendiente">Pendiente</SelectItem>
-                <SelectItem value="cancelada">Cancelada</SelectItem>
+                <SelectItem value="Activo">Activa</SelectItem>
+                <SelectItem value="Vencido">Vencida</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -225,9 +211,9 @@ export function ClientsReportTab() {
                 <SelectValue placeholder="Todos los planes" />
               </SelectTrigger>
               <SelectContent>
-                {plans.map(p => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.name}
+                {PLAN_TYPE_OPTIONS.map(t => (
+                  <SelectItem key={t.value} value={t.value}>
+                    {t.label}
                   </SelectItem>
                 ))}
               </SelectContent>
