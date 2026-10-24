@@ -219,6 +219,21 @@ export async function GET(
     // Real en Caja = monto inicial + pagos en efectivo físico + movimientos manuales netos (solo efectivo)
     const realInRegister = initialAmt + cashPaymentsTotal + netMovements
 
+    // Cobros digitales (entradas 'Cobro credito:' con método no-efectivo) — informativo:
+    // NO forman parte del efectivo en caja (realInRegister) pero sí son plata cobrada del turno
+    const digitalCobrosByMethod: Record<string, { amount: number; count: number }> = {}
+    let digitalCobrosTotal = 0
+    for (const m of manualMovements) {
+      if (m.type !== 'entrada' || !isNonCashCreditPayment(m)) continue
+      const match = m.concept.match(/\((.+)\)\s*$/)
+      const methodName = match ? match[1].trim() : 'Otro'
+      const cur = digitalCobrosByMethod[methodName] || { amount: 0, count: 0 }
+      cur.amount = Math.round((cur.amount + m.amount) * 100) / 100
+      cur.count++
+      digitalCobrosByMethod[methodName] = cur
+      digitalCobrosTotal = Math.round((digitalCobrosTotal + m.amount) * 100) / 100
+    }
+
     return NextResponse.json({
       posSales: posSales.map(s => {
         const nonCreditPayments = s.payments.filter(p => !creditCodes.has(p.method))
@@ -241,6 +256,8 @@ export async function GET(
       systemPendingTotal,
       methodTotals,
       realInRegister,
+      digitalCobrosTotal,
+      digitalCobrosByMethod,
       movements: movementEntries,
       totalEntries,
       totalExits,

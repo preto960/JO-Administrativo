@@ -305,6 +305,8 @@ export function CashRegisterView() {
     systemPendingTotal: number
     methodTotals: Record<string, { amount: number; count: number }>
     realInRegister: number
+    digitalCobrosTotal: number
+    digitalCobrosByMethod: Record<string, { amount: number; count: number }>
     movements: Array<{ id: string; date: string; type: 'entrada' | 'salida'; amount: number; concept: string }>
     totalEntries: number
     totalExits: number
@@ -1755,6 +1757,24 @@ export function CashRegisterView() {
                     </div>
                   )}
                 </div>
+
+                {/* Cobros digitales (no efectivo) — informativo, no suma al efectivo en caja */}
+                {(closeBreakdown.digitalCobrosTotal ?? 0) > 0 && (
+                  <div className="rounded-md bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800 p-2">
+                    <div className="flex justify-between items-center">
+                      <p className="text-[9px] text-indigo-600 dark:text-indigo-400 uppercase font-medium">Cobrado Digital (no efectivo)</p>
+                      <p className="text-xs font-bold text-indigo-700 dark:text-indigo-300">{fmtBase(closeBreakdown.digitalCobrosTotal)}</p>
+                    </div>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {Object.entries(closeBreakdown.digitalCobrosByMethod || {}).map(([method, data]) => (
+                        <span key={method} className="text-[9px] bg-white/60 dark:bg-black/30 rounded px-1.5 py-0.5 text-indigo-700 dark:text-indigo-300">
+                          {method}: {fmtBase(data.amount)} ({data.count})
+                        </span>
+                      ))}
+                    </div>
+                    <p className="text-[9px] text-muted-foreground mt-1">Cobros de crédito por transferencia/métodos digitales del turno. No suman al efectivo en caja porque ese dinero va a la cuenta bancaria, no al cajón.</p>
+                  </div>
+                )}
 
                 {/* Payment method breakdown */}
                 {closeBreakdown.methodTotals && Object.keys(closeBreakdown.methodTotals).length > 0 && (
